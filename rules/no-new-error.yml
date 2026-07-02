@@ -1,0 +1,8 @@
+id: no-new-error
+language: TypeScript
+severity: error
+message: Return typed Effect errors instead of constructing generic Error instances.
+files:
+  - src/**/*.ts
+rule:
+  pattern: new Error($$$ARGS)

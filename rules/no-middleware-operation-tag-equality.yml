@@ -1,0 +1,13 @@
+id: no-middleware-operation-tag-equality
+language: TypeScript
+severity: error
+message: Use Predicate.isTagged() or Match.tag() for middleware operation tag guards instead of direct op._tag equality checks.
+files:
+  - src/**/*.ts
+  - test/**/*.ts
+rule:
+  any:
+    - pattern: op._tag === $TAG
+    - pattern: op._tag !== $TAG
+    - pattern: $TAG === op._tag
+    - pattern: $TAG !== op._tag

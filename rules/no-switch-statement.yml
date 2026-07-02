@@ -1,0 +1,8 @@
+id: no-switch-statement
+language: TypeScript
+severity: error
+message: Use Match from effect instead of switch statements.
+files:
+  - src/**/*.ts
+rule:
+  kind: switch_statement
