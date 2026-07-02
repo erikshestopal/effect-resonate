@@ -11,24 +11,27 @@ import * as NetworkHttp from "./NetworkHttp.ts";
 import { ResonateNetwork } from "./Network.ts";
 import * as Protocol from "./Protocol.ts";
 import { ResonateCodec, withSchemaHeader } from "./Codec.ts";
+import type { ResonateContext } from "./ResonateContext.ts";
 import { Tasks } from "./Task.ts";
 
 export const layerHttp = (
   options: NetworkHttp.NetworkHttpOptions,
 ): Layer.Layer<ResonateNetwork, never, HttpClient.HttpClient> => NetworkHttp.layer(options);
 
-export interface Definition<Name extends string, Payload extends Schema.Codec<unknown, unknown, unknown, never>> {
+export interface Definition<Name extends string, Payload extends Schema.Codec<unknown, unknown, never, never>> {
   readonly name: Name;
   readonly payload: Payload;
   readonly version: Protocol.FunctionVersion;
 }
 
-export type AnyFunction = Definition<string, Schema.Codec<unknown, unknown, unknown, never>>;
+export type AnyFunction = Definition<string, Schema.Codec<unknown, unknown, never, never>>;
 
 export type PayloadArgs<F extends AnyFunction> =
   F["payload"]["Type"] extends ReadonlyArray<unknown> ? F["payload"]["Type"] : readonly [F["payload"]["Type"]];
 
-export type HandlerFunction<F extends AnyFunction> = (...args: PayloadArgs<F>) => Effect.Effect<unknown, unknown>;
+export type HandlerFunction<F extends AnyFunction> = (
+  ...args: PayloadArgs<F>
+) => Effect.Effect<unknown, unknown, ResonateContext>;
 
 export interface Handler<F extends AnyFunction> {
   readonly definition: F;
@@ -140,10 +143,7 @@ export class FunctionGroup<Fns extends ReadonlyArray<AnyFunction>> {
   }
 }
 
-export const defineFunction = <
-  const Name extends string,
-  Payload extends Schema.Codec<unknown, unknown, unknown, never>,
->(
+export const defineFunction = <const Name extends string, Payload extends Schema.Codec<unknown, unknown, never, never>>(
   name: Name,
   options: { readonly payload: Payload; readonly version?: number | Protocol.FunctionVersion },
 ): Definition<Name, Payload> => ({

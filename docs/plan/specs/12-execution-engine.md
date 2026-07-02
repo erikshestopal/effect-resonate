@@ -75,3 +75,10 @@ retries, and nondeterminism ops layer on in specs 13–19.
 
 - `vp run check` green; CONFORMANCE.md rows: deterministic ids, structured
   concurrency, timeout clamping, T-04 (engine side) → done.
+
+## Notes
+
+- Implemented the first Effect-native engine slice in `src/ResonateContext.ts`: `ExecutionEngine` decodes the root invocation param, resolves the registered handler, provides `ResonateContext`, drains local children, and fulfills the root task through `task.fulfill`.
+- Implemented local durable operations only: `ctx.run`/`ctx.beginRun` create child promises with deterministic `{root}.{seq}` ids, local lineage tags, parent-timeout clamping, `task.fence`-wrapped `promise.create`/`promise.settle`, and cache/preload replay of settled child records. Remote calls, sleep, suspension, retries, and recorded nondeterminism remain in specs 14–19.
+- Registry handler effects may now require `ResonateContext`; direct registry tests provide a dummy context layer. Child effects accepted by `ctx.run`/`beginRun` are service-free in this slice; widening child effect environments should be done deliberately when worker dependency injection lands.
+- Tests cover root execution, local child tag/id emission, root fulfillment decode, and replay from a preloaded settled child without re-executing the local side effect.

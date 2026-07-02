@@ -1,6 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Exit, Layer, Option, Ref, Schema } from "effect";
 import * as Resonate from "../src/Resonate.ts";
+import { ResonateContext } from "../src/ResonateContext.ts";
+import * as Protocol from "../src/Protocol.ts";
 
 const Countdown = Resonate.function("Countdown", {
   payload: Schema.Tuple([Schema.Number, Schema.Number]),
@@ -10,6 +12,31 @@ const Checkout = Resonate.function("Checkout", {
   payload: Schema.Struct({ id: Schema.String }),
   version: 2,
 });
+
+const contextLayer = Layer.succeed(
+  ResonateContext,
+  ResonateContext.of({
+    info: {
+      id: Protocol.PromiseId.make("test"),
+      originId: Protocol.PromiseId.make("test"),
+      prefixId: Protocol.PromiseId.make("test"),
+      parentId: Protocol.PromiseId.make("test"),
+      branchId: Protocol.PromiseId.make("test"),
+      timeoutAt: Schema.decodeUnknownSync(Protocol.Timestamp)(60_000),
+      version: Protocol.TaskVersion.make(1),
+    },
+    run: Effect.succeed,
+    beginRun: (effect) =>
+      Effect.succeed({
+        id: Protocol.PromiseId.make("test.0"),
+        await: Effect.void,
+        poll: Effect.succeed(Option.none()),
+        cancel: Effect.void,
+      }),
+    all: (effects) => Effect.forEach(effects, (effect) => effect),
+    panic: (message) => Effect.die(message),
+  }),
+);
 
 describe("Resonate function registry", () => {
   it.effect("builds handler layers and resolves latest registered versions", () =>
@@ -23,10 +50,10 @@ describe("Resonate function registry", () => {
       );
 
       const countdown = yield* Resonate.Handler(Countdown).pipe(Effect.provide(layer));
-      expect(yield* countdown(2, 3)).toBe(5);
+      expect(yield* countdown(2, 3).pipe(Effect.provide(contextLayer))).toBe(5);
 
       const checkout = yield* Resonate.Handler(Checkout).pipe(Effect.provide(layer));
-      expect(yield* checkout({ id: "order-1" })).toBe("order-1");
+      expect(yield* checkout({ id: "order-1" }).pipe(Effect.provide(contextLayer))).toBe("order-1");
 
       const registry = yield* group.registry().pipe(Effect.provide(layer));
       const latest = registry.get("Checkout");
@@ -50,8 +77,8 @@ describe("Resonate function registry", () => {
       );
 
       const countdown = yield* Resonate.Handler(Countdown).pipe(Effect.provide(layer));
-      expect(yield* countdown(1, 2)).toBe(3);
-      expect(yield* countdown(3, 4)).toBe(10);
+      expect(yield* countdown(1, 2).pipe(Effect.provide(contextLayer))).toBe(3);
+      expect(yield* countdown(3, 4).pipe(Effect.provide(contextLayer))).toBe(10);
     }),
   );
 
@@ -76,7 +103,7 @@ describe("Resonate function registry", () => {
       const group = Resonate.group(Checkout);
       const layer = group.toLayerHandler("Checkout", (order) => Effect.succeed(order.id));
       const checkout = yield* Resonate.Handler(Checkout).pipe(Effect.provide(layer));
-      expect(yield* checkout({ id: "single" })).toBe("single");
+      expect(yield* checkout({ id: "single" }).pipe(Effect.provide(contextLayer))).toBe("single");
     }),
   );
 });
