@@ -66,22 +66,22 @@ Statuses: `todo` | `partial` | `done`.
 
 ## Handbook MUSTs (wire/worker behavior)
 
-| Requirement                                                                                            | Impl spec  | Tests                                                                                                  | Status  |
-| ------------------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------ | ------- |
-| Envelope `{kind, head:{corrId, version:"2026-04-01"}, data}`; reject corrId mismatch                   | 03, 07     | `test/Network.test.ts` "envelope helpers"; `test/NetworkHttp.test.ts` send-path envelope/status/corrId | done    |
-| SSE reconnect with exponential backoff (cap ~30s, reset on success)                                    | 07         | `test/NetworkHttp.test.ts` poll decode/auth/reconnect backoff                                          | done    |
-| Never block a thread on a durable wait (suspend instead)                                               | 14         |                                                                                                        | todo    |
-| Heartbeat per-process at TTL/2 with REAL `(id, version)` list                                          | 13         |                                                                                                        | todo    |
-| Same codec path for param AND value, including rejections                                              | 02         | `test/Codec.test.ts` (native byte fixtures, rejection round-trips)                                     | done    |
-| Headers always accompany data; `resonate:schema` header written                                        | 02         | `test/Codec.test.ts` (headers on every encode; `withSchemaHeader` — written at call sites in 11/12/17) | partial |
-| Child timeoutAt clamped to parent's (absolute epoch-ms); detached unclamped                            | 12, 16     |                                                                                                        | todo    |
-| `409` = stop claiming, never blind-retry; auth failures never retried                                  | 07, 08, 13 | `test/NetworkHttp.test.ts` auth terminal; `test/ProtocolClient.test.ts` TaskFenced                     | partial |
-| Tag vocabulary: `resonate:target/origin/parent/branch/prefix/scope/timer` (TS/Rust consensus)          | 01, 12     | `test/Protocol.test.ts` "tags" (types + wire transform; emission in 12)                                | partial |
-| Sleep = `resonate:timer:"true"`, timeoutAt = wake time, no target                                      | 15         |                                                                                                        | todo    |
-| Deterministic child ids: per-invocation sequence counter (`{parent}.{n}`; detached `{prefix}.d{hash}`) | 12         |                                                                                                        | todo    |
-| Structured concurrency: root does not fulfill while attached children unsettled                        | 12, 16     |                                                                                                        | todo    |
-| 300+preload fast path on suspend handled (no suspend; warm cache)                                      | 14         |                                                                                                        | todo    |
-| Register all functions before receiving work                                                           | 10, 13     |                                                                                                        | todo    |
+| Requirement                                                                                            | Impl spec  | Tests                                                                                                   | Status  |
+| ------------------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------- | ------- |
+| Envelope `{kind, head:{corrId, version:"2026-04-01"}, data}`; reject corrId mismatch                   | 03, 07     | `test/Network.test.ts` "envelope helpers"; `test/NetworkHttp.test.ts` send-path envelope/status/corrId  | done    |
+| SSE reconnect with exponential backoff (cap ~30s, reset on success)                                    | 07         | `test/NetworkHttp.test.ts` poll decode/auth/reconnect backoff                                           | done    |
+| Never block a thread on a durable wait (suspend instead)                                               | 14         |                                                                                                         | todo    |
+| Heartbeat per-process at TTL/2 with REAL `(id, version)` list                                          | 13         |                                                                                                         | todo    |
+| Same codec path for param AND value, including rejections                                              | 02         | `test/Codec.test.ts` (native byte fixtures, rejection round-trips)                                      | done    |
+| Headers always accompany data; `resonate:schema` header written                                        | 02         | `test/Codec.test.ts` (headers on every encode; `withSchemaHeader` — written at call sites in 11/12/17)  | partial |
+| Child timeoutAt clamped to parent's (absolute epoch-ms); detached unclamped                            | 12, 16     |                                                                                                         | todo    |
+| `409` = stop claiming, never blind-retry; auth failures never retried                                  | 07, 08, 13 | `test/NetworkHttp.test.ts` auth terminal; `test/ProtocolClient.test.ts` TaskFenced                      | partial |
+| Tag vocabulary: `resonate:target/origin/parent/branch/prefix/scope/timer` (TS/Rust consensus)          | 01, 12     | `test/Protocol.test.ts` "tags" (types + wire transform; emission in 12)                                 | partial |
+| Sleep = `resonate:timer:"true"`, timeoutAt = wake time, no target                                      | 15         |                                                                                                         | todo    |
+| Deterministic child ids: per-invocation sequence counter (`{parent}.{n}`; detached `{prefix}.d{hash}`) | 12         |                                                                                                         | todo    |
+| Structured concurrency: root does not fulfill while attached children unsettled                        | 12, 16     |                                                                                                         | todo    |
+| 300+preload fast path on suspend handled (no suspend; warm cache)                                      | 14         |                                                                                                         | todo    |
+| Register all functions before receiving work                                                           | 10, 13     | `test/ResonateRegistry.test.ts` handler layer completeness/duplicates; worker startup enforcement in 13 | partial |
 
 ## Known spec ↔ shipped-server deviations (follow the SERVER)
 

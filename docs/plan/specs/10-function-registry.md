@@ -52,3 +52,22 @@ Effect<Success, Error, R>`; R accumulates through the layer (minus
 ## Acceptance
 
 - `vp run check` green; CONFORMANCE.md "register before work" row → partial.
+
+## Notes
+
+- `Resonate.function` is exported via `defineFunction as function`, so namespace
+  imports support the intended `Resonate.function("Name", ...)` API despite
+  `function` being a reserved declaration word.
+- Definitions carry the Schema payload and branded `FunctionVersion` (default 1).
+  Tuple payloads infer positional handler parameters; non-tuples infer one handler
+  argument.
+- `FunctionGroup.toLayer` and `toLayerHandler` provide `Handler(definition)` context
+  entries, following the `RpcGroup` registration shape. `toLayer` accepts either a
+  handler map or an Effect that builds one for shared setup state.
+- `FunctionGroup.registry()` assembles a runtime `Registry` from the provided handler
+  context. Duplicate name+version registration dies at layer build/registry assembly;
+  `Registry.get(name, "latest")` resolves the max registered version.
+- Handler effects are stored as already-layer-built functions with no runtime service
+  requirement; handler setup dependencies should be satisfied while constructing the
+  handler layer. Runtime execution dependencies will be threaded explicitly by later
+  worker/runtime specs.
