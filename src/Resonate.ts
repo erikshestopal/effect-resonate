@@ -14,6 +14,8 @@ import { ResonateCodec, withSchemaHeader } from "./Codec.ts";
 import type { ResonateContext } from "./ResonateContext.ts";
 import { Tasks } from "./Task.ts";
 
+export * as Worker from "./Worker.ts";
+
 export const layerHttp = (
   options: NetworkHttp.NetworkHttpOptions,
 ): Layer.Layer<ResonateNetwork, never, HttpClient.HttpClient> => NetworkHttp.layer(options);

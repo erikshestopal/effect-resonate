@@ -61,3 +61,10 @@ pid, ttl)`; 409 → someone else owns it, drop silently (stale wake-up hint is
 
 - `vp run check` green; CONFORMANCE.md heartbeat + T-03/T-07/T-08 (worker side) +
   register-before-work rows → done.
+
+## Notes
+
+- Implemented `Worker.layer(group, config)` as a scoped background layer: it builds the function registry before consuming messages, starts a process heartbeat fiber, and consumes `ResonateNetwork.messages` with one supervised fiber per layer scope.
+- `execute` messages call `Tasks.acquire`; `TaskFenced` stale wakeups are dropped, acquired tasks are added to the held set, then `ExecutionEngine.execute` drives the function. Engine failures release the task and remove it from the held set; successful engine completion removes it after root fulfillment.
+- Heartbeat sends the actual current held task list (`[{ id, version }]`) every `ttl / 2`, intentionally fixing the native SDK's empty-list bug. `test/Worker.test.ts` advances `TestClock` past the original lease and proves the task remains acquired only because the heartbeat extended the real held pair.
+- Local `NetworkLocal.messages` is a single queue in tests, so the worker E2E test polls the root promise through `DurablePromises.get` instead of racing `handle.await`'s listener consumer against the worker's execute consumer.
