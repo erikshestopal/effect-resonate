@@ -15,6 +15,7 @@ You have source access to the following vendored repos that you MUST consult ins
 
 - When writing Effect code, you MUST load @repos/effect-smol/LLMS.md and apply the guidelines in that document.
 - Use the entire Effect module space and combinators ALWAYS, like Predicate, Option, Schema, Order, etc
+- You MUST read @LEARNINGS.md (corrections from past reviews) before writing code, and append new corrections there when the maintainer rejects an approach.
 
 # Review Checklist
 

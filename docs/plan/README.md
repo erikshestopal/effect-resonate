@@ -38,7 +38,8 @@ For every work session:
    If several qualify, they are parallel-safe — pick any (or fan out).
 2. **Read** the spec file fully, then the referenced sections of `docs/DESIGN.md`,
    the referenced Lean spec files, and the referenced native SDK code. Do not skip
-   the references; the spec files point at exact behaviors to replicate.
+   the references; the spec files point at exact behaviors to replicate. Also read
+   `LEARNINGS.md` (repo root) — corrections from past reviews that are binding.
 3. **Tests first** where practical: write the conformance/behavior tests the spec
    lists, watch them fail, then implement.
 4. **Implement the smallest slice** that makes the tests pass, Effect-native per
