@@ -27,7 +27,7 @@ export default defineConfig({
         command: "sg scan src test",
       },
       "check:test": {
-        command: "vp test run",
+        command: "bunx --bun vp test run",
       },
       "check:typecheck": {
         command: "tsgo --noEmit",

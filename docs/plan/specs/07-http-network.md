@@ -47,3 +47,22 @@ stream for `messages`, with mandatory reconnect backoff.
 ## Acceptance
 
 - `vp run check` green; CONFORMANCE.md envelope + SSE-backoff rows → done.
+
+## Notes
+
+- `NetworkHttp.layer` is an Effect `HttpClient` transport. `send` posts the encoded
+  protocol request to the configured URL, lets only protocol statuses
+  `200/300/404/409/422/501` reach `decodeResponse`, maps `401/403` to terminal
+  `Unauthorized`, and normalizes other HTTP/platform/body failures to
+  `TransportError`.
+- The poll stream uses a real Bun in-process server in tests (`BunHttpServer` +
+  `BunHttpClient`), per maintainer direction; no Node HTTP server or recorder is
+  used. Vite+'s `check:test` task now runs Vitest through `bunx --bun` so Bun globals
+  and platform layers are available.
+- SSE parsing is byte-stream based: decode UTF-8, split lines, keep `data:` frames
+  with `Filter.fromPredicateOption`, then decode frame JSON via
+  `Schema.fromJsonString(Protocol.Message)`. This follows the v4 Schema/Filter APIs
+  rather than hand-rolled guards.
+- Poll `401/403` fails terminally and is not retried. Other poll connection/status
+  failures retry with Effect `Schedule.exponential(Duration.seconds(1))`, capped at
+  30s; the test observes the retry under `TestClock`.
