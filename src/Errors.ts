@@ -7,7 +7,7 @@
  * Mirrors the intent of `repos/resonate-sdk-ts/src/exceptions.ts`.
  */
 import { Schema } from "effect";
-import { PromiseId, TaskId, TaskVersion } from "./Protocol.ts";
+import { PromiseId, ScheduleId, TaskId, TaskVersion } from "./Protocol.ts";
 
 // -----------------------------------------------------------------------------
 // Platform errors — never stored in promises; retriable at the transport layer
@@ -40,7 +40,12 @@ export class InvalidTarget extends Schema.TaggedErrorClass<InvalidTarget>()("Inv
   message: Schema.String,
 }) {}
 
-export type ResonateProtocolError = TaskFenced | PromiseNotFound | InvalidTarget;
+/** `404` — the referenced schedule does not exist. */
+export class ScheduleNotFound extends Schema.TaggedErrorClass<ScheduleNotFound>()("ScheduleNotFound", {
+  id: ScheduleId,
+}) {}
+
+export type ResonateProtocolError = TaskFenced | PromiseNotFound | InvalidTarget | ScheduleNotFound;
 
 // -----------------------------------------------------------------------------
 // Terminal promise outcomes — surfaced to awaiters as typed errors

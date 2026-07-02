@@ -8,30 +8,30 @@ Statuses: `todo` | `partial` | `done`.
 
 ## Promise actions
 
-| Spec action                                                                            | Lean source                             | Impl spec | Tests                                            | Status  |
-| -------------------------------------------------------------------------------------- | --------------------------------------- | --------- | ------------------------------------------------ | ------- |
-| P-01 promise.get (incl. timeout projection)                                            | `spec/02-actions/P-01-promise.get.lean` | 04, 08    | `test/NetworkLocal.test.ts` (oracle side)        | partial |
-| P-02 promise.create (new / born-settled / idempotent re-create / target→task / delay)  | `P-02-promise.create.lean`              | 04, 08    | `test/NetworkLocal.test.ts` "P-02" (oracle side) | partial |
-| P-03 promise.settle (settle / projected-timeout race / idempotent re-settle / cascade) | `P-03-promise.settle.lean`              | 04, 08    | `test/NetworkLocal.test.ts` "P-03" (oracle side) | partial |
-| P-04 promise.register_callback (422 non-target awaiter; skip-if-awaiter-expired)       | `P-04-promise.register_callback.lean`   | 04, 08    | `test/NetworkLocal.test.ts` "P-04" (oracle side) | partial |
-| P-05 promise.register_listener                                                         | `P-05-promise.register_listener.lean`   | 04, 08    | `test/NetworkLocal.test.ts` "P-05" (oracle side) | partial |
-| P-06 promise.search — NOT IMPLEMENTED (501 per spec)                                   | `P-06-promise.search.lean`              | —         | n/a                                              | done    |
+| Spec action                                                                            | Lean source                             | Impl spec | Tests                                                                                    | Status  |
+| -------------------------------------------------------------------------------------- | --------------------------------------- | --------- | ---------------------------------------------------------------------------------------- | ------- |
+| P-01 promise.get (incl. timeout projection)                                            | `spec/02-actions/P-01-promise.get.lean` | 04, 08    | `test/NetworkLocal.test.ts` (oracle side); `test/ProtocolClient.test.ts` DurablePromises | partial |
+| P-02 promise.create (new / born-settled / idempotent re-create / target→task / delay)  | `P-02-promise.create.lean`              | 04, 08    | `test/NetworkLocal.test.ts` "P-02"; `test/ProtocolClient.test.ts` DurablePromises        | partial |
+| P-03 promise.settle (settle / projected-timeout race / idempotent re-settle / cascade) | `P-03-promise.settle.lean`              | 04, 08    | `test/NetworkLocal.test.ts` "P-03"; `test/ProtocolClient.test.ts` awaitSettled           | partial |
+| P-04 promise.register_callback (422 non-target awaiter; skip-if-awaiter-expired)       | `P-04-promise.register_callback.lean`   | 04, 08    | `test/NetworkLocal.test.ts` "P-04"; typed client method in `DurablePromises`             | partial |
+| P-05 promise.register_listener                                                         | `P-05-promise.register_listener.lean`   | 04, 08    | `test/NetworkLocal.test.ts` "P-05"; `test/ProtocolClient.test.ts` awaitSettled           | partial |
+| P-06 promise.search — NOT IMPLEMENTED (501 per spec)                                   | `P-06-promise.search.lean`              | —         | n/a                                                                                      | done    |
 
 ## Task actions
 
-| Spec action                                                                           | Lean source                | Impl spec  | Tests                                                 | Status  |
-| ------------------------------------------------------------------------------------- | -------------------------- | ---------- | ----------------------------------------------------- | ------- |
-| T-01 task.get (projection to fulfilled)                                               | `T-01-task.get.lean`       | 05, 08     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
-| T-02 task.create (create+acquire / born-fulfilled / re-acquire / 422 no-target / 409) | `T-02-task.create.lean`    | 05, 08, 11 | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
-| T-03 task.acquire (version fence, bump, lease arm)                                    | `T-03-task.acquire.lean`   | 05, 13     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
-| T-04 task.fence (fenced create/settle)                                                | `T-04-task.fence.lean`     | 05, 12     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
-| T-05 task.heartbeat (bulk, silent per-task no-op, stored-ttl extension)               | `T-05-task.heartbeat.lean` | 05, 13     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
-| T-06 task.suspend (atomic multi-callback; 300 fast path; check-then-register)         | `T-06-task.suspend.lean`   | 05, 14     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
-| T-07 task.fulfill (atomic settle+fulfill, cascade)                                    | `T-07-task.fulfill.lean`   | 05, 13     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
-| T-08 task.release (→pending, retry timeout, redispatch; resumes NOT cleared)          | `T-08-task.release.lean`   | 05, 13     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
-| T-09 task.halt (no version fence; 409 if fulfilled; idempotent)                       | `T-09-task.halt.lean`      | 05, 08     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
-| T-10 task.continue (409 unless halted; no version bump)                               | `T-10-task.continue.lean`  | 05, 08     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
-| T-11 task.search — NOT IMPLEMENTED (501 per spec)                                     | `T-11-task.search.lean`    | —          | n/a                                                   | done    |
+| Spec action                                                                           | Lean source                | Impl spec  | Tests                                                                                 | Status  |
+| ------------------------------------------------------------------------------------- | -------------------------- | ---------- | ------------------------------------------------------------------------------------- | ------- |
+| T-01 task.get (projection to fulfilled)                                               | `T-01-task.get.lean`       | 05, 08     | `test/NetworkLocal.test.ts` "T-01…T-10"; typed client method in `Tasks`               | partial |
+| T-02 task.create (create+acquire / born-fulfilled / re-acquire / 422 no-target / 409) | `T-02-task.create.lean`    | 05, 08, 11 | `test/NetworkLocal.test.ts` "T-01…T-10"; `test/ProtocolClient.test.ts` Tasks          | partial |
+| T-03 task.acquire (version fence, bump, lease arm)                                    | `T-03-task.acquire.lean`   | 05, 08, 13 | `test/NetworkLocal.test.ts` "T-01…T-10"; `test/ProtocolClient.test.ts` Tasks          | partial |
+| T-04 task.fence (fenced create/settle)                                                | `T-04-task.fence.lean`     | 05, 08, 12 | `test/NetworkLocal.test.ts` "T-01…T-10"; `test/ProtocolClient.test.ts` Tasks          | partial |
+| T-05 task.heartbeat (bulk, silent per-task no-op, stored-ttl extension)               | `T-05-task.heartbeat.lean` | 05, 08, 13 | `test/NetworkLocal.test.ts` "T-01…T-10"; `test/ProtocolClient.test.ts` Tasks          | partial |
+| T-06 task.suspend (atomic multi-callback; 300 fast path; check-then-register)         | `T-06-task.suspend.lean`   | 05, 08, 14 | `test/NetworkLocal.test.ts` "T-01…T-10"; `test/ProtocolClient.test.ts` SuspendRefused | partial |
+| T-07 task.fulfill (atomic settle+fulfill, cascade)                                    | `T-07-task.fulfill.lean`   | 05, 08, 13 | `test/NetworkLocal.test.ts` "T-01…T-10"; `test/ProtocolClient.test.ts` TaskFenced     | partial |
+| T-08 task.release (→pending, retry timeout, redispatch; resumes NOT cleared)          | `T-08-task.release.lean`   | 05, 08, 13 | `test/NetworkLocal.test.ts` "T-01…T-10"; `test/ProtocolClient.test.ts` Tasks          | partial |
+| T-09 task.halt (no version fence; 409 if fulfilled; idempotent)                       | `T-09-task.halt.lean`      | 05, 08     | `test/NetworkLocal.test.ts` "T-01…T-10"; `test/ProtocolClient.test.ts` Tasks          | partial |
+| T-10 task.continue (409 unless halted; no version bump)                               | `T-10-task.continue.lean`  | 05, 08     | `test/NetworkLocal.test.ts` "T-01…T-10"; `test/ProtocolClient.test.ts` Tasks          | partial |
+| T-11 task.search — NOT IMPLEMENTED (501 per spec)                                     | `T-11-task.search.lean`    | —          | n/a                                                                                   | done    |
 
 ## Schedule actions
 
@@ -66,22 +66,22 @@ Statuses: `todo` | `partial` | `done`.
 
 ## Handbook MUSTs (wire/worker behavior)
 
-| Requirement                                                                                            | Impl spec | Tests                                                                                                  | Status  |
-| ------------------------------------------------------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------ | ------- |
-| Envelope `{kind, head:{corrId, version:"2026-04-01"}, data}`; reject corrId mismatch                   | 03, 07    | `test/Network.test.ts` "envelope helpers"; `test/NetworkHttp.test.ts` send-path envelope/status/corrId | done    |
-| SSE reconnect with exponential backoff (cap ~30s, reset on success)                                    | 07        | `test/NetworkHttp.test.ts` poll decode/auth/reconnect backoff                                          | done    |
-| Never block a thread on a durable wait (suspend instead)                                               | 14        |                                                                                                        | todo    |
-| Heartbeat per-process at TTL/2 with REAL `(id, version)` list                                          | 13        |                                                                                                        | todo    |
-| Same codec path for param AND value, including rejections                                              | 02        | `test/Codec.test.ts` (native byte fixtures, rejection round-trips)                                     | done    |
-| Headers always accompany data; `resonate:schema` header written                                        | 02        | `test/Codec.test.ts` (headers on every encode; `withSchemaHeader` — written at call sites in 11/12/17) | partial |
-| Child timeoutAt clamped to parent's (absolute epoch-ms); detached unclamped                            | 12, 16    |                                                                                                        | todo    |
-| `409` = stop claiming, never blind-retry; auth failures never retried                                  | 08, 13    |                                                                                                        | todo    |
-| Tag vocabulary: `resonate:target/origin/parent/branch/prefix/scope/timer` (TS/Rust consensus)          | 01, 12    | `test/Protocol.test.ts` "tags" (types + wire transform; emission in 12)                                | partial |
-| Sleep = `resonate:timer:"true"`, timeoutAt = wake time, no target                                      | 15        |                                                                                                        | todo    |
-| Deterministic child ids: per-invocation sequence counter (`{parent}.{n}`; detached `{prefix}.d{hash}`) | 12        |                                                                                                        | todo    |
-| Structured concurrency: root does not fulfill while attached children unsettled                        | 12, 16    |                                                                                                        | todo    |
-| 300+preload fast path on suspend handled (no suspend; warm cache)                                      | 14        |                                                                                                        | todo    |
-| Register all functions before receiving work                                                           | 10, 13    |                                                                                                        | todo    |
+| Requirement                                                                                            | Impl spec  | Tests                                                                                                  | Status  |
+| ------------------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------ | ------- |
+| Envelope `{kind, head:{corrId, version:"2026-04-01"}, data}`; reject corrId mismatch                   | 03, 07     | `test/Network.test.ts` "envelope helpers"; `test/NetworkHttp.test.ts` send-path envelope/status/corrId | done    |
+| SSE reconnect with exponential backoff (cap ~30s, reset on success)                                    | 07         | `test/NetworkHttp.test.ts` poll decode/auth/reconnect backoff                                          | done    |
+| Never block a thread on a durable wait (suspend instead)                                               | 14         |                                                                                                        | todo    |
+| Heartbeat per-process at TTL/2 with REAL `(id, version)` list                                          | 13         |                                                                                                        | todo    |
+| Same codec path for param AND value, including rejections                                              | 02         | `test/Codec.test.ts` (native byte fixtures, rejection round-trips)                                     | done    |
+| Headers always accompany data; `resonate:schema` header written                                        | 02         | `test/Codec.test.ts` (headers on every encode; `withSchemaHeader` — written at call sites in 11/12/17) | partial |
+| Child timeoutAt clamped to parent's (absolute epoch-ms); detached unclamped                            | 12, 16     |                                                                                                        | todo    |
+| `409` = stop claiming, never blind-retry; auth failures never retried                                  | 07, 08, 13 | `test/NetworkHttp.test.ts` auth terminal; `test/ProtocolClient.test.ts` TaskFenced                     | partial |
+| Tag vocabulary: `resonate:target/origin/parent/branch/prefix/scope/timer` (TS/Rust consensus)          | 01, 12     | `test/Protocol.test.ts` "tags" (types + wire transform; emission in 12)                                | partial |
+| Sleep = `resonate:timer:"true"`, timeoutAt = wake time, no target                                      | 15         |                                                                                                        | todo    |
+| Deterministic child ids: per-invocation sequence counter (`{parent}.{n}`; detached `{prefix}.d{hash}`) | 12         |                                                                                                        | todo    |
+| Structured concurrency: root does not fulfill while attached children unsettled                        | 12, 16     |                                                                                                        | todo    |
+| 300+preload fast path on suspend handled (no suspend; warm cache)                                      | 14         |                                                                                                        | todo    |
+| Register all functions before receiving work                                                           | 10, 13     |                                                                                                        | todo    |
 
 ## Known spec ↔ shipped-server deviations (follow the SERVER)
 

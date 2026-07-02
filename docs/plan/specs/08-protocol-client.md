@@ -47,3 +47,24 @@ typed outcomes/errors.
 ## Acceptance
 
 - `vp run check` green; CONFORMANCE.md P/T/S rows → done (client side); 409 rule row → done.
+
+## Notes
+
+- `DurablePromises`, `Tasks`, and `Schedules` are public `Context.Service` layers
+  that capture `ResonateNetwork` and `Crypto` once, then expose schema-typed request
+  methods with no environment requirement at call sites.
+- Request construction stays on the spec-01 schemas (`*.make`) and all responses are
+  narrowed with `SchemaParser.is(responseSchema.members[n])`; no hand-written wire
+  guards are used.
+- Protocol statuses are mapped at this layer: `404` to `PromiseNotFound` or
+  `ScheduleNotFound`, `409` to `TaskFenced`, `422`/other protocol errors to
+  `InvalidTarget`. A `409` is surfaced directly and never retried by the client.
+- `Tasks.suspend` models the `300` preload path as `SuspendRefused`, a typed success
+  variant rather than an error, matching the local/server fast path.
+- `DurablePromises.awaitSettled` registers `network.unicast`, returns immediately for
+  already-settled listener responses, otherwise waits for the matching `unblock`
+  message. Message stream failures and the native 60s listener-refresh interval both
+  lead back through registration before waiting again.
+- Spec-08 tests use `NetworkLocal.layer` plus `BunCrypto.layer`; after each mutating
+  operation they request `debug.snap` and run the seven-invariant `assertInvariants`
+  oracle from spec 05.
