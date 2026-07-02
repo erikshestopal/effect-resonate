@@ -1,0 +1,60 @@
+{
+  "name": "@resonatehq/sdk",
+  "version": "0.10.3",
+  "description": "TypeScript SDK for Resonate",
+  "author": "Resonate Developers",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/resonatehq/resonate-sdk-ts.git"
+  },
+  "publishConfig": {
+    "provenance": true
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build tsconfig.build.json",
+    "check": "npx @biomejs/biome check ./",
+    "check:fix": "npx @biomejs/biome check ./ --write",
+    "debug": "node --inspect-brk ./node_modules/.bin/jest -i",
+    "docs": "npx typedoc ./src --githubPages",
+    "dst": "npx tsx sim/main.ts",
+    "fmt": "npx @biomejs/biome format ./ --write",
+    "prepare": "npm run build",
+    "test": "npx jest --config jest.config.cjs",
+    "type-check": "npx tsc --noEmit"
+  },
+  "dependencies": {
+    "cron-parser": "^5.3.0",
+    "eventsource": "^4.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.10",
+    "@jest/globals": "^30.0.0",
+    "@types/jest": "30.0.0",
+    "@types/node": "^25.0.3",
+    "commander": "^14.0.0",
+    "esbuild": "^0.28.0",
+    "ts-jest": "^29.4.9",
+    "tsx": "^4.20.5",
+    "typedoc": "^0.28.18",
+    "typedoc-material-theme": "^1.4.0",
+    "typescript": "^6.0.2"
+  },
+  "engines": {
+    "node": ">= 22"
+  }
+}

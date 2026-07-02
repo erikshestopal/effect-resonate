@@ -1,0 +1,72 @@
+import type { RetryPolicy } from "./retries.js";
+import * as util from "./util.js";
+
+export const RESONATE_OPTIONS: unique symbol = Symbol("ResonateOptions");
+
+export class OptionsBuilder {
+  private match: (target: string) => string;
+  private idPrefix: string;
+  constructor({ match, idPrefix }: { match: (target: string) => string; idPrefix: string }) {
+    this.match = (target: string) => (util.isUrl(target) ? target : match(target));
+    this.idPrefix = idPrefix;
+  }
+
+  build({
+    id = undefined,
+    retryPolicy = undefined,
+    tags = {},
+    target = "default",
+    timeout = 24 * util.HOUR,
+    version = 0,
+    nonRetryableErrors = [],
+  }: {
+    id?: string;
+    retryPolicy?: RetryPolicy;
+    tags?: { [key: string]: string };
+    target?: string;
+    timeout?: number;
+    version?: number;
+    nonRetryableErrors?: Array<new (...args: any[]) => Error>;
+  } = {}): Options {
+    id = id ? `${this.idPrefix}${id}` : id;
+    return new Options({ id, retryPolicy, tags, target: this.match(target), timeout, version, nonRetryableErrors });
+  }
+}
+
+export class Options {
+  public readonly id: string | undefined;
+  public readonly tags: { [key: string]: string };
+  public readonly target: string;
+  public readonly timeout: number;
+  public readonly version: number;
+  public readonly retryPolicy: RetryPolicy | undefined;
+  public readonly nonRetryableErrors: Array<new (...args: any[]) => Error>;
+
+  [RESONATE_OPTIONS] = true;
+
+  constructor({
+    id = undefined,
+    retryPolicy = undefined,
+    tags = {},
+    target = "default",
+    timeout = 24 * util.HOUR,
+    version = 0,
+    nonRetryableErrors = [],
+  }: {
+    id?: string;
+    retryPolicy?: RetryPolicy;
+    tags?: { [key: string]: string };
+    target?: string;
+    timeout?: number;
+    version?: number;
+    nonRetryableErrors?: Array<new (...args: any[]) => Error>;
+  }) {
+    this.id = id;
+    this.tags = tags;
+    this.target = target;
+    this.timeout = timeout;
+    this.version = version;
+    this.retryPolicy = retryPolicy;
+    this.nonRetryableErrors = nonRetryableErrors;
+  }
+}
