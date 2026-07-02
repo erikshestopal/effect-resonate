@@ -82,10 +82,7 @@ export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/Pro
 
   /** The Lean timeout projection — the logical view, no persistence. */
   projected(now: DateTime.Utc): PromiseObject {
-    if (
-      this.state !== "pending" ||
-      DateTime.toEpochMillis(this.timeoutAt) > DateTime.toEpochMillis(now)
-    ) {
+    if (this.state !== "pending" || DateTime.toEpochMillis(this.timeoutAt) > DateTime.toEpochMillis(now)) {
       return this;
     }
     return new PromiseObject({
@@ -149,10 +146,7 @@ export class TaskObject extends Schema.Class<TaskObject>("NetworkLocal/TaskObjec
     };
     return Match.value(this.state).pipe(
       Match.when("pending", () => new Protocol.TaskPending(common)),
-      Match.when(
-        "acquired",
-        () => new Protocol.TaskAcquired({ ...common, pid: this.pid, ttl: this.ttl }),
-      ),
+      Match.when("acquired", () => new Protocol.TaskAcquired({ ...common, pid: this.pid, ttl: this.ttl })),
       Match.when("suspended", () => new Protocol.TaskSuspended(common)),
       Match.when("halted", () => new Protocol.TaskHalted(common)),
       Match.when("fulfilled", () => new Protocol.TaskFulfilled(common)),
@@ -209,11 +203,7 @@ const setTask = (state: ServerState, task: TaskObject): ServerState => ({
   tasks: HashMap.set(state.tasks, task.id, task),
 });
 
-const setPromiseTimeout = (
-  state: ServerState,
-  id: Protocol.PromiseId,
-  at: DateTime.Utc,
-): ServerState => ({
+const setPromiseTimeout = (state: ServerState, id: Protocol.PromiseId, at: DateTime.Utc): ServerState => ({
   ...state,
   promiseTimeouts: HashMap.set(state.promiseTimeouts, id, at),
 });
@@ -223,11 +213,7 @@ const delPromiseTimeout = (state: ServerState, id: Protocol.PromiseId): ServerSt
   promiseTimeouts: HashMap.remove(state.promiseTimeouts, id),
 });
 
-const setTaskTimeout = (
-  state: ServerState,
-  id: Protocol.TaskId,
-  entry: TaskTimeoutEntry,
-): ServerState => ({
+const setTaskTimeout = (state: ServerState, id: Protocol.TaskId, entry: TaskTimeoutEntry): ServerState => ({
   ...state,
   taskTimeouts: HashMap.set(state.taskTimeouts, id, entry),
 });
@@ -274,10 +260,7 @@ const maybeExecute = (input: Emitting, task: TaskObject): Emitting => {
   );
 };
 
-const preload = (
-  state: ServerState,
-  id: Protocol.PromiseId,
-): ReadonlyArray<Protocol.PromiseRecord> => {
+const preload = (state: ServerState, id: Protocol.PromiseId): ReadonlyArray<Protocol.PromiseRecord> => {
   const promise = HashMap.get(state.promises, id);
   if (Option.isNone(promise)) {
     return [];
@@ -287,9 +270,7 @@ const preload = (
     return [];
   }
   return [...HashMap.values(state.promises)]
-    .filter(
-      (candidate) => candidate.id !== id && candidate.tags.reserved["resonate:branch"] === branch,
-    )
+    .filter((candidate) => candidate.id !== id && candidate.tags.reserved["resonate:branch"] === branch)
     .map((candidate) => candidate.toRecord());
 };
 
@@ -340,10 +321,7 @@ const enqueueResume = (
         return { state, emitted };
       }
       return {
-        state: setTask(
-          state,
-          new TaskObject({ ...buffered.fields, resumes: [...buffered.resumes, awaitedId] }),
-        ),
+        state: setTask(state, new TaskObject({ ...buffered.fields, resumes: [...buffered.resumes, awaitedId] })),
         emitted,
       };
     }),
@@ -397,11 +375,7 @@ const settlementCascade = (
 
   let next: Emitting = { state, emitted };
   for (const address of priorListeners) {
-    next = setMessage(
-      next,
-      address,
-      Protocol.UnblockMessage.make({ head: {}, data: { promise: settled.toRecord() } }),
-    );
+    next = setMessage(next, address, Protocol.UnblockMessage.make({ head: {}, data: { promise: settled.toRecord() } }));
   }
   for (const awaiterId of priorCallbacks) {
     next = enqueueResume(next, settled.id, awaiterId, now, retryTimeout);
@@ -437,11 +411,7 @@ const redirectHead = (request: Protocol.Request, status: 300) => ({
   version: request.head.version,
 });
 
-const promiseGet = (
-  state: ServerState,
-  now: DateTime.Utc,
-  request: Protocol.Request<"promise.get">,
-): Transition => {
+const promiseGet = (state: ServerState, now: DateTime.Utc, request: Protocol.Request<"promise.get">): Transition => {
   const promise = HashMap.get(state.promises, request.data.id);
   if (Option.isNone(promise)) {
     return {
@@ -679,8 +649,7 @@ const promiseRegisterCallback = (
   }
   // Registration happens only when BOTH sides are pending and fresh; an
   // expired awaiter is silently skipped (still 200).
-  const awaiterFresh =
-    awaiter.value.state === "pending" && millis(awaiter.value.timeoutAt) > millis(now);
+  const awaiterFresh = awaiter.value.state === "pending" && millis(awaiter.value.timeoutAt) > millis(now);
   if (!awaiterFresh) {
     return respond(state, awaited.value);
   }
@@ -727,9 +696,7 @@ const promiseRegisterListener = (
     return respond(state, awaited.value.projected(now));
   }
   const address = request.data.address;
-  const registered = awaited.value.listeners.some(
-    (existing) => existing.address === address.address,
-  )
+  const registered = awaited.value.listeners.some((existing) => existing.address === address.address)
     ? awaited.value
     : new PromiseObject({
         ...awaited.value.fields,
@@ -742,23 +709,12 @@ const promiseRegisterListener = (
 // Task handlers (spec/02-actions/T-01…T-10)
 // -----------------------------------------------------------------------------
 
-const taskFresh = (
-  state: ServerState,
-  task: TaskObject,
-  now: DateTime.Utc,
-): Option.Option<PromiseObject> => {
+const taskFresh = (state: ServerState, task: TaskObject, now: DateTime.Utc): Option.Option<PromiseObject> => {
   const promise = HashMap.get(state.promises, task.id);
-  return Option.filter(
-    promise,
-    (promise) => promise.state === "pending" && millis(promise.timeoutAt) > millis(now),
-  );
+  return Option.filter(promise, (promise) => promise.state === "pending" && millis(promise.timeoutAt) > millis(now));
 };
 
-const taskGet = (
-  state: ServerState,
-  now: DateTime.Utc,
-  request: Protocol.Request<"task.get">,
-): Transition => {
+const taskGet = (state: ServerState, now: DateTime.Utc, request: Protocol.Request<"task.get">): Transition => {
   const task = HashMap.get(state.tasks, request.data.id);
   if (Option.isNone(task) || Option.isNone(HashMap.get(state.promises, request.data.id))) {
     return {
@@ -791,16 +747,8 @@ const taskGet = (
   };
 };
 
-const taskCreate = (
-  state: ServerState,
-  now: DateTime.Utc,
-  request: Protocol.Request<"task.create">,
-): Transition => {
-  const respond = (
-    next: Emitting,
-    task: Option.Option<TaskObject>,
-    promise: PromiseObject,
-  ): Transition => ({
+const taskCreate = (state: ServerState, now: DateTime.Utc, request: Protocol.Request<"task.create">): Transition => {
+  const respond = (next: Emitting, task: Option.Option<TaskObject>, promise: PromiseObject): Transition => ({
     state: next.state,
     response: Protocol.TaskCreateResponse.make({
       kind: "task.create",
@@ -827,9 +775,7 @@ const taskCreate = (
         response: Protocol.TaskCreateResponse.make({
           kind: "task.create",
           head: errorHead(request, Option.isSome(existingPromise.value.target) ? 409 : 422),
-          data: Option.isSome(existingPromise.value.target)
-            ? "Promise already exists"
-            : "Promise has no address",
+          data: Option.isSome(existingPromise.value.target) ? "Promise already exists" : "Promise has no address",
         }),
         emitted: [],
       };
@@ -849,11 +795,7 @@ const taskCreate = (
         });
         let next = setTask(state, acquired);
         next = setTaskTimeout(next, acquired.id, { kind: 1, at: DateTime.addDuration(now, ttl) });
-        return respond(
-          { state: next, emitted: [] },
-          Option.some(acquired),
-          existingPromise.value.projected(now),
-        );
+        return respond({ state: next, emitted: [] }, Option.some(acquired), existingPromise.value.projected(now));
       }),
       Match.orElse(() => ({
         state,
@@ -888,11 +830,7 @@ const taskCreate = (
       ttl: Option.none(),
       resumes: [],
     });
-    return respond(
-      { state: setTask(setPromise(state, promise), task), emitted: [] },
-      Option.some(task),
-      promise,
-    );
+    return respond({ state: setTask(setPromise(state, promise), task), emitted: [] }, Option.some(task), promise);
   }
 
   const promise = new PromiseObject({
@@ -922,11 +860,7 @@ const taskCreate = (
   return respond({ state: next, emitted: [] }, Option.some(task), promise);
 };
 
-const taskAcquire = (
-  state: ServerState,
-  now: DateTime.Utc,
-  request: Protocol.Request<"task.acquire">,
-): Transition => {
+const taskAcquire = (state: ServerState, now: DateTime.Utc, request: Protocol.Request<"task.acquire">): Transition => {
   const task = HashMap.get(state.tasks, request.data.id);
   if (Option.isNone(task)) {
     return {
@@ -940,11 +874,7 @@ const taskAcquire = (
     };
   }
   const promise = taskFresh(state, task.value, now);
-  if (
-    task.value.state !== "pending" ||
-    Option.isNone(promise) ||
-    task.value.version !== request.data.version
-  ) {
+  if (task.value.state !== "pending" || Option.isNone(promise) || task.value.version !== request.data.version) {
     return {
       state,
       response: Protocol.TaskAcquireResponse.make({
@@ -1052,11 +982,7 @@ const taskRelease = (
   };
 };
 
-const taskSuspend = (
-  state: ServerState,
-  now: DateTime.Utc,
-  request: Protocol.Request<"task.suspend">,
-): Transition => {
+const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Request<"task.suspend">): Transition => {
   const task = HashMap.get(state.tasks, request.data.id);
   if (Option.isNone(task)) {
     return {
@@ -1072,8 +998,7 @@ const taskSuspend = (
   const malformed =
     request.data.actions.length === 0 ||
     request.data.actions.some(
-      (action) =>
-        action.data.awaiter !== request.data.id || action.data.awaited === request.data.id,
+      (action) => action.data.awaiter !== request.data.id || action.data.awaited === request.data.id,
     );
   if (malformed) {
     return {
@@ -1783,9 +1708,7 @@ export const layer = (options?: NetworkLocalOptions): Layer.Layer<ResonateNetwor
       return ResonateNetwork.of({
         send: Effect.fn("NetworkLocal.send")(function* (request) {
           const response = yield* applyRequest(request);
-          const wire = yield* Effect.orDie(
-            Schema.encodeUnknownEffect(Protocol.ResponseFromWire)(response),
-          );
+          const wire = yield* Effect.orDie(Schema.encodeUnknownEffect(Protocol.ResponseFromWire)(response));
           return yield* decodeResponse(request)(wire);
         }),
         messages: Stream.fromQueue(queue),

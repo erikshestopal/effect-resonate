@@ -41,29 +41,19 @@ export const assertInvariants = Effect.fn("assertInvariants")(function* (state: 
       return yield* Effect.die(`Invariant failed: suspended task ${task.id} has no callback`);
     }
     if (task.state === "suspended" && suspendedHasConsumedCallback(state, task.id)) {
-      return yield* Effect.die(
-        `Invariant failed: suspended task ${task.id} has a consumed callback`,
-      );
+      return yield* Effect.die(`Invariant failed: suspended task ${task.id} has a consumed callback`);
     }
-    if (
-      task.state === "suspended" &&
-      state.taskTimeouts.some((timeout) => timeout.id === task.id)
-    ) {
+    if (task.state === "suspended" && state.taskTimeouts.some((timeout) => timeout.id === task.id)) {
       return yield* Effect.die(`Invariant failed: suspended task ${task.id} has a timeout`);
     }
-    if (
-      task.state === "fulfilled" &&
-      state.taskTimeouts.some((timeout) => timeout.id === task.id)
-    ) {
+    if (task.state === "fulfilled" && state.taskTimeouts.some((timeout) => timeout.id === task.id)) {
       return yield* Effect.die(`Invariant failed: fulfilled task ${task.id} has a timeout`);
     }
   }
 });
 
 /** Answers each request the network sends; runs in send order. */
-export type TestNetworkHandler = (
-  request: Protocol.Request,
-) => Effect.Effect<Protocol.Response, TransportError>;
+export type TestNetworkHandler = (request: Protocol.Request) => Effect.Effect<Protocol.Response, TransportError>;
 
 /**
  * A scripted `ResonateNetwork` stub for unit-testing layers 2–4 without the
@@ -97,9 +87,7 @@ export class TestNetwork extends Context.Service<
           send: Effect.fn("TestNetwork.send")(function* (request) {
             yield* Ref.update(seen, (list) => [...list, request]);
             const response = yield* handler(request);
-            const wire = yield* Effect.orDie(
-              Schema.encodeUnknownEffect(Protocol.ResponseFromWire)(response),
-            );
+            const wire = yield* Effect.orDie(Schema.encodeUnknownEffect(Protocol.ResponseFromWire)(response));
             return yield* decodeResponse(request)(wire);
           }),
           messages: Stream.fromQueue(queue),
@@ -131,10 +119,7 @@ export class TestNetwork extends Context.Service<
           requests: Ref.get(seen),
         });
 
-        return Layer.mergeAll(
-          Layer.succeed(ResonateNetwork, network),
-          Layer.succeed(TestNetwork, test),
-        );
+        return Layer.mergeAll(Layer.succeed(ResonateNetwork, network), Layer.succeed(TestNetwork, test));
       }),
     );
   }

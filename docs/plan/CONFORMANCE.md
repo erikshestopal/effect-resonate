@@ -19,8 +19,8 @@ Statuses: `todo` | `partial` | `done`.
 
 ## Task actions
 
-| Spec action                                                                           | Lean source                | Impl spec  | Tests | Status |
-| ------------------------------------------------------------------------------------- | -------------------------- | ---------- | ----- | ------ |
+| Spec action                                                                           | Lean source                | Impl spec  | Tests                                                 | Status  |
+| ------------------------------------------------------------------------------------- | -------------------------- | ---------- | ----------------------------------------------------- | ------- |
 | T-01 task.get (projection to fulfilled)                                               | `T-01-task.get.lean`       | 05, 08     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
 | T-02 task.create (create+acquire / born-fulfilled / re-acquire / 422 no-target / 409) | `T-02-task.create.lean`    | 05, 08, 11 | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
 | T-03 task.acquire (version fence, bump, lease arm)                                    | `T-03-task.acquire.lean`   | 05, 13     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
@@ -31,7 +31,7 @@ Statuses: `todo` | `partial` | `done`.
 | T-08 task.release (→pending, retry timeout, redispatch; resumes NOT cleared)          | `T-08-task.release.lean`   | 05, 13     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
 | T-09 task.halt (no version fence; 409 if fulfilled; idempotent)                       | `T-09-task.halt.lean`      | 05, 08     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
 | T-10 task.continue (409 unless halted; no version bump)                               | `T-10-task.continue.lean`  | 05, 08     | `test/NetworkLocal.test.ts` "T-01…T-10" (oracle side) | partial |
-| T-11 task.search — NOT IMPLEMENTED (501 per spec)                                     | `T-11-task.search.lean`    | —          | n/a   | done   |
+| T-11 task.search — NOT IMPLEMENTED (501 per spec)                                     | `T-11-task.search.lean`    | —          | n/a                                                   | done    |
 
 ## Schedule actions
 
@@ -44,13 +44,13 @@ Statuses: `todo` | `partial` | `done`.
 
 ## Environment transitions
 
-| Transition                                                                       | Lean source                        | Impl spec | Tests                                                         | Status |
-| -------------------------------------------------------------------------------- | ---------------------------------- | --------- | ------------------------------------------------------------- | ------ |
+| Transition                                                                       | Lean source                        | Impl spec | Tests                                                              | Status  |
+| -------------------------------------------------------------------------------- | ---------------------------------- | --------- | ------------------------------------------------------------------ | ------- |
 | resume cascade (suspended→pending; buffer for non-suspended; version NOT bumped) | `spec/02-actions/00-resume.lean`   | 05, 14    | `test/NetworkLocal.test.ts` suspend/resume buffering (oracle side) | partial |
-| onPromiseTimeout (persist projection; cascade; backdated settledAt)              | `spec/02-actions/02-timeouts.lean` | 04        | `test/NetworkLocal.test.ts` "timeout projection and the tick" | done   |
-| onTaskRetryTimeout (self-rescheduling execute redelivery)                        | `02-timeouts.lean`                 | 05        | `test/NetworkLocal.test.ts` "pending retry timeout redelivers" | done   |
-| onTaskLeaseTimeout (→pending; no version bump)                                   | `02-timeouts.lean`                 | 05, 13    | `test/NetworkLocal.test.ts` "lease expiry does not bump"       | done   |
-| schedule catchUp (one promiseCreate per missed tick, backdated)                  | `02-timeouts.lean`                 | 06        |                                                               | todo   |
+| onPromiseTimeout (persist projection; cascade; backdated settledAt)              | `spec/02-actions/02-timeouts.lean` | 04        | `test/NetworkLocal.test.ts` "timeout projection and the tick"      | done    |
+| onTaskRetryTimeout (self-rescheduling execute redelivery)                        | `02-timeouts.lean`                 | 05        | `test/NetworkLocal.test.ts` "pending retry timeout redelivers"     | done    |
+| onTaskLeaseTimeout (→pending; no version bump)                                   | `02-timeouts.lean`                 | 05, 13    | `test/NetworkLocal.test.ts` "lease expiry does not bump"           | done    |
+| schedule catchUp (one promiseCreate per missed tick, backdated)                  | `02-timeouts.lean`                 | 06        |                                                                    | todo    |
 
 ## Structural invariants (the test oracle — assert after EVERY op in oracle tests)
 
@@ -85,9 +85,9 @@ Statuses: `todo` | `partial` | `done`.
 
 ## Known spec ↔ shipped-server deviations (follow the SERVER)
 
-| Area                                                       | Spec says                             | Shipped server does                                                         | Verified by                      |
-| ---------------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------- | -------------------------------- |
+| Area                                                       | Spec says                             | Shipped server does                                                         | Verified by                                                    |
+| ---------------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | Version bump timing                                        | (diagram implies) bump on lease lapse | bump on NEXT acquire                                                        | local oracle test in spec 05; spec 09 differential test (todo) |
 | task.create without `resonate:target`                      | TS local-mode rejects                 | shipped server does NOT reject (validates address format only when present) | local oracle test in spec 05; spec 09 (todo)                   |
 | `preload` fields on create/acquire/suspend/fence responses | never populated in Lean model         | populated (siblings by `resonate:branch`)                                   | local oracle test in spec 05; spec 09 (todo)                   |
-| Idempotency keys (`ikc`/`iku`/`strict`)                    | absent from Lean model                | (ignored by decision — not modeled)                                         | n/a                              |
+| Idempotency keys (`ikc`/`iku`/`strict`)                    | absent from Lean model                | (ignored by decision — not modeled)                                         | n/a                                                            |
