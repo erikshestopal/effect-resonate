@@ -29,6 +29,9 @@ export default defineConfig({
       "check:test": {
         command: "bunx --bun vp test run",
       },
+      differential: {
+        command: "bunx --bun vp test run test/Differential.test.ts",
+      },
       "check:typecheck": {
         command: "tsgo --noEmit",
       },

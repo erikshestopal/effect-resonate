@@ -50,3 +50,17 @@ deliberate deviation.
 
 - `vp run check` green (differential suite included or skipped-loudly);
   Deviations table rows verified.
+
+## Notes
+
+- `test/Differential.test.ts` is included in the normal `check:test` glob, so
+  `vp run check` exercises the differential gate on every run. In this orb the
+  `resonate` CLI is not installed, so the suite prints
+  `[DIFFERENTIAL SKIPPED] resonate CLI not found; install it to run shipped-server parity.`
+  rather than silently passing.
+- When the CLI is installed, the test boots `resonate dev` with `Bun.spawn`, runs the
+  same layer-2 scenario against `NetworkLocal.layer` and `NetworkHttp.layer`, then
+  tears the process down. The scenario currently covers promise create/get/settle,
+  targetless task.create, and schedule create/delete with unique ids.
+- Vite+ exposes a focused `vp run differential` task for the harness; the normal
+  `check:test` task still runs it as part of the full suite.
