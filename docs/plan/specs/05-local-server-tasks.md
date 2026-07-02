@@ -78,3 +78,20 @@ that all conformance tests call after every operation.
 
 - `vp run check` green; CONFORMANCE.md T-rows + resume + task timeouts + all seven
   invariant rows → done (oracle side).
+
+## Notes (implementation decisions)
+
+- Task handlers are pure `NetworkLocal` transitions over the same immutable
+  `ServerState` as spec 04. T-01…T-10 are implemented; T-11 remains 501.
+- `task.create` intentionally allows a fresh action without `resonate:target` to
+  match the shipped server deviation. Existing targetless promises still return
+  422 on task.create, matching the spec branch for already-existing promises.
+- Version bumps happen only on acquire/re-acquire. Lease timeout moves acquired →
+  pending with the same version; the next `task.acquire` bumps it. The fencing
+  walkthrough test locks this shipped-server behavior in before spec 09.
+- `preload` is populated for create/acquire/suspend-300/fence from settled or
+  pending siblings sharing `resonate:branch`, matching the native/shipped-server
+  behavior rather than the Lean model's empty preload.
+- `assertInvariants(state)` is exported from `src/testing.ts` over the debug-snap
+  state. The local `snap()` test helper calls it automatically, so every test
+  snapshot checks the seven invariants after the preceding operation.

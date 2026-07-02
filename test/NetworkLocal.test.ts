@@ -5,6 +5,7 @@ import { TestClock } from "effect/testing";
 import { makeRequestHead, ResonateNetwork } from "../src/Network.ts";
 import * as NetworkLocal from "../src/NetworkLocal.ts";
 import * as Protocol from "../src/Protocol.ts";
+import { assertInvariants } from "../src/testing.ts";
 
 // The tick interval is set far out so tests drive convergence deterministically
 // via explicit debug.tick requests; TestClock stays in control of time.
@@ -28,7 +29,11 @@ const targetTags = Protocol.Tags.make({
   user: {},
 });
 
-const timerTags = Protocol.Tags.make({ reserved: { "resonate:timer": "true" }, unrecognized: {}, user: {} });
+const timerTags = Protocol.Tags.make({
+  reserved: { "resonate:timer": "true" },
+  unrecognized: {},
+  user: {},
+});
 
 const delayedTargetTags = (delay: DateTime.Utc) =>
   Protocol.Tags.make({
@@ -36,6 +41,18 @@ const delayedTargetTags = (delay: DateTime.Utc) =>
     unrecognized: {},
     user: {},
   });
+
+const branchTargetTags = Protocol.Tags.make({
+  reserved: { "resonate:target": anycastDefault, "resonate:branch": pid("branch") },
+  unrecognized: {},
+  user: {},
+});
+
+const branchTags = Protocol.Tags.make({
+  reserved: { "resonate:branch": pid("branch") },
+  unrecognized: {},
+  user: {},
+});
 
 const at = (ms: number) => DateTime.makeUnsafe(ms);
 
@@ -50,6 +67,17 @@ const isSettled = SchemaParser.is(Protocol.PromiseSettleResponse.members[0]);
 const isCallbackOk = SchemaParser.is(Protocol.PromiseRegisterCallbackResponse.members[0]);
 const isListenerOk = SchemaParser.is(Protocol.PromiseRegisterListenerResponse.members[0]);
 const isSnap = SchemaParser.is(Protocol.DebugSnapResponse.members[0]);
+const isTaskCreated = SchemaParser.is(Protocol.TaskCreateResponse.members[0]);
+const isTaskAcquired = SchemaParser.is(Protocol.TaskAcquireResponse.members[0]);
+const isTaskGot = SchemaParser.is(Protocol.TaskGetResponse.members[0]);
+const isTaskSuspended = SchemaParser.is(Protocol.TaskSuspendResponse.members[0]);
+const isTaskSuspendPreloaded = SchemaParser.is(Protocol.TaskSuspendResponse.members[1]);
+const isTaskFulfilled = SchemaParser.is(Protocol.TaskFulfillResponse.members[0]);
+const isTaskFenced = SchemaParser.is(Protocol.TaskFenceResponse.members[0]);
+
+const workerPid = Protocol.ProcessId.make("worker-a");
+const workerPidB = Protocol.ProcessId.make("worker-b");
+const lease = Duration.seconds(30);
 
 const sendCreate = Effect.fn(function* (
   id: string,
@@ -59,7 +87,10 @@ const sendCreate = Effect.fn(function* (
 ) {
   const head = yield* makeRequestHead;
   return yield* send(
-    Protocol.PromiseCreateRequest.make({ head, data: { id: pid(id), timeoutAt: at(timeoutAtMs), param, tags } }),
+    Protocol.PromiseCreateRequest.make({
+      head,
+      data: { id: pid(id), timeoutAt: at(timeoutAtMs), param, tags },
+    }),
   );
 });
 
@@ -80,21 +111,35 @@ const getPromise = Effect.fn(function* (id: string) {
   return response.data.promise;
 });
 
-const settle = Effect.fn(function* (id: string, state: "resolved" | "rejected" | "rejected_canceled", data = "NDI=") {
+const settle = Effect.fn(function* (
+  id: string,
+  state: "resolved" | "rejected" | "rejected_canceled",
+  data = "NDI=",
+) {
   const head = yield* makeRequestHead;
-  return yield* send(Protocol.PromiseSettleRequest.make({ head, data: { id: pid(id), state, value: { data } } }));
+  return yield* send(
+    Protocol.PromiseSettleRequest.make({ head, data: { id: pid(id), state, value: { data } } }),
+  );
 });
 
 const sendCallback = Effect.fn(function* (awaited: string, awaiter: string) {
   const head = yield* makeRequestHead;
   return yield* send(
-    Protocol.PromiseRegisterCallbackRequest.make({ head, data: { awaited: pid(awaited), awaiter: pid(awaiter) } }),
+    Protocol.PromiseRegisterCallbackRequest.make({
+      head,
+      data: { awaited: pid(awaited), awaiter: pid(awaiter) },
+    }),
   );
 });
 
 const sendListener = Effect.fn(function* (awaited: string, address = anycastDefault) {
   const head = yield* makeRequestHead;
-  return yield* send(Protocol.PromiseRegisterListenerRequest.make({ head, data: { awaited: pid(awaited), address } }));
+  return yield* send(
+    Protocol.PromiseRegisterListenerRequest.make({
+      head,
+      data: { awaited: pid(awaited), address },
+    }),
+  );
 });
 
 const snap = Effect.fn(function* () {
@@ -103,12 +148,148 @@ const snap = Effect.fn(function* () {
   if (!isSnap(response)) {
     throw new Error("debug.snap failed");
   }
+  yield* assertInvariants(response.data);
   return response.data;
 });
 
 const tick = Effect.fn(function* (timeMs: number) {
   const head = yield* makeRequestHead;
   return yield* send(Protocol.DebugTickRequest.make({ head, data: { time: at(timeMs) } }));
+});
+
+const taskCreate = Effect.fn(function* (
+  id: string,
+  timeoutAtMs: number,
+  tags = targetTags,
+  requestPid = workerPid,
+) {
+  const head = yield* makeRequestHead;
+  const actionHead = yield* makeRequestHead;
+  return yield* send(
+    Protocol.TaskCreateRequest.make({
+      head,
+      data: {
+        pid: requestPid,
+        ttl: lease,
+        action: Protocol.PromiseCreateRequest.make({
+          head: actionHead,
+          data: { id: pid(id), timeoutAt: at(timeoutAtMs), param: { data: "cGFyYW0=" }, tags },
+        }),
+      },
+    }),
+  );
+});
+
+const taskAcquire = Effect.fn(function* (id: string, version: number, requestPid = workerPid) {
+  const head = yield* makeRequestHead;
+  return yield* send(
+    Protocol.TaskAcquireRequest.make({
+      head,
+      data: {
+        id: pid(id),
+        version: Protocol.TaskVersion.make(version),
+        pid: requestPid,
+        ttl: lease,
+      },
+    }),
+  );
+});
+
+const taskRelease = Effect.fn(function* (id: string, version: number) {
+  const head = yield* makeRequestHead;
+  return yield* send(
+    Protocol.TaskReleaseRequest.make({
+      head,
+      data: { id: pid(id), version: Protocol.TaskVersion.make(version) },
+    }),
+  );
+});
+
+const taskSuspend = Effect.fn(function* (
+  id: string,
+  version: number,
+  awaited: ReadonlyArray<string>,
+) {
+  const head = yield* makeRequestHead;
+  const actions = [];
+  for (const awaitedId of awaited) {
+    const actionHead = yield* makeRequestHead;
+    actions.push(
+      Protocol.PromiseRegisterCallbackRequest.make({
+        head: actionHead,
+        data: { awaited: pid(awaitedId), awaiter: pid(id) },
+      }),
+    );
+  }
+  return yield* send(
+    Protocol.TaskSuspendRequest.make({
+      head,
+      data: { id: pid(id), version: Protocol.TaskVersion.make(version), actions },
+    }),
+  );
+});
+
+const taskFulfill = Effect.fn(function* (
+  id: string,
+  version: number,
+  state: "resolved" | "rejected" | "rejected_canceled" = "resolved",
+) {
+  const head = yield* makeRequestHead;
+  const actionHead = yield* makeRequestHead;
+  return yield* send(
+    Protocol.TaskFulfillRequest.make({
+      head,
+      data: {
+        id: pid(id),
+        version: Protocol.TaskVersion.make(version),
+        action: Protocol.PromiseSettleRequest.make({
+          head: actionHead,
+          data: { id: pid(id), state, value: { data: "dmFsdWU=" } },
+        }),
+      },
+    }),
+  );
+});
+
+const taskFenceSettle = Effect.fn(function* (taskId: string, version: number, promiseId: string) {
+  const head = yield* makeRequestHead;
+  const actionHead = yield* makeRequestHead;
+  return yield* send(
+    Protocol.TaskFenceRequest.make({
+      head,
+      data: {
+        id: pid(taskId),
+        version: Protocol.TaskVersion.make(version),
+        action: Protocol.PromiseSettleRequest.make({
+          head: actionHead,
+          data: { id: pid(promiseId), state: "resolved", value: { data: "ZmVuY2Vk" } },
+        }),
+      },
+    }),
+  );
+});
+
+const taskHalt = Effect.fn(function* (id: string) {
+  const head = yield* makeRequestHead;
+  return yield* send(Protocol.TaskHaltRequest.make({ head, data: { id: pid(id) } }));
+});
+
+const taskContinue = Effect.fn(function* (id: string) {
+  const head = yield* makeRequestHead;
+  return yield* send(Protocol.TaskContinueRequest.make({ head, data: { id: pid(id) } }));
+});
+
+const taskHeartbeat = Effect.fn(function* (id: string, version: number, requestPid = workerPid) {
+  const head = yield* makeRequestHead;
+  return yield* send(
+    Protocol.TaskHeartbeatRequest.make({
+      head,
+      data: {
+        pid: requestPid,
+        tasks: [{ id: pid(id), version: Protocol.TaskVersion.make(version) }],
+      },
+    }),
+  );
 });
 
 describe("P-02 promise.create", () => {
@@ -370,7 +551,9 @@ describe("timeout projection and the tick (P-01 + onPromiseTimeout)", () => {
       expect(persistedPlain.state).toBe("rejected_timedout");
       if (persistedPlain.state !== "pending") {
         // Backdated to timeoutAt, not the tick time.
-        expect(Option.map(persistedPlain.settledAt, DateTime.toEpochMillis)).toEqual(Option.some(10_000));
+        expect(Option.map(persistedPlain.settledAt, DateTime.toEpochMillis)).toEqual(
+          Option.some(10_000),
+        );
       }
       // Companion task force-fulfilled by the tick (suspended→fulfilled path guard).
       expect(after.tasks).toEqual([{ id: "plain", state: "fulfilled", version: 0, resumes: 0 }]);
@@ -410,11 +593,21 @@ describe("timeout projection and the tick (P-01 + onPromiseTimeout)", () => {
 
       for (const response of [viaCreate, viaSettle, viaCallback, viaListener]) {
         expect(response.head.status).toBe(200);
-        if (isCreated(viaCreate) && isSettled(viaSettle) && isCallbackOk(viaCallback) && isListenerOk(viaListener)) {
+        if (
+          isCreated(viaCreate) &&
+          isSettled(viaSettle) &&
+          isCallbackOk(viaCallback) &&
+          isListenerOk(viaListener)
+        ) {
           // noop — narrowing happens below per response
         }
       }
-      if (!isCreated(viaCreate) || !isSettled(viaSettle) || !isCallbackOk(viaCallback) || !isListenerOk(viaListener)) {
+      if (
+        !isCreated(viaCreate) ||
+        !isSettled(viaSettle) ||
+        !isCallbackOk(viaCallback) ||
+        !isListenerOk(viaListener)
+      ) {
         throw new Error("expected 200s");
       }
       for (const record of [
@@ -433,18 +626,228 @@ describe("timeout projection and the tick (P-01 + onPromiseTimeout)", () => {
   );
 });
 
+describe("T-01…T-10 task state machine", () => {
+  it.effect(
+    "task.create creates acquired tasks, re-acquires pending tasks, and is idempotent once fulfilled",
+    () =>
+      Effect.gen(function* () {
+        const first = yield* taskCreate("t1", 60_000);
+        if (!isTaskCreated(first)) {
+          throw new Error("expected task.create 200");
+        }
+        expect(first.data.task?.state).toBe("acquired");
+        expect(first.data.task?.version).toBe(1);
+        expect((yield* snap()).taskTimeouts).toEqual([{ id: "t1", type: 1, timeout: at(30_000) }]);
+
+        yield* taskRelease("t1", 1);
+        expect((yield* snap()).tasks[0]).toEqual({
+          id: "t1",
+          state: "pending",
+          version: 1,
+          resumes: 0,
+        });
+
+        const reacquire = yield* taskCreate("t1", 60_000, targetTags, workerPidB);
+        if (!isTaskCreated(reacquire)) {
+          throw new Error("expected task.create reacquire 200");
+        }
+        expect(reacquire.data.task?.state).toBe("acquired");
+        expect(reacquire.data.task?.version).toBe(2);
+
+        const fulfilled = yield* taskFulfill("t1", 2);
+        if (!isTaskFulfilled(fulfilled)) {
+          throw new Error("expected task.fulfill 200");
+        }
+        const idempotent = yield* taskCreate("t1", 60_000);
+        if (!isTaskCreated(idempotent)) {
+          throw new Error("expected task.create idempotent 200");
+        }
+        expect(idempotent.data.task?.state).toBe("fulfilled");
+        yield* snap();
+      }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect(
+    "task.acquire fences by version and lease expiry does not bump until the next acquire",
+    () =>
+      Effect.gen(function* () {
+        yield* create("t1", 60_000, targetTags);
+        const acquired = yield* taskAcquire("t1", 0);
+        if (!isTaskAcquired(acquired)) {
+          throw new Error("expected task.acquire 200");
+        }
+        expect(acquired.data.task.version).toBe(1);
+
+        yield* TestClock.adjust(Duration.seconds(30));
+        yield* tick(30_000);
+        const afterLease = yield* snap();
+        expect(afterLease.tasks[0]).toEqual({ id: "t1", state: "pending", version: 1, resumes: 0 });
+
+        const stale = yield* taskFulfill("t1", 1);
+        expect(stale.head.status).toBe(409);
+
+        const next = yield* taskAcquire("t1", 1, workerPidB);
+        if (!isTaskAcquired(next)) {
+          throw new Error("expected second acquire 200");
+        }
+        expect(next.data.task.version).toBe(2);
+        const staleAgain = yield* taskFulfill("t1", 1);
+        expect(staleAgain.head.status).toBe(409);
+        expect((yield* taskFulfill("t1", 2)).head.status).toBe(200);
+        yield* snap();
+      }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect("task.get projects expired tasks to fulfilled without persisting", () =>
+    Effect.gen(function* () {
+      yield* taskCreate("t1", 10_000);
+      yield* TestClock.adjust(Duration.millis(10_000));
+      const head = yield* makeRequestHead;
+      const got = yield* send(Protocol.TaskGetRequest.make({ head, data: { id: pid("t1") } }));
+      if (!isTaskGot(got)) {
+        throw new Error("expected task.get 200");
+      }
+      expect(got.data.task.state).toBe("fulfilled");
+      expect((yield* snap()).tasks[0]?.state).toBe("acquired");
+    }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect(
+    "task.suspend registers callbacks atomically and the 300 fast path clears buffered resumes",
+    () =>
+      Effect.gen(function* () {
+        yield* taskCreate("w", 60_000, branchTargetTags);
+        yield* create("a", 60_000, branchTags);
+        const suspended = yield* taskSuspend("w", 1, ["a"]);
+        expect(isTaskSuspended(suspended)).toBe(true);
+        let state = yield* snap();
+        expect(state.tasks[0]?.state).toBe("suspended");
+        expect(state.callbacks).toEqual([{ awaiter: "w", awaited: "a" }]);
+        expect(state.taskTimeouts).toHaveLength(0);
+
+        yield* settle("a", "resolved");
+        state = yield* snap();
+        expect(state.tasks.find((task) => task.id === "w")).toEqual({
+          id: "w",
+          state: "pending",
+          version: 1,
+          resumes: 1,
+        });
+
+        const reacquired = yield* taskAcquire("w", 1);
+        if (!isTaskAcquired(reacquired)) {
+          throw new Error("expected reacquire");
+        }
+        const fastPath = yield* taskSuspend("w", 2, ["a"]);
+        if (!isTaskSuspendPreloaded(fastPath)) {
+          throw new Error("expected task.suspend 300");
+        }
+        expect(fastPath.data.preload.map((promise) => promise.id)).toContain("a");
+        expect((yield* snap()).tasks.find((task) => task.id === "w")?.state).toBe("acquired");
+      }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect(
+    "resume buffering while acquired is deduped and causes suspend 300 without registering callbacks",
+    () =>
+      Effect.gen(function* () {
+        yield* taskCreate("w", 60_000);
+        yield* create("a", 60_000);
+        yield* sendCallback("a", "w");
+        yield* settle("a", "resolved");
+        let state = yield* snap();
+        expect(state.tasks.find((task) => task.id === "w")?.resumes).toBe(1);
+        expect(state.tasks.find((task) => task.id === "w")?.state).toBe("acquired");
+
+        const fastPath = yield* taskSuspend("w", 1, ["a"]);
+        expect(isTaskSuspendPreloaded(fastPath)).toBe(true);
+        state = yield* snap();
+        expect(state.callbacks).toHaveLength(0);
+        expect(state.tasks.find((task) => task.id === "w")?.resumes).toBe(0);
+      }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect("task.fence delegates promise actions under the task version gate", () =>
+    Effect.gen(function* () {
+      yield* taskCreate("owner", 60_000);
+      yield* create("child", 60_000);
+      const fenced = yield* taskFenceSettle("owner", 1, "child");
+      if (!isTaskFenced(fenced)) {
+        throw new Error("expected task.fence 200");
+      }
+      expect(fenced.data.action.kind).toBe("promise.settle");
+      expect((yield* getPromise("child")).state).toBe("resolved");
+      expect((yield* taskFenceSettle("owner", 0, "child")).head.status).toBe(409);
+      yield* snap();
+    }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect("heartbeat silently refreshes only matching acquired tasks using stored ttl", () =>
+    Effect.gen(function* () {
+      yield* taskCreate("t1", 60_000);
+      yield* TestClock.adjust(Duration.seconds(5));
+      expect((yield* taskHeartbeat("t1", 1, workerPidB)).head.status).toBe(200);
+      expect((yield* snap()).taskTimeouts).toEqual([{ id: "t1", type: 1, timeout: at(30_000) }]);
+      expect((yield* taskHeartbeat("t1", 1)).head.status).toBe(200);
+      expect((yield* snap()).taskTimeouts).toEqual([{ id: "t1", type: 1, timeout: at(35_000) }]);
+    }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect("halt and continue move through halted without bumping the version", () =>
+    Effect.gen(function* () {
+      yield* taskCreate("t1", 60_000);
+      expect((yield* taskHalt("t1")).head.status).toBe(200);
+      let state = yield* snap();
+      expect(state.tasks[0]).toEqual({ id: "t1", state: "halted", version: 1, resumes: 0 });
+      expect(state.taskTimeouts).toHaveLength(0);
+
+      expect((yield* taskContinue("t1")).head.status).toBe(200);
+      state = yield* snap();
+      expect(state.tasks[0]).toEqual({ id: "t1", state: "pending", version: 1, resumes: 0 });
+      expect(state.taskTimeouts).toEqual([{ id: "t1", type: 0, timeout: at(5_000) }]);
+    }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect("pending retry timeout redelivers execute and rearms itself", () =>
+    Effect.gen(function* () {
+      yield* create("t1", 60_000, targetTags);
+      yield* TestClock.adjust(Duration.seconds(5));
+      const response = yield* tick(5_000);
+      expect(response.head.status).toBe(200);
+      const state = yield* snap();
+      expect(state.taskTimeouts).toEqual([{ id: "t1", type: 0, timeout: at(10_000) }]);
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0]?.message.kind).toBe("execute");
+    }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect("task.create follows shipped server by allowing a fresh targetless action", () =>
+    Effect.gen(function* () {
+      const response = yield* taskCreate("local-step", 60_000, Protocol.emptyTags);
+      if (!isTaskCreated(response)) {
+        throw new Error("expected task.create 200");
+      }
+      expect(response.data.task?.state).toBe("acquired");
+      const promise = (yield* snap()).promises[0];
+      expect(promise?.tags.reserved).toEqual({});
+      expect(promise?.tags.user).toEqual({});
+      expect(promise?.tags.unrecognized).toEqual({});
+    }).pipe(Effect.provide(layers)),
+  );
+});
+
 describe("unimplemented surfaces", () => {
-  it.effect("searches and task/schedule ops return 501", () =>
+  it.effect("searches and schedule ops return 501", () =>
     Effect.gen(function* () {
       const head1 = yield* makeRequestHead;
       const search = yield* send(Protocol.PromiseSearchRequest.make({ head: head1, data: {} }));
       expect(search.head.status).toBe(501);
-      const head2 = yield* makeRequestHead;
-      const task = yield* send(Protocol.TaskGetRequest.make({ head: head2, data: { id: pid("x") } }));
-      expect(task.head.status).toBe(501);
       const head3 = yield* makeRequestHead;
       const schedule = yield* send(
-        Protocol.ScheduleGetRequest.make({ head: head3, data: { id: Protocol.ScheduleId.make("s") } }),
+        Protocol.ScheduleGetRequest.make({
+          head: head3,
+          data: { id: Protocol.ScheduleId.make("s") },
+        }),
       );
       expect(schedule.head.status).toBe(501);
     }).pipe(Effect.provide(layers)),
