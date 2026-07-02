@@ -1,9 +1,19 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
-import { decodeValue, encodeValue, ResonateCodec, ResonateEncryptor, withSchemaHeader } from "../src/Codec.ts";
+import { ResonateCodec, ResonateEncryptor, withSchemaHeader } from "../src/Codec.ts";
 import type * as Protocol from "../src/Protocol.ts";
 
-const layers = Layer.mergeAll(ResonateCodec.layerJson, ResonateEncryptor.layerNoop);
+const layers = ResonateCodec.layerJson.pipe(Layer.provide(ResonateEncryptor.layerNoop));
+
+const encodeValue = Effect.fn(function* (value: unknown) {
+  const codec = yield* ResonateCodec;
+  return yield* codec.encode(value);
+});
+
+const decodeValue = Effect.fn(function* (value: Protocol.Value) {
+  const codec = yield* ResonateCodec;
+  return yield* codec.decode(value);
+});
 
 const fixtureError = (): Error => {
   const error = new Error("boom");
@@ -149,7 +159,7 @@ describe("encryptor seam", () => {
       const encoded = yield* encodeValue(42);
       expect(encoded.data).toBe("enc:NDI=");
       expect(yield* decodeValue(encoded)).toBe(42);
-    }).pipe(Effect.provide(Layer.mergeAll(ResonateCodec.layerJson, layerReversing))),
+    }).pipe(Effect.provide(ResonateCodec.layerJson.pipe(Layer.provide(layerReversing)))),
   );
 
   it.effect("empty data short-circuits decode before the encryptor runs (native order)", () =>
@@ -162,7 +172,7 @@ describe("encryptor seam", () => {
         }),
       );
       const result = yield* decodeValue({ data: "", headers: {} }).pipe(
-        Effect.provide(Layer.mergeAll(ResonateCodec.layerJson, poisoned)),
+        Effect.provide(ResonateCodec.layerJson.pipe(Layer.provide(poisoned))),
       );
       expect(result).toBeUndefined();
     }),

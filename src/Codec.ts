@@ -176,32 +176,6 @@ export const ValueFromUnknown = Schema.Union([UndefinedFromEmptyValue, DefinedVa
 // Services
 // -----------------------------------------------------------------------------
 
-/** Value-level encoding: native JsonEncoder-compatible by default. */
-export class ResonateCodec extends Context.Service<
-  ResonateCodec,
-  {
-    readonly encode: (value: unknown) => Effect.Effect<Protocol.Value, EncodingError>;
-    readonly decode: (value: Protocol.Value) => Effect.Effect<unknown, EncodingError>;
-  }
->()("effect-resonate/Codec") {
-  /** Default: byte-compatible with the native TS SDK. */
-  static readonly layerJson: Layer.Layer<ResonateCodec> = Layer.succeed(
-    ResonateCodec,
-    ResonateCodec.of({
-      encode: Effect.fn("ResonateCodec.encode")(function* (value: unknown) {
-        return yield* Schema.encodeUnknownEffect(ValueFromUnknown)(value).pipe(
-          Effect.mapError((cause) => new EncodingError({ direction: "encode", id: Option.none(), cause })),
-        );
-      }),
-      decode: Effect.fn("ResonateCodec.decode")(function* (value: Protocol.Value) {
-        return yield* Schema.decodeUnknownEffect(ValueFromUnknown)(value).pipe(
-          Effect.mapError((cause) => new EncodingError({ direction: "decode", id: Option.none(), cause })),
-        );
-      }),
-    }),
-  );
-}
-
 /** Byte-level transform applied after encode / before decode (crypto, compression). */
 export class ResonateEncryptor extends Context.Service<
   ResonateEncryptor,
@@ -220,31 +194,49 @@ export class ResonateEncryptor extends Context.Service<
   );
 }
 
-// -----------------------------------------------------------------------------
-// The one boundary path — codec then encryptor (native Codec composition)
-// -----------------------------------------------------------------------------
-
 const hasData = SchemaParser.is(ValueWithData);
 
-/** Encode a value and apply the byte-level transform, as the native `Codec.encode`. */
-export const encodeValue = Effect.fn("Codec.encodeValue")(function* (value: unknown) {
-  const codec = yield* ResonateCodec;
-  const encryptor = yield* ResonateEncryptor;
-  const encoded = yield* codec.encode(value);
-  return yield* encryptor.encrypt(encoded);
-});
-
-/** Decrypt and decode, as the native `Codec.decode` — empty data short-circuits to `undefined`. */
-export const decodeValue = Effect.fn("Codec.decodeValue")(function* (value: Protocol.Value) {
-  // Native checks for missing data BEFORE decrypting.
-  if (!hasData(value)) {
-    return undefined;
+/**
+ * Value-level encoding. The implementation composes the `ResonateEncryptor`
+ * around the JSON codec, exactly like the native `Codec` class: encrypt runs
+ * after encode, decrypt before decode, and missing data short-circuits decode
+ * to `undefined` BEFORE decrypting.
+ */
+export class ResonateCodec extends Context.Service<
+  ResonateCodec,
+  {
+    readonly encode: (value: unknown) => Effect.Effect<Protocol.Value, EncodingError>;
+    readonly decode: (value: Protocol.Value) => Effect.Effect<unknown, EncodingError>;
   }
-  const codec = yield* ResonateCodec;
-  const encryptor = yield* ResonateEncryptor;
-  const decrypted = yield* encryptor.decrypt(value);
-  return yield* codec.decode(decrypted);
-});
+>()("effect-resonate/Codec") {
+  /** Default: byte-compatible with the native TS SDK; encryptor from context. */
+  static readonly layerJson: Layer.Layer<ResonateCodec, never, ResonateEncryptor> = Layer.effect(
+    ResonateCodec,
+    Effect.gen(function* () {
+      const encryptor = yield* ResonateEncryptor;
+
+      const encode = Effect.fn("ResonateCodec.encode")(function* (value: unknown) {
+        const encoded = yield* Schema.encodeUnknownEffect(ValueFromUnknown)(value).pipe(
+          Effect.mapError((cause) => new EncodingError({ direction: "encode", id: Option.none(), cause })),
+        );
+        return yield* encryptor.encrypt(encoded);
+      });
+
+      const decode = Effect.fn("ResonateCodec.decode")(function* (value: Protocol.Value) {
+        // Native checks for missing data BEFORE decrypting.
+        if (!hasData(value)) {
+          return undefined;
+        }
+        const decrypted = yield* encryptor.decrypt(value);
+        return yield* Schema.decodeUnknownEffect(ValueFromUnknown)(decrypted).pipe(
+          Effect.mapError((cause) => new EncodingError({ direction: "decode", id: Option.none(), cause })),
+        );
+      });
+
+      return ResonateCodec.of({ encode, decode });
+    }),
+  );
+}
 
 // -----------------------------------------------------------------------------
 // Schema-version header (additive; other SDKs ignore it — DESIGN §4.10)

@@ -32,12 +32,21 @@ banned. Instead:
   route the value through the field schema's `.make` to pin the type — do not
   add an annotation.
 
-## 3. Process
+## 3. Services own their composition
+
+Standalone exported glue functions around services (e.g. an `encodeValue`
+helper that yields two services and chains them) were rejected. If behavior is
+the composition of services, it belongs INSIDE the service implementation:
+`ResonateCodec.layerJson` consumes `ResonateEncryptor` from context and applies
+it around the JSON codec (the native `Codec`-class analog). The layer's `R`
+channel advertises the dependency; callers touch one service.
+
+## 4. Process
 
 - Run `vp run check` BEFORE every commit — including docs-only changes. Never
   rely on the pre-commit hook to catch it.
 
-## 4. General
+## 5. General
 
 - Consult `repos/effect-smol/SCHEMA.md` for the v4 Schema API before inventing
   a mechanism — the building block usually exists (flipped constructors,
