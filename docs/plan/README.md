@@ -10,6 +10,25 @@ Implement the Effect-native Resonate SDK per `docs/DESIGN.md`, with 100% protoco
 conformance to `repos/resonate-specification`, verified continuously against the
 in-repo oracle and the shipped Resonate server.
 
+## Definition of done (the goal, checkable)
+
+1. Every row in the Progress Tracker below is `done`.
+2. Every row in `docs/plan/CONFORMANCE.md` is `done` (or explicitly deferred with a
+   written reason) — each backed by named tests.
+3. `vp run check` is green, including the differential suite (spec 09) against a
+   running `resonate dev` server (the CLI is installed locally; the suite boots it
+   via a `vp` task and skips LOUDLY — never silently — when unavailable).
+4. Spec 23's scenarios pass against the shipped server, including quickstart parity:
+   our `Countdown` invoked via `resonate invoke countdown.1 --func Countdown --arg 5
+--arg 60`, worker killed mid-countdown and restarted, resumes exactly like the
+   native SDK's README demo — plus bidirectional interop with a native TS worker
+   (run from `repos/resonate-sdk-ts` source under bun).
+
+Real-server caveat: `TestClock` cannot drive `resonate dev`, so real-server scenarios
+use short genuine durations (seconds-scale timeouts/leases); long-horizon time
+behavior (week sleeps, schedule catch-up) is proven on the TestClock-driven oracle,
+with the differential suite confirming semantics on short horizons.
+
 ## How to work this plan (agent loop)
 
 For every work session:
@@ -90,6 +109,9 @@ graph TD
   S16 --> S23
   S17 --> S23
   S20 --> S23
+  S15 --> S24[24 graph-parity]
+  S16 --> S24
+  S24 --> S23
 ```
 
 ### Parallel lanes
@@ -99,7 +121,7 @@ graph TD
   the client lane (`08`, once 04/05 exist for its tests) proceed in parallel.
 - After **12**: `13→14`, `18`, `19` are parallel; `15`/`16` need `14`; `17` needs `11`.
 - `09` (differential) runs as soon as `08` lands and stays green from then on.
-- `23` is the integration gate at the end.
+- `24` (graph parity vs native twins) runs once 15/16 land; `23` is the integration gate at the end.
 
 ## Progress tracker
 
@@ -131,6 +153,7 @@ Statuses: `todo` | `in-progress` | `done` | `blocked` (blocked requires a note).
 | 21  | [test-harness](specs/21-test-harness.md)                       | todo   |       |
 | 22  | [dst-simulator](specs/22-dst-simulator.md)                     | todo   |       |
 | 23  | [e2e-interop](specs/23-e2e-interop.md)                         | todo   |       |
+| 24  | [graph-parity](specs/24-graph-parity.md)                       | todo   |       |
 
 ## Protocol conformance tracking
 
