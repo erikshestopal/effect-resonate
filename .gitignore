@@ -38,7 +38,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 reports/
 .research/
 .amp-auto/
-specs/
+/specs/
 .opencode/
 opensrc
 examples/fixtures/_raw/
