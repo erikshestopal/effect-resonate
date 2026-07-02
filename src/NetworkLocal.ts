@@ -9,10 +9,10 @@
  *
  * See `docs/DESIGN.md` §3.1 (`NetworkLocal.layer`) and §8.
  *
- * Spec 05 adds the task state machine. Schedule operations return `501` until
- * spec 06 lands.
+ * Spec 06 adds schedule handlers and catch-up.
  */
 import {
+  Cron,
   DateTime,
   Duration,
   Effect,
@@ -23,7 +23,9 @@ import {
   Predicate,
   Queue,
   Ref,
+  Result,
   Schema,
+  SchemaParser,
   Stream,
 } from "effect";
 import { decodeResponse, ResonateNetwork } from "./Network.ts";
@@ -155,6 +157,46 @@ export class TaskObject extends Schema.Class<TaskObject>("NetworkLocal/TaskObjec
   }
 }
 
+export class ScheduleObject extends Schema.Class<ScheduleObject>("NetworkLocal/ScheduleObject")({
+  id: Protocol.ScheduleId,
+  cron: Schema.String,
+  promiseId: Schema.NonEmptyString,
+  promiseTimeout: Protocol.Ttl,
+  promiseParam: Protocol.Value,
+  promiseTags: Protocol.Tags,
+  createdAt: Schema.DateTimeUtc,
+  nextRunAt: Schema.DateTimeUtc,
+  lastRunAt: Schema.Option(Schema.DateTimeUtc),
+}) {
+  get fields() {
+    return {
+      id: this.id,
+      cron: this.cron,
+      promiseId: this.promiseId,
+      promiseTimeout: this.promiseTimeout,
+      promiseParam: this.promiseParam,
+      promiseTags: this.promiseTags,
+      createdAt: this.createdAt,
+      nextRunAt: this.nextRunAt,
+      lastRunAt: this.lastRunAt,
+    };
+  }
+
+  toRecord(): Protocol.ScheduleRecord {
+    return new Protocol.ScheduleRecord({
+      id: this.id,
+      cron: this.cron,
+      promiseId: this.promiseId,
+      promiseTimeout: this.promiseTimeout,
+      promiseParam: this.promiseParam,
+      promiseTags: this.promiseTags,
+      createdAt: this.createdAt,
+      nextRunAt: this.nextRunAt,
+      lastRunAt: this.lastRunAt,
+    });
+  }
+}
+
 /** `0` = pending retry, `1` = lease expiration (Lean `TaskTimeout.kind`). */
 interface TaskTimeoutEntry {
   readonly kind: 0 | 1;
@@ -169,8 +211,10 @@ interface OutboxEntry {
 interface ServerState {
   readonly promises: HashMap.HashMap<Protocol.PromiseId, PromiseObject>;
   readonly tasks: HashMap.HashMap<Protocol.TaskId, TaskObject>;
+  readonly schedules: HashMap.HashMap<Protocol.ScheduleId, ScheduleObject>;
   readonly promiseTimeouts: HashMap.HashMap<Protocol.PromiseId, DateTime.Utc>;
   readonly taskTimeouts: HashMap.HashMap<Protocol.TaskId, TaskTimeoutEntry>;
+  readonly scheduleTimeouts: HashMap.HashMap<Protocol.ScheduleId, DateTime.Utc>;
   readonly outbox: ReadonlyArray<OutboxEntry>;
 }
 
@@ -179,8 +223,10 @@ export type DebugState = (typeof Protocol.DebugSnapResponse.members)[0]["Type"][
 const initialState: ServerState = {
   promises: HashMap.empty(),
   tasks: HashMap.empty(),
+  schedules: HashMap.empty(),
   promiseTimeouts: HashMap.empty(),
   taskTimeouts: HashMap.empty(),
+  scheduleTimeouts: HashMap.empty(),
   outbox: [],
 };
 
@@ -203,6 +249,16 @@ const setTask = (state: ServerState, task: TaskObject): ServerState => ({
   tasks: HashMap.set(state.tasks, task.id, task),
 });
 
+const setSchedule = (state: ServerState, schedule: ScheduleObject): ServerState => ({
+  ...state,
+  schedules: HashMap.set(state.schedules, schedule.id, schedule),
+});
+
+const delSchedule = (state: ServerState, id: Protocol.ScheduleId): ServerState => ({
+  ...state,
+  schedules: HashMap.remove(state.schedules, id),
+});
+
 const setPromiseTimeout = (state: ServerState, id: Protocol.PromiseId, at: DateTime.Utc): ServerState => ({
   ...state,
   promiseTimeouts: HashMap.set(state.promiseTimeouts, id, at),
@@ -221,6 +277,16 @@ const setTaskTimeout = (state: ServerState, id: Protocol.TaskId, entry: TaskTime
 const delTaskTimeout = (state: ServerState, id: Protocol.TaskId): ServerState => ({
   ...state,
   taskTimeouts: HashMap.remove(state.taskTimeouts, id),
+});
+
+const setScheduleTimeout = (state: ServerState, id: Protocol.ScheduleId, at: DateTime.Utc): ServerState => ({
+  ...state,
+  scheduleTimeouts: HashMap.set(state.scheduleTimeouts, id, at),
+});
+
+const delScheduleTimeout = (state: ServerState, id: Protocol.ScheduleId): ServerState => ({
+  ...state,
+  scheduleTimeouts: HashMap.remove(state.scheduleTimeouts, id),
 });
 
 /** Lean `OutboxEntry.key`: one pending execute per task, one unblock per (promise, address). */
@@ -1346,6 +1412,188 @@ const taskHeartbeat = (
 };
 
 // -----------------------------------------------------------------------------
+// Schedule handlers (spec/02-actions/S-01…S-03) and catch-up
+// -----------------------------------------------------------------------------
+
+const FiveFieldCronExpression = Schema.String.check(
+  Schema.makeFilter(
+    (cron) => {
+      const segments = cron.split(" ").filter((segment) => segment.length > 0);
+      return segments.length === 5 && Result.isSuccess(Cron.parse(cron));
+    },
+    { title: "five-field cron expression" },
+  ),
+);
+
+const isFiveFieldCronExpression = SchemaParser.is(FiveFieldCronExpression);
+
+const parseCron = (cron: string): Option.Option<Cron.Cron> => {
+  if (!isFiveFieldCronExpression(cron)) {
+    return Option.none();
+  }
+  const parsed = Cron.parse(cron);
+  if (Result.isFailure(parsed)) {
+    return Option.none();
+  }
+  return Option.some(parsed.success);
+};
+
+const nextCron = (cron: Cron.Cron, now: DateTime.Utc): DateTime.Utc =>
+  DateTime.makeUnsafe(Cron.next(cron, now).getTime());
+
+const expandTemplate = (template: string, id: Protocol.ScheduleId, timestamp: DateTime.Utc): string =>
+  template.replaceAll("{{.id}}", id).replaceAll("{{.timestamp}}", String(millis(timestamp)));
+
+const scheduleGet = (state: ServerState, request: Protocol.Request<"schedule.get">): Transition => {
+  const schedule = HashMap.get(state.schedules, request.data.id);
+  if (Option.isNone(schedule)) {
+    return {
+      state,
+      response: Protocol.ScheduleGetResponse.make({
+        kind: "schedule.get",
+        head: errorHead(request, 404),
+        data: "Schedule not found",
+      }),
+      emitted: [],
+    };
+  }
+  return {
+    state,
+    response: Protocol.ScheduleGetResponse.make({
+      kind: "schedule.get",
+      head: head(request, 200),
+      data: { schedule: schedule.value.toRecord() },
+    }),
+    emitted: [],
+  };
+};
+
+const scheduleCreate = (
+  state: ServerState,
+  now: DateTime.Utc,
+  request: Protocol.Request<"schedule.create">,
+): Transition => {
+  const existing = HashMap.get(state.schedules, request.data.id);
+  if (Option.isSome(existing)) {
+    return {
+      state,
+      response: Protocol.ScheduleCreateResponse.make({
+        kind: "schedule.create",
+        head: head(request, 200),
+        data: { schedule: existing.value.toRecord() },
+      }),
+      emitted: [],
+    };
+  }
+  const cron = parseCron(request.data.cron);
+  if (Option.isNone(cron)) {
+    return {
+      state,
+      response: Protocol.ScheduleCreateResponse.make({
+        kind: "schedule.create",
+        head: errorHead(request, 400),
+        data: "Invalid cron expression",
+      }),
+      emitted: [],
+    };
+  }
+  const schedule = new ScheduleObject({
+    id: request.data.id,
+    cron: request.data.cron,
+    promiseId: request.data.promiseId,
+    promiseTimeout: request.data.promiseTimeout,
+    promiseParam: request.data.promiseParam,
+    promiseTags: request.data.promiseTags,
+    createdAt: now,
+    nextRunAt: nextCron(cron.value, now),
+    lastRunAt: Option.none(),
+  });
+  let next = setSchedule(state, schedule);
+  next = setScheduleTimeout(next, schedule.id, schedule.nextRunAt);
+  return {
+    state: next,
+    response: Protocol.ScheduleCreateResponse.make({
+      kind: "schedule.create",
+      head: head(request, 200),
+      data: { schedule: schedule.toRecord() },
+    }),
+    emitted: [],
+  };
+};
+
+const scheduleDelete = (state: ServerState, request: Protocol.Request<"schedule.delete">): Transition => {
+  if (Option.isNone(HashMap.get(state.schedules, request.data.id))) {
+    return {
+      state,
+      response: Protocol.ScheduleDeleteResponse.make({
+        kind: "schedule.delete",
+        head: errorHead(request, 404),
+        data: "Schedule not found",
+      }),
+      emitted: [],
+    };
+  }
+  const next = delScheduleTimeout(delSchedule(state, request.data.id), request.data.id);
+  return {
+    state: next,
+    response: Protocol.ScheduleDeleteResponse.make({
+      kind: "schedule.delete",
+      head: head(request, 200),
+      data: {},
+    }),
+    emitted: [],
+  };
+};
+
+const internalHead = Protocol.RequestHead.make({
+  corrId: Protocol.CorrelationId.make("local-schedule"),
+  version: Protocol.protocolVersion,
+});
+
+const catchUpSchedule = (
+  input: Emitting,
+  schedule: ScheduleObject,
+  now: DateTime.Utc,
+  retryTimeout: Duration.Duration,
+): Emitting => {
+  const cron = parseCron(schedule.cron);
+  if (Option.isNone(cron)) {
+    return input;
+  }
+
+  let output = input;
+  let current = schedule;
+  while (millis(current.nextRunAt) <= millis(now)) {
+    const cronTime = current.nextRunAt;
+    const promiseId = Protocol.PromiseId.make(expandTemplate(current.promiseId, current.id, cronTime));
+    const transition = promiseCreate(
+      output.state,
+      cronTime,
+      retryTimeout,
+      Protocol.PromiseCreateRequest.make({
+        head: internalHead,
+        data: {
+          id: promiseId,
+          timeoutAt: DateTime.addDuration(cronTime, current.promiseTimeout),
+          param: current.promiseParam,
+          tags: current.promiseTags,
+        },
+      }),
+    );
+    output = { state: transition.state, emitted: [...output.emitted, ...transition.emitted] };
+    current = new ScheduleObject({
+      ...current.fields,
+      lastRunAt: Option.some(cronTime),
+      nextRunAt: nextCron(cron.value, cronTime),
+    });
+  }
+
+  let next = setSchedule(output.state, current);
+  next = setScheduleTimeout(next, current.id, current.nextRunAt);
+  return { state: next, emitted: output.emitted };
+};
+
+// -----------------------------------------------------------------------------
 // The tick — native debugTick's three-phase convergence
 // -----------------------------------------------------------------------------
 
@@ -1499,6 +1747,16 @@ const tick = (
     }
   }
 
+  const dueScheduleTimeouts = [...HashMap.entries(output.state.scheduleTimeouts)].filter(
+    ([, at]) => millis(at) <= millis(now),
+  );
+  for (const [id] of dueScheduleTimeouts) {
+    const schedule = HashMap.get(output.state.schedules, id);
+    if (Option.isSome(schedule)) {
+      output = catchUpSchedule(output, schedule.value, now, retryTimeout);
+    }
+  }
+
   return { state: output.state, emitted: output.emitted, actions };
 };
 
@@ -1617,33 +1875,9 @@ const apply = (
         }),
         emitted: [],
       }),
-      "schedule.get": (request) => ({
-        state,
-        response: Protocol.ScheduleGetResponse.make({
-          kind: "schedule.get",
-          head: errorHead(request, 501),
-          data: "Not implemented",
-        }),
-        emitted: [],
-      }),
-      "schedule.create": (request) => ({
-        state,
-        response: Protocol.ScheduleCreateResponse.make({
-          kind: "schedule.create",
-          head: errorHead(request, 501),
-          data: "Not implemented",
-        }),
-        emitted: [],
-      }),
-      "schedule.delete": (request) => ({
-        state,
-        response: Protocol.ScheduleDeleteResponse.make({
-          kind: "schedule.delete",
-          head: errorHead(request, 501),
-          data: "Not implemented",
-        }),
-        emitted: [],
-      }),
+      "schedule.get": (request) => scheduleGet(state, request),
+      "schedule.create": (request) => scheduleCreate(state, now, request),
+      "schedule.delete": (request) => scheduleDelete(state, request),
       "schedule.search": (request) => ({
         state,
         response: Protocol.ScheduleSearchResponse.make({

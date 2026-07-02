@@ -74,6 +74,8 @@ const isTaskSuspended = SchemaParser.is(Protocol.TaskSuspendResponse.members[0])
 const isTaskSuspendPreloaded = SchemaParser.is(Protocol.TaskSuspendResponse.members[1]);
 const isTaskFulfilled = SchemaParser.is(Protocol.TaskFulfillResponse.members[0]);
 const isTaskFenced = SchemaParser.is(Protocol.TaskFenceResponse.members[0]);
+const isScheduleGot = SchemaParser.is(Protocol.ScheduleGetResponse.members[0]);
+const isScheduleCreated = SchemaParser.is(Protocol.ScheduleCreateResponse.members[0]);
 
 const workerPid = Protocol.ProcessId.make("worker-a");
 const workerPidB = Protocol.ProcessId.make("worker-b");
@@ -275,6 +277,40 @@ const taskHeartbeat = Effect.fn(function* (id: string, version: number, requestP
       },
     }),
   );
+});
+
+const scheduleCreate = Effect.fn(function* (
+  id: string,
+  cron = "* * * * *",
+  promiseId = "{{.id}}.{{.timestamp}}",
+  promiseTimeout = Duration.seconds(30),
+  promiseTags = Protocol.emptyTags,
+  promiseParam: Protocol.Value = { data: "c2NoZWR1bGU=" },
+) {
+  const head = yield* makeRequestHead;
+  return yield* send(
+    Protocol.ScheduleCreateRequest.make({
+      head,
+      data: {
+        id: Protocol.ScheduleId.make(id),
+        cron,
+        promiseId,
+        promiseTimeout,
+        promiseParam,
+        promiseTags,
+      },
+    }),
+  );
+});
+
+const scheduleGet = Effect.fn(function* (id: string) {
+  const head = yield* makeRequestHead;
+  return yield* send(Protocol.ScheduleGetRequest.make({ head, data: { id: Protocol.ScheduleId.make(id) } }));
+});
+
+const scheduleDelete = Effect.fn(function* (id: string) {
+  const head = yield* makeRequestHead;
+  return yield* send(Protocol.ScheduleDeleteRequest.make({ head, data: { id: Protocol.ScheduleId.make(id) } }));
 });
 
 describe("P-02 promise.create", () => {
@@ -801,17 +837,126 @@ describe("T-01…T-10 task state machine", () => {
   );
 });
 
+describe("S-01…S-03 schedules and catch-up", () => {
+  it.effect("creates, gets, and idempotently re-creates schedules", () =>
+    Effect.gen(function* () {
+      const created = yield* scheduleCreate("nightly", "* * * * *", "run-{{.id}}-{{.timestamp}}");
+      if (!isScheduleCreated(created)) {
+        throw new Error("expected schedule.create 200");
+      }
+      expect(DateTime.toEpochMillis(created.data.schedule.createdAt)).toBe(0);
+      expect(DateTime.toEpochMillis(created.data.schedule.nextRunAt)).toBe(60_000);
+      expect(created.data.schedule.lastRunAt).toEqual(Option.none());
+
+      const changed = yield* scheduleCreate("nightly", "*/5 * * * *", "changed");
+      if (!isScheduleCreated(changed)) {
+        throw new Error("expected idempotent schedule.create 200");
+      }
+      expect(changed.data.schedule.cron).toBe("* * * * *");
+      expect(changed.data.schedule.promiseId).toBe("run-{{.id}}-{{.timestamp}}");
+
+      const got = yield* scheduleGet("nightly");
+      if (!isScheduleGot(got)) {
+        throw new Error("expected schedule.get 200");
+      }
+      expect(got.data.schedule).toEqual(changed.data.schedule);
+      yield* snap();
+    }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect("fires a due schedule with expanded id, backdated promise timing, and task dispatch", () =>
+    Effect.gen(function* () {
+      yield* scheduleCreate("job", "* * * * *", "{{.id}}.{{.timestamp}}", Duration.seconds(30), targetTags);
+      yield* TestClock.adjust(Duration.millis(60_000));
+      const response = yield* tick(60_000);
+      expect(response.head.status).toBe(200);
+
+      const state = yield* snap();
+      const promise = state.promises.find((promise) => promise.id === "job.60000");
+      expect(promise?.state).toBe("pending");
+      expect(DateTime.toEpochMillis(promise?.createdAt ?? at(-1))).toBe(60_000);
+      expect(DateTime.toEpochMillis(promise?.timeoutAt ?? at(-1))).toBe(90_000);
+      expect(state.tasks.find((task) => task.id === "job.60000")).toEqual({
+        id: "job.60000",
+        state: "pending",
+        version: 0,
+        resumes: 0,
+      });
+      expect(state.taskTimeouts).toContainEqual({ id: "job.60000", type: 0, timeout: at(65_000) });
+      expect(state.messages.at(-1)?.message.kind).toBe("execute");
+
+      const got = yield* scheduleGet("job");
+      if (!isScheduleGot(got)) {
+        throw new Error("expected schedule.get 200");
+      }
+      expect(Option.map(got.data.schedule.lastRunAt, DateTime.toEpochMillis)).toEqual(Option.some(60_000));
+      expect(DateTime.toEpochMillis(got.data.schedule.nextRunAt)).toBe(120_000);
+    }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect("catches up one promise per missed cron tick at each historical time", () =>
+    Effect.gen(function* () {
+      yield* scheduleCreate("catch", "* * * * *", "p-{{.timestamp}}", Duration.seconds(10));
+      yield* TestClock.adjust(Duration.millis(180_000));
+      yield* tick(180_000);
+      const state = yield* snap();
+
+      expect(state.promises.map((promise) => promise.id).sort()).toEqual(["p-120000", "p-180000", "p-60000"]);
+      expect(
+        state.promises
+          .map((promise) => ({
+            id: promise.id,
+            createdAt: DateTime.toEpochMillis(promise.createdAt),
+            timeoutAt: DateTime.toEpochMillis(promise.timeoutAt),
+          }))
+          .sort((left, right) => left.createdAt - right.createdAt),
+      ).toEqual([
+        { id: "p-60000", createdAt: 60_000, timeoutAt: 70_000 },
+        { id: "p-120000", createdAt: 120_000, timeoutAt: 130_000 },
+        { id: "p-180000", createdAt: 180_000, timeoutAt: 190_000 },
+      ]);
+      const got = yield* scheduleGet("catch");
+      if (!isScheduleGot(got)) {
+        throw new Error("expected schedule.get 200");
+      }
+      expect(Option.map(got.data.schedule.lastRunAt, DateTime.toEpochMillis)).toEqual(Option.some(180_000));
+      expect(DateTime.toEpochMillis(got.data.schedule.nextRunAt)).toBe(240_000);
+    }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect("deletes schedules and disarms future firing", () =>
+    Effect.gen(function* () {
+      yield* scheduleCreate("gone");
+      expect((yield* scheduleDelete("missing")).head.status).toBe(404);
+      expect((yield* scheduleDelete("gone")).head.status).toBe(200);
+      expect((yield* scheduleGet("gone")).head.status).toBe(404);
+
+      yield* TestClock.adjust(Duration.millis(180_000));
+      yield* tick(180_000);
+      expect((yield* snap()).promises).toHaveLength(0);
+    }).pipe(Effect.provide(layers)),
+  );
+
+  it.effect("accepts five-field cron but rejects six-field seconds", () =>
+    Effect.gen(function* () {
+      expect((yield* scheduleCreate("five", "*/5 * * * *")).head.status).toBe(200);
+      expect((yield* scheduleCreate("six", "0 */5 * * * *")).head.status).toBe(400);
+      yield* snap();
+    }).pipe(Effect.provide(layers)),
+  );
+});
+
 describe("unimplemented surfaces", () => {
-  it.effect("searches and schedule ops return 501", () =>
+  it.effect("searches return 501", () =>
     Effect.gen(function* () {
       const head1 = yield* makeRequestHead;
       const search = yield* send(Protocol.PromiseSearchRequest.make({ head: head1, data: {} }));
       expect(search.head.status).toBe(501);
       const head3 = yield* makeRequestHead;
       const schedule = yield* send(
-        Protocol.ScheduleGetRequest.make({
+        Protocol.ScheduleSearchRequest.make({
           head: head3,
-          data: { id: Protocol.ScheduleId.make("s") },
+          data: {},
         }),
       );
       expect(schedule.head.status).toBe(501);

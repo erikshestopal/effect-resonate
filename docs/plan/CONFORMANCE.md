@@ -35,12 +35,12 @@ Statuses: `todo` | `partial` | `done`.
 
 ## Schedule actions
 
-| Spec action                                                       | Lean source                 | Impl spec | Tests | Status |
-| ----------------------------------------------------------------- | --------------------------- | --------- | ----- | ------ |
-| S-01 schedule.get                                                 | `S-01-schedule.get.lean`    | 06, 20    |       | todo   |
-| S-02 schedule.create (idempotent-by-id, body ignored on existing) | `S-02-schedule.create.lean` | 06, 20    |       | todo   |
-| S-03 schedule.delete                                              | `S-03-schedule.delete.lean` | 06, 20    |       | todo   |
-| S-04 schedule.search — NOT IMPLEMENTED (501 per spec)             | `S-04-schedule.search.lean` | —         | n/a   | done   |
+| Spec action                                                       | Lean source                 | Impl spec | Tests                                                 | Status |
+| ----------------------------------------------------------------- | --------------------------- | --------- | ----------------------------------------------------- | ------ |
+| S-01 schedule.get                                                 | `S-01-schedule.get.lean`    | 06, 20    | `test/NetworkLocal.test.ts` schedules/get             | done   |
+| S-02 schedule.create (idempotent-by-id, body ignored on existing) | `S-02-schedule.create.lean` | 06, 20    | `test/NetworkLocal.test.ts` schedules/create/catch-up | done   |
+| S-03 schedule.delete                                              | `S-03-schedule.delete.lean` | 06, 20    | `test/NetworkLocal.test.ts` schedules/delete          | done   |
+| S-04 schedule.search — NOT IMPLEMENTED (501 per spec)             | `S-04-schedule.search.lean` | —         | n/a                                                   | done   |
 
 ## Environment transitions
 
@@ -50,7 +50,7 @@ Statuses: `todo` | `partial` | `done`.
 | onPromiseTimeout (persist projection; cascade; backdated settledAt)              | `spec/02-actions/02-timeouts.lean` | 04        | `test/NetworkLocal.test.ts` "timeout projection and the tick"      | done    |
 | onTaskRetryTimeout (self-rescheduling execute redelivery)                        | `02-timeouts.lean`                 | 05        | `test/NetworkLocal.test.ts` "pending retry timeout redelivers"     | done    |
 | onTaskLeaseTimeout (→pending; no version bump)                                   | `02-timeouts.lean`                 | 05, 13    | `test/NetworkLocal.test.ts` "lease expiry does not bump"           | done    |
-| schedule catchUp (one promiseCreate per missed tick, backdated)                  | `02-timeouts.lean`                 | 06        |                                                                    | todo    |
+| schedule catchUp (one promiseCreate per missed tick, backdated)                  | `02-timeouts.lean`                 | 06        | `test/NetworkLocal.test.ts` schedule catch-up                      | done    |
 
 ## Structural invariants (the test oracle — assert after EVERY op in oracle tests)
 

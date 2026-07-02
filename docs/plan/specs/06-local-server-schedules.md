@@ -51,3 +51,18 @@ as the `nextCron` implementation.
 ## Acceptance
 
 - `vp run check` green; CONFORMANCE.md S-rows + catchUp → done (oracle side).
+
+## Notes
+
+- `NetworkLocal.layer` now stores schedules separately from schedule timeouts; the
+  schedule record carries `nextRunAt`/`lastRunAt`, and the timeout map is the armed
+  firing index used by `debug.tick`.
+- Cron parsing is expressed as a Schema filter over the shipped-server dialect we
+  support locally: five fields only. `effect/Cron` accepts six fields, but the local
+  server rejects seconds at `schedule.create` with `400` until differential tests
+  prove server support.
+- Catch-up invokes the existing `promiseCreate` handler once per due tick using the
+  historical cron time as `now`; this preserves backdated `createdAt`, promise
+  timeout math, task dispatch, and shipped-server/idempotent promise behavior.
+- Template expansion intentionally matches native syntax only: `{{.id}}` and
+  `{{.timestamp}}` are replaced with the schedule id and epoch-ms cron tick time.
