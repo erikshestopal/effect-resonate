@@ -41,14 +41,12 @@ const AggregateErrorFromMarker = AggregateErrorMarker.pipe(
     AggregateErrorInstance,
     SchemaTransformation.transform({
       // Native: Object.assign(new AggregateError(v.errors, v.message), v) —
-      // marker fields (including __type) are copied verbatim onto the instance.
+      // marker fields (including __type) are copied verbatim onto the instance,
+      // so the assign overwrites whatever message the constructor coerced.
       decode: (marker) =>
         AggregateErrorInstance.make(
           Object.assign(
-            new AggregateError(
-              marker.errors,
-              Predicate.isUndefined(marker.message) ? undefined : String(marker.message),
-            ),
+            new AggregateError(marker.errors, Predicate.isString(marker.message) ? marker.message : undefined),
             marker,
           ),
         ),

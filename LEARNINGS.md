@@ -68,3 +68,7 @@ _functions_ that build schemas are not.
 - `switch` statements are banned — use `Match` (`Match.value(...).pipe(Match.discriminatorsExhaustive("kind")({...}))` for wide discriminated unions, `Match.when/whenOr` + `Match.exhaustive` otherwise).
 - Direct `undefined` equality is banned — `Predicate.isUndefined`/`isNotUndefined`.
 - `new Error(...)` is banned outside typed-error construction — `Schema.TaggedErrorClass`; suppress with `// ast-grep-ignore: no-new-error` only for native-wire Error reconstruction.
+- WARNINGS are failures too. `vp run check` printing "Checks passed" with
+  lint/type warnings does not count as green — fix every warning (e.g.
+  `no-misused-spread` on Schema class instances: expose a `fields` getter and
+  spread that, never the instance).

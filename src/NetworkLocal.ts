@@ -47,6 +47,22 @@ export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/Pro
   /** Addresses listening for this promise's settlement. */
   listeners: Schema.Array(Protocol.TargetAddress),
 }) {
+  /** The schema fields as a plain object, for deriving updated copies. */
+  get fields() {
+    return {
+      id: this.id,
+      state: this.state,
+      param: this.param,
+      value: this.value,
+      tags: this.tags,
+      timeoutAt: this.timeoutAt,
+      createdAt: this.createdAt,
+      settledAt: this.settledAt,
+      callbacks: this.callbacks,
+      listeners: this.listeners,
+    };
+  }
+
   get isTimer(): boolean {
     return this.tags.isTimer;
   }
@@ -70,7 +86,7 @@ export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/Pro
       return this;
     }
     return new PromiseObject({
-      ...this,
+      ...this.fields,
       state: this.timedOutState,
       settledAt: Option.some(this.timeoutAt),
     });
@@ -109,6 +125,18 @@ export class TaskObject extends Schema.Class<TaskObject>("NetworkLocal/TaskObjec
   /** Awaited ids that settled while the task was pending/acquired/halted (R in the spec). */
   resumes: Schema.Array(Protocol.PromiseId),
 }) {
+  /** The schema fields as a plain object, for deriving updated copies. */
+  get fields() {
+    return {
+      id: this.id,
+      state: this.state,
+      version: this.version,
+      pid: this.pid,
+      ttl: this.ttl,
+      resumes: this.resumes,
+    };
+  }
+
   toRecord(): Protocol.TaskRecord {
     const common = {
       id: this.id,
@@ -232,7 +260,7 @@ const enqueueResume = (
   return Match.value(task.value).pipe(
     Match.when({ state: "suspended" }, (suspended) => {
       // Version is bumped ONLY on acquire — the execute is a wake-up hint.
-      const resumed = new TaskObject({ ...suspended, state: "pending", resumes: [awaitedId] });
+      const resumed = new TaskObject({ ...suspended.fields, state: "pending", resumes: [awaitedId] });
       let next = setTask(state, resumed);
       next = setTaskTimeout(next, resumed.id, { kind: 0, at: DateTime.addDuration(now, retryTimeout) });
       const awaiterPromise = HashMap.get(next.promises, awaiterId);
@@ -251,7 +279,7 @@ const enqueueResume = (
         return { state, emitted };
       }
       return {
-        state: setTask(state, new TaskObject({ ...buffered, resumes: [...buffered.resumes, awaitedId] })),
+        state: setTask(state, new TaskObject({ ...buffered.fields, resumes: [...buffered.resumes, awaitedId] })),
         emitted,
       };
     }),
@@ -279,7 +307,7 @@ const settlementCascade = (
   if (Option.isSome(task)) {
     state = setTask(
       state,
-      new TaskObject({ ...task.value, state: "fulfilled", pid: Option.none(), ttl: Option.none(), resumes: [] }),
+      new TaskObject({ ...task.value.fields, state: "fulfilled", pid: Option.none(), ttl: Option.none(), resumes: [] }),
     );
     state = delTaskTimeout(state, settled.id);
   }
@@ -289,7 +317,7 @@ const settlementCascade = (
     ...state,
     promises: HashMap.map(state.promises, (promise) =>
       promise.state === "pending" && promise.callbacks.includes(settled.id)
-        ? new PromiseObject({ ...promise, callbacks: promise.callbacks.filter((id) => id !== settled.id) })
+        ? new PromiseObject({ ...promise.fields, callbacks: promise.callbacks.filter((id) => id !== settled.id) })
         : promise,
     ),
   };
@@ -488,7 +516,7 @@ const promiseSettle = (
   }
 
   const settled = new PromiseObject({
-    ...promise,
+    ...promise.fields,
     state: request.data.state,
     value: request.data.value,
     settledAt: Option.some(now),
@@ -561,7 +589,7 @@ const promiseRegisterCallback = (
   }
   const registered = awaited.value.callbacks.includes(request.data.awaiter)
     ? awaited.value
-    : new PromiseObject({ ...awaited.value, callbacks: [...awaited.value.callbacks, request.data.awaiter] });
+    : new PromiseObject({ ...awaited.value.fields, callbacks: [...awaited.value.callbacks, request.data.awaiter] });
   return respond(setPromise(state, registered), awaited.value);
 };
 
@@ -601,7 +629,7 @@ const promiseRegisterListener = (
   const address = request.data.address;
   const registered = awaited.value.listeners.some((existing) => existing.address === address.address)
     ? awaited.value
-    : new PromiseObject({ ...awaited.value, listeners: [...awaited.value.listeners, address] });
+    : new PromiseObject({ ...awaited.value.fields, listeners: [...awaited.value.listeners, address] });
   return respond(setPromise(state, registered), awaited.value);
 };
 
@@ -648,7 +676,7 @@ const tick = (
       }),
     );
     const persisted = new PromiseObject({
-      ...promise,
+      ...promise.fields,
       state: promise.timedOutState,
       value: Protocol.emptyValue,
       settledAt: Option.some(promise.timeoutAt),
@@ -667,7 +695,13 @@ const tick = (
     if (Option.isSome(task) && task.value.state !== "fulfilled") {
       let phase = setTask(
         output.state,
-        new TaskObject({ ...task.value, state: "fulfilled", pid: Option.none(), ttl: Option.none(), resumes: [] }),
+        new TaskObject({
+          ...task.value.fields,
+          state: "fulfilled",
+          pid: Option.none(),
+          ttl: Option.none(),
+          resumes: [],
+        }),
       );
       phase = delTaskTimeout(phase, promise.id);
       output = { state: phase, emitted: output.emitted };
@@ -677,7 +711,10 @@ const tick = (
         ...output.state,
         promises: HashMap.map(output.state.promises, (candidate) =>
           candidate.state === "pending" && candidate.callbacks.includes(promise.id)
-            ? new PromiseObject({ ...candidate, callbacks: candidate.callbacks.filter((id) => id !== promise.id) })
+            ? new PromiseObject({
+                ...candidate.fields,
+                callbacks: candidate.callbacks.filter((id) => id !== promise.id),
+              })
             : candidate,
         ),
       },
