@@ -12,7 +12,7 @@
  * checked only on the strict schemas).
  */
 import type { Duration } from "effect";
-import { DateTime, Effect, Option, Predicate, Schema, SchemaIssue, SchemaTransformation } from "effect";
+import { DateTime, Option, Predicate, Schema, SchemaParser, SchemaTransformation } from "effect";
 
 // -----------------------------------------------------------------------------
 // Branded ids
@@ -51,16 +51,22 @@ export type FunctionVersion = typeof FunctionVersion.Type;
 export const FunctionVersionOrLatest = Schema.Union([Schema.Literal("latest"), FunctionVersion]);
 export type FunctionVersionOrLatest = typeof FunctionVersionOrLatest.Type;
 
+const Latest = Schema.Literal("latest");
+const WireLatest = Schema.Literal(0);
+
 /** Wire form of {@link FunctionVersionOrLatest}: `0` ⇄ `"latest"`. */
-export const FunctionVersionFromWire = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pipe(
-  Schema.decodeTo(
-    FunctionVersionOrLatest,
-    SchemaTransformation.transform({
-      decode: (wire): typeof FunctionVersionOrLatest.Encoded => (wire === 0 ? "latest" : wire),
-      encode: (version) => (version === "latest" ? 0 : version),
-    }),
+export const FunctionVersionFromWire = Schema.Union([
+  WireLatest.pipe(
+    Schema.decodeTo(
+      Latest,
+      SchemaTransformation.transform({
+        decode: () => Latest.make("latest"),
+        encode: () => WireLatest.make(0),
+      }),
+    ),
   ),
-);
+  FunctionVersion,
+]);
 
 // -----------------------------------------------------------------------------
 // Protocol constants
@@ -68,7 +74,7 @@ export const FunctionVersionFromWire = Schema.Int.check(Schema.isGreaterThanOrEq
 
 export const ProtocolVersion = Schema.Literal("2026-04-01");
 export type ProtocolVersion = typeof ProtocolVersion.Type;
-export const protocolVersion: ProtocolVersion = "2026-04-01";
+export const protocolVersion = ProtocolVersion.make("2026-04-01");
 
 export const Status = Schema.Literals([200, 300, 400, 401, 403, 404, 409, 422, 429, 500, 501]);
 export type Status = typeof Status.Type;
@@ -123,38 +129,67 @@ export class TargetAddress extends Schema.Class<TargetAddress>("TargetAddress")(
   }
 }
 
-const targetAddressPattern = /^(poll|local):\/\/(uni|any)@([^/@]+)(?:\/(.+))?$/;
+const AddressTransport = Schema.Literals(["poll", "local"]);
+const AddressCast = Schema.Literals(["uni", "any"]);
+const AddressGroup = Schema.NonEmptyString.check(Schema.isPattern(/^[^/@]+$/));
 
-export const isTargetAddressString = (input: string): boolean => targetAddressPattern.test(input);
+const AddressPartsWithId = Schema.Struct({
+  transport: AddressTransport,
+  cast: AddressCast,
+  group: AddressGroup,
+  id: Schema.NonEmptyString,
+});
 
-export const TargetAddressFromString = Schema.String.pipe(
+const AddressPartsWithoutId = Schema.Struct({
+  transport: AddressTransport,
+  cast: AddressCast,
+  group: AddressGroup,
+});
+
+const AddressParserWithId = Schema.TemplateLiteralParser([
+  AddressTransport,
+  "://",
+  AddressCast,
+  "@",
+  AddressGroup,
+  "/",
+  Schema.NonEmptyString,
+]);
+
+const AddressParserWithoutId = Schema.TemplateLiteralParser([AddressTransport, "://", AddressCast, "@", AddressGroup]);
+
+const AddressWithIdFromString = AddressParserWithId.pipe(
   Schema.decodeTo(
-    TargetAddress,
-    SchemaTransformation.transformOrFail({
-      decode: (input: string) => {
-        const match = targetAddressPattern.exec(input);
-        if (match === null) {
-          return Effect.fail(
-            new SchemaIssue.InvalidValue(Option.some(input), {
-              message: `Expected an address matching {transport}://{cast}@{group}[/{id}], got ${JSON.stringify(input)}`,
-            }),
-          );
-        }
-        const [, transport, cast, group, id] = match;
-        return Effect.succeed({
-          transport: transport as "poll" | "local",
-          cast: cast as "uni" | "any",
-          group: group as string,
-          ...(Predicate.isUndefined(id) ? {} : { id }),
-        });
-      },
-      encode: (encoded) =>
-        Effect.succeed(
-          `${encoded.transport}://${encoded.cast}@${encoded.group}${Predicate.isUndefined(encoded.id) ? "" : `/${encoded.id}`}`,
-        ),
+    AddressPartsWithId,
+    SchemaTransformation.transform({
+      decode: ([transport, , cast, , group, , id]) => AddressPartsWithId.make({ transport, cast, group, id }),
+      encode: (parts) =>
+        AddressParserWithId.make([parts.transport, "://", parts.cast, "@", parts.group, "/", parts.id]),
     }),
   ),
 );
+
+const AddressWithoutIdFromString = AddressParserWithoutId.pipe(
+  Schema.decodeTo(
+    AddressPartsWithoutId,
+    SchemaTransformation.transform({
+      decode: ([transport, , cast, , group]) => AddressPartsWithoutId.make({ transport, cast, group }),
+      encode: (parts) => AddressParserWithoutId.make([parts.transport, "://", parts.cast, "@", parts.group]),
+    }),
+  ),
+);
+
+export const TargetAddressFromString = Schema.Union([AddressWithIdFromString, AddressWithoutIdFromString]).pipe(
+  Schema.decodeTo(TargetAddress),
+);
+
+/** The address grammar as a template-literal string schema, for guarding raw strings. */
+export const TargetAddressString = Schema.Union([
+  Schema.TemplateLiteral([AddressTransport, "://", AddressCast, "@", AddressGroup, "/", Schema.NonEmptyString]),
+  Schema.TemplateLiteral([AddressTransport, "://", AddressCast, "@", AddressGroup]),
+]);
+
+export const isTargetAddressString = SchemaParser.is(TargetAddressString);
 
 // -----------------------------------------------------------------------------
 // Tags — typed reserved vocabulary + user tags, flat record on the wire
@@ -168,9 +203,12 @@ export const UserTagKey = Schema.String.check(
 ).pipe(Schema.brand("UserTagKey"));
 export type UserTagKey = typeof UserTagKey.Type;
 
+const TimerTagValue = Schema.Literal("true");
+const ScopeTagValue = Schema.Literals(["local", "global"]);
+
 export const ReservedTags = Schema.Struct({
-  "resonate:timer": Schema.optionalKey(Schema.Literal("true")),
-  "resonate:scope": Schema.optionalKey(Schema.Literals(["local", "global"])),
+  "resonate:timer": Schema.optionalKey(TimerTagValue),
+  "resonate:scope": Schema.optionalKey(ScopeTagValue),
   "resonate:target": Schema.optionalKey(TargetAddressFromString),
   "resonate:origin": Schema.optionalKey(PromiseId),
   "resonate:parent": Schema.optionalKey(PromiseId),
@@ -198,38 +236,44 @@ export class Tags extends Schema.Class<Tags>("Tags")({
 
 export const emptyTags: Tags = Tags.make({ reserved: {}, unrecognized: {}, user: {} });
 
-const reservedTagChecks: Record<string, (value: string) => boolean> = {
-  "resonate:timer": (value) => value === "true",
-  "resonate:scope": (value) => value === "local" || value === "global",
-  "resonate:target": isTargetAddressString,
-  "resonate:origin": (value) => value.length > 0,
-  "resonate:parent": (value) => value.length > 0,
-  "resonate:branch": (value) => value.length > 0,
-  "resonate:prefix": (value) => value.length > 0,
-  "resonate:delay": (value) => /^\d+$/.test(value),
-};
-
 export const TagsFromWire = Schema.Record(Schema.String, Schema.String).pipe(
   Schema.decodeTo(
     Tags,
     SchemaTransformation.transform({
       decode: (flat) => {
-        const reserved: Record<string, string> = {};
+        const timer = flat["resonate:timer"];
+        const scope = flat["resonate:scope"];
+        const target = flat["resonate:target"];
+        const origin = flat["resonate:origin"];
+        const parent = flat["resonate:parent"];
+        const branch = flat["resonate:branch"];
+        const prefix = flat["resonate:prefix"];
+        const delay = flat["resonate:delay"];
+        // Reserved keys keep only values inhabiting their typed domain; the
+        // narrowing conditions mirror the ReservedTags field schemas.
+        const reserved = {
+          ...(timer === "true" ? { "resonate:timer": TimerTagValue.make(timer) } : {}),
+          ...(scope === "local" || scope === "global" ? { "resonate:scope": ScopeTagValue.make(scope) } : {}),
+          ...(Predicate.isNotUndefined(target) && isTargetAddressString(target) ? { "resonate:target": target } : {}),
+          ...(Predicate.isNotUndefined(origin) && origin.length > 0 ? { "resonate:origin": origin } : {}),
+          ...(Predicate.isNotUndefined(parent) && parent.length > 0 ? { "resonate:parent": parent } : {}),
+          ...(Predicate.isNotUndefined(branch) && branch.length > 0 ? { "resonate:branch": branch } : {}),
+          ...(Predicate.isNotUndefined(prefix) && prefix.length > 0 ? { "resonate:prefix": prefix } : {}),
+          ...(Predicate.isNotUndefined(delay) && /^\d+$/.test(delay) ? { "resonate:delay": delay } : {}),
+        };
         const unrecognized: Record<string, string> = {};
         const user: Record<string, string> = {};
         for (const [key, value] of Object.entries(flat)) {
+          if (key in reserved) {
+            continue;
+          }
           if (key.startsWith("resonate:")) {
-            const accepts = reservedTagChecks[key];
-            if (Predicate.isNotUndefined(accepts) && accepts(value)) {
-              reserved[key] = value;
-            } else {
-              unrecognized[key] = value;
-            }
+            unrecognized[key] = value;
           } else {
             user[key] = value;
           }
         }
-        return { reserved, unrecognized, user } as typeof Tags.Encoded;
+        return { reserved, unrecognized, user };
       },
       encode: (tags) => ({ ...tags.reserved, ...tags.unrecognized, ...tags.user }),
     }),
