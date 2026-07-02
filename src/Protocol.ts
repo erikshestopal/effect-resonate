@@ -878,3 +878,32 @@ export const ResponseSchemas = {
 } as const;
 
 export type Response<K extends RequestKind = RequestKind> = (typeof ResponseSchemas)[K]["Type"];
+
+export const ResponseFromWire = Schema.Union([
+  PromiseGetResponse,
+  PromiseCreateResponse,
+  PromiseSettleResponse,
+  PromiseRegisterCallbackResponse,
+  PromiseRegisterListenerResponse,
+  PromiseSearchResponse,
+  TaskGetResponse,
+  TaskCreateResponse,
+  TaskAcquireResponse,
+  TaskReleaseResponse,
+  TaskSuspendResponse,
+  TaskHaltResponse,
+  TaskContinueResponse,
+  TaskFulfillResponse,
+  TaskFenceResponse,
+  TaskHeartbeatResponse,
+  TaskSearchResponse,
+  ScheduleGetResponse,
+  ScheduleCreateResponse,
+  ScheduleDeleteResponse,
+  ScheduleSearchResponse,
+  DebugStartResponse,
+  DebugResetResponse,
+  DebugTickResponse,
+  DebugSnapResponse,
+  DebugStopResponse,
+]);

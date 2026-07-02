@@ -47,3 +47,19 @@ every transport implementation behaves identically at the boundary.
 ## Acceptance
 
 - `vp run check` green; CONFORMANCE.md envelope row → partial (interface level).
+
+## Notes (implementation decisions)
+
+- corrId generation lives in `makeRequestHead` (backed by `effect/Crypto`'s
+  `randomUUIDv4`; provide `BunCrypto.layer`), used by layer 2 when building
+  requests — the native split, where `promises.ts` assigns `randomUUID()` and
+  the transport verifies. `checkEnvelope`/`decodeResponse` are the shared
+  verification helpers every transport uses.
+- `anycast(group)` includes the process id (native derives
+  `poll://any@{group}/{pid}`); `match(target)` does not (`poll://any@{target}`)
+  — both mirror `network/http.ts` exactly.
+- `TestNetwork` (in `testing.ts`) encodes each scripted response through
+  `Protocol.ResponseFromWire` and decodes it via `decodeResponse`, so stubbed
+  exchanges exercise the exact transport decode/validate path (and stay
+  cast-free); it exposes `push` (message stream) and `requests` (send log) as
+  its own service alongside `ResonateNetwork`.

@@ -68,7 +68,7 @@ Statuses: `todo` | `partial` | `done`.
 
 | Requirement                                                                                            | Impl spec | Tests                                                                                                  | Status  |
 | ------------------------------------------------------------------------------------------------------ | --------- | ------------------------------------------------------------------------------------------------------ | ------- |
-| Envelope `{kind, head:{corrId, version:"2026-04-01"}, data}`; reject corrId mismatch                   | 03, 07    |                                                                                                        | todo    |
+| Envelope `{kind, head:{corrId, version:"2026-04-01"}, data}`; reject corrId mismatch                   | 03, 07    | `test/Network.test.ts` "envelope helpers" (interface level; HTTP transport in 07)                      | partial |
 | SSE reconnect with exponential backoff (cap ~30s, reset on success)                                    | 07        |                                                                                                        | todo    |
 | Never block a thread on a durable wait (suspend instead)                                               | 14        |                                                                                                        | todo    |
 | Heartbeat per-process at TTL/2 with REAL `(id, version)` list                                          | 13        |                                                                                                        | todo    |
