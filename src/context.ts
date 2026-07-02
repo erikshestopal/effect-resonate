@@ -1,0 +1,799 @@
+import { randomUUID } from "node:crypto";
+import type { Clock } from "./clock.js";
+import exceptions, { type ResonateError } from "./exceptions.js";
+import type { PromiseCreateReq } from "./network/types.js";
+import type { Options, OptionsBuilder } from "./options.js";
+import type { Registry } from "./registry.js";
+import { Exponential, Never, type RetryPolicy } from "./retries.js";
+import type { Func, ParamsWithOptions, Result, Return } from "./types.js";
+import * as util from "./util.js";
+
+export class LFI<T> implements Iterable<LFI<T>> {
+  public id: string;
+  public func: Func;
+  public args: any[];
+  public version: number;
+  public retryPolicy: RetryPolicy;
+  public nonRetryableErrors: Array<new (...args: any[]) => Error>;
+  public createReq: PromiseCreateReq;
+
+  constructor(
+    id: string,
+    func: Func,
+    args: any[],
+    version: number,
+    retryPolicy: RetryPolicy,
+    createReq: PromiseCreateReq,
+    nonRetryableErrors: Array<new (...args: any[]) => Error> = [],
+  ) {
+    this.id = id;
+    this.func = func;
+    this.args = args;
+    this.version = version;
+    this.retryPolicy = retryPolicy;
+    this.nonRetryableErrors = nonRetryableErrors;
+    this.createReq = createReq;
+  }
+
+  *[Symbol.iterator](): Generator<LFI<T>, Future<T>, any> {
+    const v = yield this;
+    util.assert(v instanceof Future, "expected future");
+    return v as Future<T>;
+  }
+}
+
+export class LFC<T> implements Iterable<LFC<T>> {
+  public id: string;
+  public func: Func;
+  public args: any[];
+  public version: number;
+  public retryPolicy: RetryPolicy;
+  public nonRetryableErrors: Array<new (...args: any[]) => Error>;
+  public createReq: PromiseCreateReq;
+
+  constructor(
+    id: string,
+    func: Func,
+    args: any[],
+    version: number,
+    retryPolicy: RetryPolicy,
+    createReq: PromiseCreateReq,
+    nonRetryableErrors: Array<new (...args: any[]) => Error> = [],
+  ) {
+    this.id = id;
+    this.func = func;
+    this.args = args;
+    this.version = version;
+    this.retryPolicy = retryPolicy;
+    this.nonRetryableErrors = nonRetryableErrors;
+    this.createReq = createReq;
+  }
+
+  *[Symbol.iterator](): Generator<LFC<T>, T, any> {
+    const v = yield this;
+    util.assert(!(v instanceof Future), "expected value");
+    return v as T;
+  }
+}
+
+export class RFI<T> implements Iterable<RFI<T>> {
+  public id: string;
+  public func: string;
+  public version: number;
+  public createReq: PromiseCreateReq;
+  public mode: "attached" | "detached";
+
+  constructor(
+    id: string,
+    func: string,
+    version: number,
+    createReq: PromiseCreateReq,
+    mode: "attached" | "detached" = "attached",
+  ) {
+    this.id = id;
+    this.func = func;
+    this.version = version;
+    this.createReq = createReq;
+    this.mode = mode;
+  }
+
+  *[Symbol.iterator](): Generator<RFI<T>, Future<T>, any> {
+    const v = yield this;
+    util.assert(v instanceof Future, "expected future");
+    return v as Future<T>;
+  }
+}
+
+export class RFC<T> implements Iterable<RFC<T>> {
+  public id: string;
+  public func: string;
+  public version: number;
+  public createReq: PromiseCreateReq;
+  public mode = "attached" as const;
+
+  constructor(id: string, func: string, version: number, createReq: PromiseCreateReq) {
+    this.id = id;
+    this.func = func;
+    this.version = version;
+    this.createReq = createReq;
+  }
+
+  *[Symbol.iterator](): Generator<RFC<T>, T, any> {
+    const v = yield this;
+    util.assert(!(v instanceof Future), "expected value");
+    return v as T;
+  }
+}
+
+export class DIE implements Iterable<DIE> {
+  public condition: boolean;
+  public error: ResonateError;
+
+  constructor(condition: boolean, error: ResonateError) {
+    this.condition = condition;
+    this.error = error;
+  }
+
+  *[Symbol.iterator](): Generator<DIE, void, any> {
+    yield this;
+    return;
+  }
+}
+
+export class Future<T> implements Iterable<Future<T>> {
+  private _value?: Result<T, any>;
+  private _state: "pending" | "completed";
+  private mode: "attached" | "detached";
+
+  constructor(
+    public id: string,
+    state: "pending" | "completed",
+    value?: Result<T, any>,
+    mode: "attached" | "detached" = "attached",
+  ) {
+    this._value = value;
+    this._state = state;
+    this.mode = mode;
+  }
+
+  get state(): "pending" | "completed" {
+    return this._state;
+  }
+
+  get value(): Result<T, any> | undefined {
+    return this._value;
+  }
+
+  getValue() {
+    if (!this._value) {
+      throw new Error("Future is not ready");
+    }
+
+    if (this._value.kind === "value") {
+      return this._value.value;
+    }
+    throw this._value.error; // Should be unreachable
+  }
+
+  *[Symbol.iterator](): Generator<Future<T>, T, any> {
+    try {
+      const received = yield this;
+      this._value = { kind: "value", value: received };
+      this._state = "completed";
+      return received as T;
+    } catch (e) {
+      this._value = { kind: "error", error: e };
+      this._state = "completed";
+      throw e;
+    }
+  }
+}
+
+export interface Context {
+  readonly id: string;
+  readonly originId: string;
+  readonly prefixId: string;
+  readonly parentId: string;
+  readonly branchId: string;
+  readonly info: { readonly attempt: number; readonly timeout: number; readonly version: number };
+
+  // core four
+  lfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>>;
+  lfi<T>(func: string, ...args: any[]): LFI<T>;
+  lfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFC<Return<F>>;
+  lfc<T>(func: string, ...args: any[]): LFC<T>;
+  rfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
+  rfi<T>(func: string, ...args: any[]): RFI<T>;
+  rfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>>;
+  rfc<T>(func: string, ...args: any[]): RFC<T>;
+
+  // beginRun (lfi alias)
+  beginRun<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>>;
+  beginRun<T>(func: string, ...args: any[]): LFI<T>;
+
+  // run (lfc alias)
+  run<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFC<Return<F>>;
+  run<T>(func: string, ...args: any[]): LFC<T>;
+
+  // beginRpc (rfi alias)
+  beginRpc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
+  beginRpc<T>(func: string, ...args: any[]): RFI<T>;
+
+  // rpc (rfc alias)
+  rpc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>>;
+  rpc<T>(func: string, ...args: any[]): RFC<T>;
+
+  // detached
+  detached<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
+  detached<T>(func: string, ...args: any[]): RFI<T>;
+
+  // sleep
+  sleep(ms: number): RFC<void>;
+  sleep(opts: { for?: number; until?: Date }): RFC<void>;
+  sleep(msOrOpts: number | { for?: number; until?: Date }): RFC<void>;
+
+  // promise
+  promise<T>(): RFI<T>;
+  promise<T>({ timeout, data, tags }: { timeout?: number; data?: any; tags?: { [key: string]: string } }): RFI<T>;
+
+  // die
+
+  // Aborts the execution of the root promise if condition is true
+  panic(condition: boolean, msg?: string): DIE;
+
+  // Aborts the execution of the root promise if condition is false
+  assert(condition: boolean, msg?: string): DIE;
+
+  // getDependency
+  getDependency<T = any>(key: string): T | undefined;
+
+  // options
+  options(opts?: Partial<Omit<Options, "id">>): Options;
+
+  // date
+  date: ResonateDate;
+
+  // random
+  math: ResonateMath;
+}
+
+export interface ResonateDate {
+  now(): LFC<number>;
+}
+
+export interface ResonateMath {
+  random(): LFC<number>;
+}
+
+export class InnerContext implements Context {
+  readonly id: string;
+  readonly info: { attempt: number; readonly timeout: number; readonly version: number };
+  readonly func: string;
+  readonly retryPolicy: RetryPolicy;
+  readonly nonRetryableErrors: Array<new (...args: any[]) => Error>;
+
+  readonly originId: string;
+  readonly prefixId: string;
+  readonly branchId: string;
+  readonly parentId: string;
+  readonly clock: Clock;
+  private registry: Registry;
+  private dependencies: Map<string, any>;
+  private optsBuilder: OptionsBuilder;
+  private seq = 0;
+
+  run = this.lfc.bind(this);
+  rpc = this.rfc.bind(this);
+  beginRun = this.lfi.bind(this);
+  beginRpc = this.rfi.bind(this);
+
+  constructor({
+    id,
+    oId = id,
+    prId = id,
+    bId = id,
+    pId = id,
+    func,
+    clock,
+    registry,
+    dependencies,
+    optsBuilder,
+    timeout,
+    version,
+    retryPolicy,
+    nonRetryableErrors = [],
+  }: {
+    id: string;
+    oId?: string;
+    prId?: string;
+    bId?: string;
+    pId?: string;
+    func: string;
+    clock: Clock;
+    registry: Registry;
+    dependencies: Map<string, any>;
+    optsBuilder: OptionsBuilder;
+    timeout: number;
+    version: number;
+    retryPolicy: RetryPolicy;
+    nonRetryableErrors?: Array<new (...args: any[]) => Error>;
+  }) {
+    this.id = id;
+    this.originId = oId;
+    // The id-generation prefix (resonate:prefix). Set once at the top
+    // (resonate.run/rpc) and propagated down unchanged forever -- through every
+    // child AND across detached re-roots -- never tracking the (diverging)
+    // lineage origin. Bounds recursive detached ids: each level mints
+    // `${prefixId}.d${hash}` off this fixed prefix. Mirrors the Python SDK's
+    // `Context.prefix_id`.
+    this.prefixId = prId;
+    this.branchId = bId;
+    this.parentId = pId;
+    this.func = func;
+    this.clock = clock;
+    this.registry = registry;
+    this.dependencies = dependencies;
+    this.optsBuilder = optsBuilder;
+    this.retryPolicy = retryPolicy;
+    this.nonRetryableErrors = nonRetryableErrors;
+
+    this.info = {
+      attempt: 1,
+      timeout,
+      version,
+    };
+  }
+
+  child({
+    id,
+    func,
+    timeout,
+    version,
+    retryPolicy,
+    nonRetryableErrors = [],
+  }: {
+    id: string;
+    func: string;
+    timeout: number;
+    version: number;
+    retryPolicy: RetryPolicy;
+    nonRetryableErrors?: Array<new (...args: any[]) => Error>;
+  }) {
+    return new InnerContext({
+      id,
+      oId: this.originId,
+      prId: this.prefixId,
+      bId: this.branchId,
+      pId: this.id,
+      func,
+      clock: this.clock,
+      registry: this.registry,
+      dependencies: this.dependencies,
+      optsBuilder: this.optsBuilder,
+      timeout,
+      version,
+      retryPolicy,
+      nonRetryableErrors,
+    });
+  }
+
+  lfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFI<Return<F>>;
+  lfi<T>(func: string, ...args: any[]): LFI<T>;
+  lfi(funcOrName: Func | string, ...args: any[]): LFI<any> {
+    const [argu, opts] = util.splitArgsAndOpts(args, this.options());
+    const registered = this.registry.get(funcOrName, opts.version);
+
+    if (typeof funcOrName === "string" && !registered) {
+      // This results in a dropped task and a value will never be
+      // yielded back to the users coroutine. However, the type
+      // system indicates the value is void. Casting to LFI "tricks"
+      // the type system to indicate the correct type.
+      return new DIE(
+        true,
+        exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName, opts.version),
+      ) as unknown as LFI<any>;
+    }
+
+    const idChanged = opts.id !== undefined;
+    const id = idChanged ? opts.id : this.seqid();
+    this.seq++;
+
+    const func = registered ? registered.func : (funcOrName as Func);
+    const version = registered ? registered.version : 1;
+
+    return new LFI(
+      id,
+      func,
+      argu,
+      version,
+      opts.retryPolicy ?? (util.isGeneratorFunction(func) ? new Never() : new Exponential()),
+      this.localCreateReq({ id, data: { func: func.name, version }, opts, breaksLineage: idChanged }),
+      opts.nonRetryableErrors ?? [],
+    );
+  }
+
+  lfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): LFC<Return<F>>;
+  lfc<T>(func: string, ...args: any[]): LFC<T>;
+  lfc(funcOrName: Func | string, ...args: any[]): LFC<any> {
+    const [argu, opts] = util.splitArgsAndOpts(args, this.options());
+    const registered = this.registry.get(funcOrName, opts.version);
+
+    if (typeof funcOrName === "string" && !registered) {
+      // This results in a dropped task and a value will never be
+      // yielded back to the users coroutine. However, the type
+      // system indicates the value is void. Casting to LFC "tricks"
+      // the type system to indicate the correct type.
+      return new DIE(
+        true,
+        exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName, opts.version),
+      ) as unknown as LFC<any>;
+    }
+
+    const idChanged = opts.id !== undefined;
+    const id = idChanged ? opts.id : this.seqid();
+    this.seq++;
+
+    const func = registered ? registered.func : (funcOrName as Func);
+    const version = registered ? registered.version : 1;
+
+    return new LFC(
+      id,
+      func,
+      argu,
+      version,
+      opts.retryPolicy ?? (util.isGeneratorFunction(func) ? new Never() : new Exponential()),
+      this.localCreateReq({ id, data: { func: func.name, version }, opts, breaksLineage: idChanged }),
+      opts.nonRetryableErrors ?? [],
+    );
+  }
+
+  rfi<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
+  rfi<T>(func: string, ...args: any[]): RFI<T>;
+  rfi(funcOrName: Func | string, ...args: any[]): RFI<any> {
+    const [argu, opts] = util.splitArgsAndOpts(args, this.options());
+    const registered = this.registry.get(funcOrName, opts.version);
+
+    if (typeof funcOrName === "function" && !registered) {
+      // This results in a dropped task and a value will never be
+      // yielded back to the users coroutine. However, the type
+      // system indicates the value is void. Casting to RFI "tricks"
+      // the type system to indicate the correct type.
+      return new DIE(
+        true,
+        exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version),
+      ) as unknown as RFI<any>;
+    }
+
+    const idChanged = opts.id !== undefined;
+    const id = idChanged ? opts.id : this.seqid();
+    this.seq++;
+
+    const func = registered ? registered.name : (funcOrName as string);
+    const version = registered ? registered.version : 1;
+
+    const data = {
+      func: func,
+      args: argu,
+      retry: opts.retryPolicy?.encode(),
+      version: registered ? registered.version : opts.version || 1,
+    };
+
+    return new RFI(id, func, version, this.remoteCreateReq({ id, data, opts, breaksLineage: idChanged }));
+  }
+
+  rfc<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFC<Return<F>>;
+  rfc<T>(func: string, ...args: any[]): RFC<T>;
+  rfc(funcOrName: Func | string, ...args: any[]): RFC<any> {
+    const [argu, opts] = util.splitArgsAndOpts(args, this.options());
+    const registered = this.registry.get(funcOrName, opts.version);
+
+    if (typeof funcOrName === "function" && !registered) {
+      // This results in a dropped task and a value will never be
+      // yielded back to the users coroutine. However, the type
+      // system indicates the value is void. Casting to RFC "tricks"
+      // the type system to indicate the correct type.
+      return new DIE(
+        true,
+        exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version),
+      ) as unknown as RFC<any>;
+    }
+
+    const idChanged = opts.id !== undefined;
+    const id = idChanged ? opts.id : this.seqid();
+    this.seq++;
+
+    const func = registered ? registered.name : (funcOrName as string);
+    const version = registered ? registered.version : 1;
+
+    const data = {
+      func: func,
+      args: argu,
+      retry: opts.retryPolicy?.encode(),
+      version: registered ? registered.version : opts.version || 1,
+    };
+
+    return new RFC(id, func, version, this.remoteCreateReq({ id, data, opts, breaksLineage: idChanged }));
+  }
+
+  /**
+   * Spawns a workflow as a fresh root promise — independent execution lifecycle
+   * and independent replay scope (lineage break, new originId).
+   *
+   * Unlike `ctx.run` / `ctx.rpc`, the spawned workflow is not a child of the
+   * current invocation. It survives parent completion and replays in its own
+   * isolated scope.
+   *
+   * Use when:
+   * - Cross-service fire-and-forget where the parent does not wait for the result.
+   * - Background tasks that should outlive the parent invocation.
+   * - Bounded replay scope for long-running or forever-loop workflows: re-rooting
+   *   per logical unit of work caps the history each replay must walk.
+   *
+   * @example
+   * Forever-loop pattern — recursive tail call from inside the per-iteration function:
+   * ```ts
+   * // Each invocation plays exactly one game, then spawns the next as a fresh
+   * // root and returns. Replay scope is bounded to one game forever.
+   * function* playGame(ctx: Context, n: number) {
+   *   // ...play one game (ctx.run, ctx.sleep, etc.)...
+   *   yield* ctx.detached(playGame, n + 1); // last yield, then return
+   * }
+   * ```
+   *
+   * The split must happen *inside* the per-iteration function. A parent loop
+   * that calls `ctx.detached` repeatedly — `for (;;) yield* ctx.detached(work, n)`
+   * — still records each call in the parent's history via its sequence counter,
+   * reproducing the bug on the parent.
+   *
+   * Without this split, a forever loop in a single durable invocation
+   * accumulates child promises on every iteration. On cold-start, each replay
+   * re-walks the full history. Once replay duration exceeds the acquired-task
+   * lease, the server reassigns the task mid-execution (error code 1199) and
+   * cadence collapses.
+   *
+   * @returns An {@link RFI} handle. Optionally `yield*` it to await completion;
+   *   otherwise the spawned workflow runs independently of the caller.
+   */
+  detached<F extends Func>(func: F, ...args: ParamsWithOptions<F>): RFI<Return<F>>;
+  detached<T>(func: string, ...args: any[]): RFI<T>;
+  detached(funcOrName: Func | string, ...args: any[]): RFI<any> {
+    const [argu, opts] = util.splitArgsAndOpts(args, this.options());
+    const registered = this.registry.get(funcOrName, opts.version);
+
+    if (typeof funcOrName === "function" && !registered) {
+      // This results in a dropped task and a value will never be
+      // yielded back to the users coroutine. However, the type
+      // system indicates the value is void. Casting to RFI "tricks"
+      // the type system to indicate the correct type.
+      return new DIE(
+        true,
+        exceptions.REGISTRY_FUNCTION_NOT_REGISTERED(funcOrName.name, opts.version),
+      ) as unknown as RFI<any>;
+    }
+
+    const idChanged = opts.id !== undefined;
+
+    const id = idChanged ? opts.id : util.detachedId(this.prefixId, this.seqid());
+    this.seq++;
+
+    const func = registered ? registered.name : (funcOrName as string);
+    const version = registered ? registered.version : 1;
+
+    const data = {
+      func: func,
+      args: argu,
+      retry: opts.retryPolicy?.encode(),
+      version: registered ? registered.version : opts.version || 1,
+    };
+
+    return new RFI(
+      id,
+      func,
+      version,
+      // detached ALWAYS breaks the origin lineage (breaksLineage: true): it is
+      // fire-and-forget and runs as its own root, so resonate:origin must equal
+      // its own id (origin == id == branch), starting a fresh lineage. Recursive
+      // detached ids stay bounded NOT via origin but via resonate:prefix, which
+      // is propagated down unchanged (set in remoteCreateReq = this.prefixId) and
+      // is what `util.detachedId(this.prefixId, ...)` roots the id on. So each
+      // level mints `${prefix}.d${hash}` off the same fixed prefix instead of
+      // off its own grown id. Mirrors the Python SDK (detached origin = its id,
+      // prefix carried forward).
+      this.remoteCreateReq({ id, data, opts, maxTimeout: Number.MAX_SAFE_INTEGER, breaksLineage: true }),
+      "detached",
+    );
+  }
+
+  promise<T>({ timeout, data, tags }: { timeout?: number; data?: any; tags?: { [key: string]: string } } = {}): RFI<T> {
+    const id = this.seqid();
+    this.seq++;
+
+    return new RFI(id, "unknown", 1, this.latentCreateOpts({ id, timeout, data, tags, breaksLineage: false }));
+  }
+
+  sleep(msOrOpts: number | { for?: number; until?: Date }): RFC<void> {
+    let until: number;
+
+    if (typeof msOrOpts === "number") {
+      until = this.clock.now() + msOrOpts;
+    } else if (msOrOpts.for != null) {
+      until = this.clock.now() + msOrOpts.for;
+    } else if (msOrOpts.until != null) {
+      until = msOrOpts.until.getTime();
+    } else {
+      until = 0;
+    }
+
+    const id = this.seqid();
+    this.seq++;
+
+    return new RFC(id, "sleep", 1, this.sleepCreateOpts({ id, time: until }));
+  }
+
+  panic(condition: boolean, msg?: string): DIE {
+    const src = util.getCallerInfo();
+    return new DIE(condition, exceptions.PANIC(src, msg));
+  }
+
+  assert(condition: boolean, msg?: string): DIE {
+    return this.panic(!condition, msg);
+  }
+
+  getDependency<T = any>(name: string): T | undefined {
+    return this.dependencies.get(name);
+  }
+
+  options(
+    opts: Partial<Pick<Options, "tags" | "target" | "timeout" | "version" | "retryPolicy" | "nonRetryableErrors">> = {},
+  ): Options {
+    return this.optsBuilder.build(opts);
+  }
+
+  readonly date = {
+    now: () => this.lfc((this.getDependency<DateConstructor>("resonate:date") ?? Date).now),
+  };
+
+  readonly math = {
+    random: () => this.lfc((this.getDependency<Math>("resonate:math") ?? Math).random),
+  };
+
+  localCreateReq({
+    id,
+    data,
+    opts,
+    breaksLineage,
+  }: {
+    id: string;
+    data: any;
+    opts: Options;
+    breaksLineage: boolean;
+  }): PromiseCreateReq {
+    // timeout cannot be greater than parent timeout
+    const timeoutAt = Math.min(this.clock.now() + opts.timeout, this.info.timeout);
+
+    return {
+      kind: "promise.create",
+      head: { corrId: randomUUID(), version: util.VERSION },
+      data: {
+        id,
+        timeoutAt,
+        param: { headers: {}, data },
+        tags: {
+          "resonate:scope": "local",
+          "resonate:branch": this.branchId,
+          "resonate:parent": this.id,
+          "resonate:origin": breaksLineage ? id : this.originId,
+          // Prefix is set at the top and propagates down unchanged forever,
+          // independent of origin (which detached/explicit-id may break).
+          "resonate:prefix": this.prefixId,
+          ...opts.tags,
+        },
+      },
+    };
+  }
+
+  remoteCreateReq({
+    id,
+    data,
+    opts,
+    breaksLineage,
+    maxTimeout = this.info.timeout,
+  }: {
+    id: string;
+    data: any;
+    opts: Options;
+    breaksLineage: boolean;
+    maxTimeout?: number;
+  }): PromiseCreateReq {
+    // timeout cannot be greater than parent timeout (unless detached)
+    const timeoutAt = Math.min(this.clock.now() + opts.timeout, maxTimeout);
+
+    return {
+      kind: "promise.create",
+      head: { corrId: randomUUID(), version: util.VERSION },
+      data: {
+        id,
+        timeoutAt,
+        tags: {
+          "resonate:scope": "global",
+          "resonate:target": opts.target,
+          "resonate:branch": id,
+          "resonate:parent": this.id,
+          "resonate:origin": breaksLineage ? id : this.originId,
+          // Prefix is set at the top and propagates down unchanged forever,
+          // independent of origin (which detached/explicit-id may break).
+          "resonate:prefix": this.prefixId,
+          ...opts.tags,
+        },
+        param: { headers: {}, data },
+      },
+    };
+  }
+
+  latentCreateOpts({
+    id,
+    timeout,
+    data,
+    tags,
+    breaksLineage,
+  }: {
+    id: string;
+    timeout?: number;
+    data: any;
+    tags?: { [key: string]: string };
+    breaksLineage: boolean;
+  }): PromiseCreateReq {
+    // timeout cannot be greater than parent timeout
+    const timeoutAt = Math.min(this.clock.now() + (timeout ?? 24 * util.HOUR), this.info.timeout);
+
+    return {
+      kind: "promise.create",
+      head: { corrId: randomUUID(), version: util.VERSION },
+      data: {
+        id,
+        timeoutAt,
+        param: { data, headers: {} },
+        tags: {
+          "resonate:scope": "global",
+          "resonate:branch": id,
+          "resonate:parent": this.id,
+          "resonate:origin": breaksLineage ? id : this.originId,
+          // Prefix is set at the top and propagates down unchanged forever,
+          // independent of origin (which detached/explicit-id may break).
+          "resonate:prefix": this.prefixId,
+          ...tags,
+        },
+      },
+    };
+  }
+
+  sleepCreateOpts({ id, time }: { id: string; time: number }): PromiseCreateReq {
+    const tags = {
+      "resonate:scope": "global",
+      "resonate:branch": id,
+      "resonate:parent": this.id,
+      "resonate:origin": this.originId,
+      // Prefix is set at the top and propagates down unchanged forever.
+      "resonate:prefix": this.prefixId,
+      "resonate:timer": "true",
+    };
+
+    // timeout cannot be greater than parent timeout
+    const timeoutAt = Math.min(time, this.info.timeout);
+
+    return {
+      kind: "promise.create",
+      head: { corrId: randomUUID(), version: util.VERSION },
+      data: {
+        id,
+        timeoutAt,
+        param: { headers: {}, data: "" },
+        tags,
+      },
+    };
+  }
+
+  seqid(): string {
+    return `${this.id}.${this.seq}`;
+  }
+}
