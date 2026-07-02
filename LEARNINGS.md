@@ -54,3 +54,11 @@ channel advertises the dependency; callers touch one service.
 - Keep native-SDK behavioral quirks (truthiness coercions, `Object.assign`
   marker copying) inside the Schema transformation functions, documented with
   a comment pointing at the native source.
+
+## 6. No factory helpers for schema shapes
+
+Local functions that stamp out schema structs (`requestEnvelope(kind, data)`,
+`responseEnvelope(...)`, `responseHead(...)`) were rejected as useless
+indirection. Write each schema out literally, inline. Shared _values_ (a named
+`SuccessHead`/`ErrorHead` struct reused by reference) are fine; shared
+_functions_ that build schemas are not.

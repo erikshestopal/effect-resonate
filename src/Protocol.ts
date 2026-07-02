@@ -475,147 +475,178 @@ export const RequestHead = Schema.Struct({
 });
 export type RequestHead = typeof RequestHead.Type;
 
-const responseHead = <S extends Schema.Top>(status: S) =>
-  Schema.Struct({
-    corrId: CorrelationId,
-    status,
-    version: Schema.String,
-  });
+const SuccessHead = Schema.Struct({ corrId: CorrelationId, status: Schema.Literal(200), version: Schema.String });
+
+/** `task.suspend`'s `300` fast path. */
+const RedirectHead = Schema.Struct({ corrId: CorrelationId, status: Schema.Literal(300), version: Schema.String });
+
+/** Non-2xx protocol statuses carry a string message as `data`. */
+const ErrorHead = Schema.Struct({ corrId: CorrelationId, status: ErrorStatus, version: Schema.String });
 
 // -----------------------------------------------------------------------------
 // Requests
 // -----------------------------------------------------------------------------
 
-const requestEnvelope = <Kind extends string, Data extends Schema.Top>(kind: Kind, data: Data) =>
-  Schema.Struct({
-    kind: Schema.tag(kind),
-    head: RequestHead,
-    data,
-  });
+export const PromiseGetRequest = Schema.Struct({
+  kind: Schema.tag("promise.get"),
+  head: RequestHead,
+  data: Schema.Struct({ id: PromiseId }),
+});
 
-export const PromiseGetRequest = requestEnvelope("promise.get", Schema.Struct({ id: PromiseId }));
-
-export const PromiseCreateRequest = requestEnvelope(
-  "promise.create",
-  Schema.Struct({
+export const PromiseCreateRequest = Schema.Struct({
+  kind: Schema.tag("promise.create"),
+  head: RequestHead,
+  data: Schema.Struct({
     id: PromiseId,
     timeoutAt: Timestamp,
     param: Value,
     tags: TagsFromWire,
   }),
-);
+});
 
-export const PromiseSettleRequest = requestEnvelope(
-  "promise.settle",
-  Schema.Struct({
+export const PromiseSettleRequest = Schema.Struct({
+  kind: Schema.tag("promise.settle"),
+  head: RequestHead,
+  data: Schema.Struct({
     id: PromiseId,
     state: Schema.Literals(["resolved", "rejected", "rejected_canceled"]),
     value: Value,
   }),
-);
+});
 
-export const PromiseRegisterCallbackRequest = requestEnvelope(
-  "promise.register_callback",
-  Schema.Struct({
+export const PromiseRegisterCallbackRequest = Schema.Struct({
+  kind: Schema.tag("promise.register_callback"),
+  head: RequestHead,
+  data: Schema.Struct({
     awaited: PromiseId,
     awaiter: PromiseId,
   }),
-);
+});
 
-export const PromiseRegisterListenerRequest = requestEnvelope(
-  "promise.register_listener",
-  Schema.Struct({
+export const PromiseRegisterListenerRequest = Schema.Struct({
+  kind: Schema.tag("promise.register_listener"),
+  head: RequestHead,
+  data: Schema.Struct({
     awaited: PromiseId,
     address: TargetAddressFromString,
   }),
-);
+});
 
-export const PromiseSearchRequest = requestEnvelope(
-  "promise.search",
-  Schema.Struct({
+export const PromiseSearchRequest = Schema.Struct({
+  kind: Schema.tag("promise.search"),
+  head: RequestHead,
+  data: Schema.Struct({
     state: Schema.optionalKey(PromiseState),
     tags: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
     limit: Schema.optionalKey(Schema.Number),
     cursor: Schema.optionalKey(Schema.String),
   }),
-);
+});
 
-export const TaskGetRequest = requestEnvelope("task.get", Schema.Struct({ id: TaskId }));
+export const TaskGetRequest = Schema.Struct({
+  kind: Schema.tag("task.get"),
+  head: RequestHead,
+  data: Schema.Struct({ id: TaskId }),
+});
 
-export const TaskCreateRequest = requestEnvelope(
-  "task.create",
-  Schema.Struct({
+export const TaskCreateRequest = Schema.Struct({
+  kind: Schema.tag("task.create"),
+  head: RequestHead,
+  data: Schema.Struct({
     pid: ProcessId,
     ttl: Ttl,
     action: PromiseCreateRequest,
   }),
-);
+});
 
-export const TaskAcquireRequest = requestEnvelope(
-  "task.acquire",
-  Schema.Struct({
+export const TaskAcquireRequest = Schema.Struct({
+  kind: Schema.tag("task.acquire"),
+  head: RequestHead,
+  data: Schema.Struct({
     id: TaskId,
     version: TaskVersion,
     pid: ProcessId,
     ttl: Ttl,
   }),
-);
+});
 
-export const TaskReleaseRequest = requestEnvelope("task.release", Schema.Struct({ id: TaskId, version: TaskVersion }));
+export const TaskReleaseRequest = Schema.Struct({
+  kind: Schema.tag("task.release"),
+  head: RequestHead,
+  data: Schema.Struct({ id: TaskId, version: TaskVersion }),
+});
 
-export const TaskSuspendRequest = requestEnvelope(
-  "task.suspend",
-  Schema.Struct({
+export const TaskSuspendRequest = Schema.Struct({
+  kind: Schema.tag("task.suspend"),
+  head: RequestHead,
+  data: Schema.Struct({
     id: TaskId,
     version: TaskVersion,
     actions: Schema.Array(PromiseRegisterCallbackRequest),
   }),
-);
+});
 
-export const TaskHaltRequest = requestEnvelope("task.halt", Schema.Struct({ id: TaskId }));
+export const TaskHaltRequest = Schema.Struct({
+  kind: Schema.tag("task.halt"),
+  head: RequestHead,
+  data: Schema.Struct({ id: TaskId }),
+});
 
-export const TaskContinueRequest = requestEnvelope("task.continue", Schema.Struct({ id: TaskId }));
+export const TaskContinueRequest = Schema.Struct({
+  kind: Schema.tag("task.continue"),
+  head: RequestHead,
+  data: Schema.Struct({ id: TaskId }),
+});
 
-export const TaskFulfillRequest = requestEnvelope(
-  "task.fulfill",
-  Schema.Struct({
+export const TaskFulfillRequest = Schema.Struct({
+  kind: Schema.tag("task.fulfill"),
+  head: RequestHead,
+  data: Schema.Struct({
     id: TaskId,
     version: TaskVersion,
     action: PromiseSettleRequest,
   }),
-);
+});
 
-export const TaskFenceRequest = requestEnvelope(
-  "task.fence",
-  Schema.Struct({
+export const TaskFenceRequest = Schema.Struct({
+  kind: Schema.tag("task.fence"),
+  head: RequestHead,
+  data: Schema.Struct({
     id: TaskId,
     version: TaskVersion,
     action: Schema.Union([PromiseCreateRequest, PromiseSettleRequest]),
   }),
-);
+});
 
-export const TaskHeartbeatRequest = requestEnvelope(
-  "task.heartbeat",
-  Schema.Struct({
+export const TaskHeartbeatRequest = Schema.Struct({
+  kind: Schema.tag("task.heartbeat"),
+  head: RequestHead,
+  data: Schema.Struct({
     pid: ProcessId,
     tasks: Schema.Array(Schema.Struct({ id: TaskId, version: TaskVersion })),
   }),
-);
+});
 
-export const TaskSearchRequest = requestEnvelope(
-  "task.search",
-  Schema.Struct({
+export const TaskSearchRequest = Schema.Struct({
+  kind: Schema.tag("task.search"),
+  head: RequestHead,
+  data: Schema.Struct({
     state: Schema.optionalKey(TaskState),
     limit: Schema.optionalKey(Schema.Number),
     cursor: Schema.optionalKey(Schema.String),
   }),
-);
+});
 
-export const ScheduleGetRequest = requestEnvelope("schedule.get", Schema.Struct({ id: ScheduleId }));
+export const ScheduleGetRequest = Schema.Struct({
+  kind: Schema.tag("schedule.get"),
+  head: RequestHead,
+  data: Schema.Struct({ id: ScheduleId }),
+});
 
-export const ScheduleCreateRequest = requestEnvelope(
-  "schedule.create",
-  Schema.Struct({
+export const ScheduleCreateRequest = Schema.Struct({
+  kind: Schema.tag("schedule.create"),
+  head: RequestHead,
+  data: Schema.Struct({
     id: ScheduleId,
     cron: Schema.String,
     promiseId: Schema.NonEmptyString,
@@ -623,26 +654,51 @@ export const ScheduleCreateRequest = requestEnvelope(
     promiseParam: Value,
     promiseTags: TagsFromWire,
   }),
-);
+});
 
-export const ScheduleDeleteRequest = requestEnvelope("schedule.delete", Schema.Struct({ id: ScheduleId }));
+export const ScheduleDeleteRequest = Schema.Struct({
+  kind: Schema.tag("schedule.delete"),
+  head: RequestHead,
+  data: Schema.Struct({ id: ScheduleId }),
+});
 
-export const ScheduleSearchRequest = requestEnvelope(
-  "schedule.search",
-  Schema.Struct({
+export const ScheduleSearchRequest = Schema.Struct({
+  kind: Schema.tag("schedule.search"),
+  head: RequestHead,
+  data: Schema.Struct({
     tags: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
     limit: Schema.optionalKey(Schema.Number),
     cursor: Schema.optionalKey(Schema.String),
   }),
-);
+});
 
 const EmptyData = Schema.Struct({});
 
-export const DebugStartRequest = requestEnvelope("debug.start", EmptyData);
-export const DebugResetRequest = requestEnvelope("debug.reset", EmptyData);
-export const DebugTickRequest = requestEnvelope("debug.tick", Schema.Struct({ time: Timestamp }));
-export const DebugSnapRequest = requestEnvelope("debug.snap", EmptyData);
-export const DebugStopRequest = requestEnvelope("debug.stop", EmptyData);
+export const DebugStartRequest = Schema.Struct({
+  kind: Schema.tag("debug.start"),
+  head: RequestHead,
+  data: EmptyData,
+});
+export const DebugResetRequest = Schema.Struct({
+  kind: Schema.tag("debug.reset"),
+  head: RequestHead,
+  data: EmptyData,
+});
+export const DebugTickRequest = Schema.Struct({
+  kind: Schema.tag("debug.tick"),
+  head: RequestHead,
+  data: Schema.Struct({ time: Timestamp }),
+});
+export const DebugSnapRequest = Schema.Struct({
+  kind: Schema.tag("debug.snap"),
+  head: RequestHead,
+  data: EmptyData,
+});
+export const DebugStopRequest = Schema.Struct({
+  kind: Schema.tag("debug.stop"),
+  head: RequestHead,
+  data: EmptyData,
+});
 
 export const RequestSchemas = {
   "promise.get": PromiseGetRequest,
@@ -710,107 +766,299 @@ export const RequestFromWire = Schema.Union([
 // Responses
 // -----------------------------------------------------------------------------
 
-const successEnvelope = <Kind extends string, S extends Schema.Top, Data extends Schema.Top>(
-  kind: Kind,
-  status: S,
-  data: Data,
-) =>
-  Schema.Struct({
-    kind: Schema.tag(kind),
-    head: responseHead(status),
-    data,
-  });
-
-/** Non-2xx protocol statuses carry a string message as `data`. */
-const errorEnvelope = <Kind extends string>(kind: Kind) =>
-  Schema.Struct({
-    kind: Schema.tag(kind),
-    head: responseHead(ErrorStatus),
-    data: Schema.String,
-  });
-
-const responseEnvelope = <Kind extends string, Data extends Schema.Top>(kind: Kind, data: Data) =>
-  Schema.Union([successEnvelope(kind, Schema.Literal(200), data), errorEnvelope(kind)]);
-
 const PromiseData = Schema.Struct({ promise: PromiseRecordFromWire });
 const Preload = Schema.Array(PromiseRecordFromWire);
 
-export const PromiseGetResponse = responseEnvelope("promise.get", PromiseData);
-export const PromiseCreateResponse = responseEnvelope("promise.create", PromiseData);
-export const PromiseSettleResponse = responseEnvelope("promise.settle", PromiseData);
-export const PromiseRegisterCallbackResponse = responseEnvelope("promise.register_callback", PromiseData);
-export const PromiseRegisterListenerResponse = responseEnvelope("promise.register_listener", PromiseData);
-export const PromiseSearchResponse = responseEnvelope(
-  "promise.search",
+export const PromiseGetResponse = Schema.Union([
   Schema.Struct({
-    promises: Schema.Array(PromiseRecordFromWire),
-    cursor: Schema.optionalKey(Schema.String),
+    kind: Schema.tag("promise.get"),
+    head: SuccessHead,
+    data: PromiseData,
   }),
-);
-
-export const TaskGetResponse = responseEnvelope("task.get", Schema.Struct({ task: TaskRecordFromWire }));
-
-export const TaskCreateResponse = responseEnvelope(
-  "task.create",
   Schema.Struct({
-    task: Schema.optionalKey(TaskRecordFromWire),
-    promise: PromiseRecordFromWire,
-    preload: Preload,
+    kind: Schema.tag("promise.get"),
+    head: ErrorHead,
+    data: Schema.String,
   }),
-);
-
-export const TaskAcquireResponse = responseEnvelope(
-  "task.acquire",
+]);
+export const PromiseCreateResponse = Schema.Union([
   Schema.Struct({
-    task: TaskRecordFromWire,
-    promise: PromiseRecordFromWire,
-    preload: Preload,
+    kind: Schema.tag("promise.create"),
+    head: SuccessHead,
+    data: PromiseData,
   }),
-);
+  Schema.Struct({
+    kind: Schema.tag("promise.create"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+export const PromiseSettleResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("promise.settle"),
+    head: SuccessHead,
+    data: PromiseData,
+  }),
+  Schema.Struct({
+    kind: Schema.tag("promise.settle"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+export const PromiseRegisterCallbackResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("promise.register_callback"),
+    head: SuccessHead,
+    data: PromiseData,
+  }),
+  Schema.Struct({
+    kind: Schema.tag("promise.register_callback"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+export const PromiseRegisterListenerResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("promise.register_listener"),
+    head: SuccessHead,
+    data: PromiseData,
+  }),
+  Schema.Struct({
+    kind: Schema.tag("promise.register_listener"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+export const PromiseSearchResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("promise.search"),
+    head: SuccessHead,
+    data: Schema.Struct({
+      promises: Schema.Array(PromiseRecordFromWire),
+      cursor: Schema.optionalKey(Schema.String),
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.tag("promise.search"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
 
-export const TaskReleaseResponse = responseEnvelope("task.release", EmptyData);
+export const TaskGetResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("task.get"),
+    head: SuccessHead,
+    data: Schema.Struct({ task: TaskRecordFromWire }),
+  }),
+  Schema.Struct({
+    kind: Schema.tag("task.get"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+
+export const TaskCreateResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("task.create"),
+    head: SuccessHead,
+    data: Schema.Struct({
+      task: Schema.optionalKey(TaskRecordFromWire),
+      promise: PromiseRecordFromWire,
+      preload: Preload,
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.tag("task.create"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+
+export const TaskAcquireResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("task.acquire"),
+    head: SuccessHead,
+    data: Schema.Struct({
+      task: TaskRecordFromWire,
+      promise: PromiseRecordFromWire,
+      preload: Preload,
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.tag("task.acquire"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+
+export const TaskReleaseResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("task.release"),
+    head: SuccessHead,
+    data: EmptyData,
+  }),
+  Schema.Struct({
+    kind: Schema.tag("task.release"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
 
 /** `task.suspend` has a `300` fast path carrying already-settled awaited promises. */
 export const TaskSuspendResponse = Schema.Union([
-  successEnvelope("task.suspend", Schema.Literal(200), EmptyData),
-  successEnvelope("task.suspend", Schema.Literal(300), Schema.Struct({ preload: Preload })),
-  errorEnvelope("task.suspend"),
+  Schema.Struct({
+    kind: Schema.tag("task.suspend"),
+    head: SuccessHead,
+    data: EmptyData,
+  }),
+  Schema.Struct({
+    kind: Schema.tag("task.suspend"),
+    head: RedirectHead,
+    data: Schema.Struct({ preload: Preload }),
+  }),
+  Schema.Struct({
+    kind: Schema.tag("task.suspend"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
 ]);
 
-export const TaskHaltResponse = responseEnvelope("task.halt", EmptyData);
-export const TaskContinueResponse = responseEnvelope("task.continue", EmptyData);
-export const TaskFulfillResponse = responseEnvelope("task.fulfill", PromiseData);
-
-export const TaskFenceResponse = responseEnvelope(
-  "task.fence",
+export const TaskHaltResponse = Schema.Union([
   Schema.Struct({
-    action: Schema.Union([PromiseCreateResponse, PromiseSettleResponse]),
-    preload: Preload,
+    kind: Schema.tag("task.halt"),
+    head: SuccessHead,
+    data: EmptyData,
   }),
-);
-
-export const TaskHeartbeatResponse = responseEnvelope("task.heartbeat", EmptyData);
-
-export const TaskSearchResponse = responseEnvelope(
-  "task.search",
   Schema.Struct({
-    tasks: Schema.Array(TaskRecordFromWire),
-    cursor: Schema.optionalKey(Schema.String),
+    kind: Schema.tag("task.halt"),
+    head: ErrorHead,
+    data: Schema.String,
   }),
-);
+]);
+export const TaskContinueResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("task.continue"),
+    head: SuccessHead,
+    data: EmptyData,
+  }),
+  Schema.Struct({
+    kind: Schema.tag("task.continue"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+export const TaskFulfillResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("task.fulfill"),
+    head: SuccessHead,
+    data: PromiseData,
+  }),
+  Schema.Struct({
+    kind: Schema.tag("task.fulfill"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+
+export const TaskFenceResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("task.fence"),
+    head: SuccessHead,
+    data: Schema.Struct({
+      action: Schema.Union([PromiseCreateResponse, PromiseSettleResponse]),
+      preload: Preload,
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.tag("task.fence"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+
+export const TaskHeartbeatResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("task.heartbeat"),
+    head: SuccessHead,
+    data: EmptyData,
+  }),
+  Schema.Struct({
+    kind: Schema.tag("task.heartbeat"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+
+export const TaskSearchResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("task.search"),
+    head: SuccessHead,
+    data: Schema.Struct({
+      tasks: Schema.Array(TaskRecordFromWire),
+      cursor: Schema.optionalKey(Schema.String),
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.tag("task.search"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
 
 const ScheduleData = Schema.Struct({ schedule: ScheduleRecord });
 
-export const ScheduleGetResponse = responseEnvelope("schedule.get", ScheduleData);
-export const ScheduleCreateResponse = responseEnvelope("schedule.create", ScheduleData);
-export const ScheduleDeleteResponse = responseEnvelope("schedule.delete", EmptyData);
-export const ScheduleSearchResponse = responseEnvelope(
-  "schedule.search",
+export const ScheduleGetResponse = Schema.Union([
   Schema.Struct({
-    schedules: Schema.Array(ScheduleRecord),
-    cursor: Schema.optionalKey(Schema.String),
+    kind: Schema.tag("schedule.get"),
+    head: SuccessHead,
+    data: ScheduleData,
   }),
-);
+  Schema.Struct({
+    kind: Schema.tag("schedule.get"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+export const ScheduleCreateResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("schedule.create"),
+    head: SuccessHead,
+    data: ScheduleData,
+  }),
+  Schema.Struct({
+    kind: Schema.tag("schedule.create"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+export const ScheduleDeleteResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("schedule.delete"),
+    head: SuccessHead,
+    data: EmptyData,
+  }),
+  Schema.Struct({
+    kind: Schema.tag("schedule.delete"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+export const ScheduleSearchResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("schedule.search"),
+    head: SuccessHead,
+    data: Schema.Struct({
+      schedules: Schema.Array(ScheduleRecord),
+      cursor: Schema.optionalKey(Schema.String),
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.tag("schedule.search"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
 
 export const DebugTickAction = Schema.Union([
   Schema.Struct({
@@ -831,22 +1079,74 @@ export const DebugTickAction = Schema.Union([
 ]);
 export type DebugTickAction = typeof DebugTickAction.Type;
 
-export const DebugStartResponse = responseEnvelope("debug.start", EmptyData);
-export const DebugResetResponse = responseEnvelope("debug.reset", EmptyData);
-export const DebugTickResponse = responseEnvelope("debug.tick", Schema.Array(DebugTickAction));
-export const DebugSnapResponse = responseEnvelope(
-  "debug.snap",
+export const DebugStartResponse = Schema.Union([
   Schema.Struct({
-    promises: Schema.Array(PromiseRecordFromWire),
-    promiseTimeouts: Schema.Array(Schema.Struct({ id: PromiseId, timeout: Timestamp })),
-    callbacks: Schema.Array(Schema.Struct({ awaiter: PromiseId, awaited: PromiseId })),
-    listeners: Schema.optionalKey(Schema.Array(Schema.Struct({ id: PromiseId, address: Schema.String }))),
-    tasks: Schema.Array(TaskRecordFromWire),
-    taskTimeouts: Schema.Array(Schema.Struct({ id: TaskId, type: Schema.Number, timeout: Timestamp })),
-    messages: Schema.Array(Schema.Struct({ address: Schema.String, message: Message })),
+    kind: Schema.tag("debug.start"),
+    head: SuccessHead,
+    data: EmptyData,
   }),
-);
-export const DebugStopResponse = responseEnvelope("debug.stop", EmptyData);
+  Schema.Struct({
+    kind: Schema.tag("debug.start"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+export const DebugResetResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("debug.reset"),
+    head: SuccessHead,
+    data: EmptyData,
+  }),
+  Schema.Struct({
+    kind: Schema.tag("debug.reset"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+export const DebugTickResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("debug.tick"),
+    head: SuccessHead,
+    data: Schema.Array(DebugTickAction),
+  }),
+  Schema.Struct({
+    kind: Schema.tag("debug.tick"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+export const DebugSnapResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("debug.snap"),
+    head: SuccessHead,
+    data: Schema.Struct({
+      promises: Schema.Array(PromiseRecordFromWire),
+      promiseTimeouts: Schema.Array(Schema.Struct({ id: PromiseId, timeout: Timestamp })),
+      callbacks: Schema.Array(Schema.Struct({ awaiter: PromiseId, awaited: PromiseId })),
+      listeners: Schema.optionalKey(Schema.Array(Schema.Struct({ id: PromiseId, address: Schema.String }))),
+      tasks: Schema.Array(TaskRecordFromWire),
+      taskTimeouts: Schema.Array(Schema.Struct({ id: TaskId, type: Schema.Number, timeout: Timestamp })),
+      messages: Schema.Array(Schema.Struct({ address: Schema.String, message: Message })),
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.tag("debug.snap"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
+export const DebugStopResponse = Schema.Union([
+  Schema.Struct({
+    kind: Schema.tag("debug.stop"),
+    head: SuccessHead,
+    data: EmptyData,
+  }),
+  Schema.Struct({
+    kind: Schema.tag("debug.stop"),
+    head: ErrorHead,
+    data: Schema.String,
+  }),
+]);
 
 export const ResponseSchemas = {
   "promise.get": PromiseGetResponse,
