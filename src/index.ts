@@ -1,1 +1,17 @@
-export {};
+/**
+ * Main entry point for `effect-resonate`.
+ *
+ * See `docs/DESIGN.md` §3 (Architecture) for the module layout.
+ */
+export * as Codec from "./Codec.ts";
+export * as DurablePromise from "./DurablePromise.ts";
+export * as Errors from "./Errors.ts";
+export * as Network from "./Network.ts";
+export * as NetworkHttp from "./NetworkHttp.ts";
+export * as NetworkLocal from "./NetworkLocal.ts";
+export * as Protocol from "./Protocol.ts";
+export * as Resonate from "./Resonate.ts";
+export * as ResonateContext from "./ResonateContext.ts";
+export * as ResonateSchedule from "./Schedule.ts";
+export * as Task from "./Task.ts";
+export * as Worker from "./Worker.ts";

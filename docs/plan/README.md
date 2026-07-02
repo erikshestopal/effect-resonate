@@ -129,7 +129,7 @@ Statuses: `todo` | `in-progress` | `done` | `blocked` (blocked requires a note).
 
 | #   | Spec                                                           | Status | Notes |
 | --- | -------------------------------------------------------------- | ------ | ----- |
-| 00  | [scaffold](specs/00-scaffold.md)                               | todo   |       |
+| 00  | [scaffold](specs/00-scaffold.md)                               | done   | Module skeleton per DESIGN.md §3, `./testing` subpath, `it.effect` smoke test; `vp run check` green. |
 | 01  | [protocol-model](specs/01-protocol-model.md)                   | todo   |       |
 | 02  | [codec](specs/02-codec.md)                                     | todo   |       |
 | 03  | [network-interface](specs/03-network-interface.md)             | todo   |       |
