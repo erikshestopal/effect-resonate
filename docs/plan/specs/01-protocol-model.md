@@ -66,3 +66,28 @@ else type-checks against.
 ## Acceptance
 
 - `vp run check` green; CONFORMANCE.md rows for tag vocabulary marked partial (types exist).
+
+## Notes (implementation decisions)
+
+- **Strict/lenient split**: `PromiseSettled.settledAt` and `TaskAcquired.pid/ttl`
+  are `Option`s at the field level; the strict `PromiseRecord`/`TaskRecord`
+  schemas add a structural `.check(...)` requiring them (`settledAt` on settled,
+  lease on acquired), while the `*FromWire` schemas are the same unions without
+  the check — so wire decode never rejects a server-accepted record, and strict
+  construct fails exactly as the spec's tests demand. Union membership matches
+  DESIGN §3.2 exactly (no extra "raw" members).
+- **Tags** carry a third field `unrecognized: Record<string,string>` (beyond
+  DESIGN's `reserved`/`user` sketch): `resonate:`-prefixed entries whose key is
+  unknown or whose value fails its typed domain are preserved raw there and
+  re-emitted verbatim on encode — this is the mechanism satisfying "junk reserved
+  value survives decode". "User tags can't override system tags" lives in the
+  type (`UserTagKey` brand), per DESIGN; wire decode routes such keys to
+  `unrecognized`, never `user`.
+- **Response error variants** are modeled per kind as `status ∈ {400..501}` with
+  string `data` (one generic error envelope) rather than enumerating the native
+  per-kind status subsets — more lenient, identical wire behavior; protocol
+  errors map by status in spec 08. `task.suspend` keeps its dedicated `300 +
+preload` success variant; `task.create`'s optional `task`, `task.fence`'s
+  nested response action, and the `debug.*` shapes follow native exactly.
+- Search (`promise/task/schedule.search`) and `debug.*` kinds are included
+  (needed by specs 09/22) even though DESIGN §2 lists only the core 18.
