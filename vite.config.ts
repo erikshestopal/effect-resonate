@@ -17,14 +17,11 @@ export default defineConfig({
     tasks: {
       "check:all": {
         command: "echo Checks passed",
-        dependsOn: ["check:fmt", "check:lint", "check:ast-grep", "check:test", "check:typecheck"],
+        dependsOn: ["check:lint", "check:ast-grep", "check:test", "check:typecheck"],
         cache: false,
       },
-      "check:fmt": {
-        command: "vp fmt",
-      },
       "check:lint": {
-        command: "vp lint --type-aware --type-check --promise-plugin",
+        command: "vp check --fix",
       },
       "check:ast-grep": {
         command: "sg scan src test",

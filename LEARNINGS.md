@@ -62,3 +62,9 @@ Local functions that stamp out schema structs (`requestEnvelope(kind, data)`,
 indirection. Write each schema out literally, inline. Shared _values_ (a named
 `SuccessHead`/`ErrorHead` struct reused by reference) are fine; shared
 _functions_ that build schemas are not.
+
+## 7. Repo lint conventions to know up front
+
+- `switch` statements are banned — use `Match` (`Match.value(...).pipe(Match.discriminatorsExhaustive("kind")({...}))` for wide discriminated unions, `Match.when/whenOr` + `Match.exhaustive` otherwise).
+- Direct `undefined` equality is banned — `Predicate.isUndefined`/`isNotUndefined`.
+- `new Error(...)` is banned outside typed-error construction — `Schema.TaggedErrorClass`; suppress with `// ast-grep-ignore: no-new-error` only for native-wire Error reconstruction.

@@ -8,14 +8,14 @@ Statuses: `todo` | `partial` | `done`.
 
 ## Promise actions
 
-| Spec action                                                                            | Lean source                             | Impl spec | Tests | Status |
-| -------------------------------------------------------------------------------------- | --------------------------------------- | --------- | ----- | ------ |
-| P-01 promise.get (incl. timeout projection)                                            | `spec/02-actions/P-01-promise.get.lean` | 04, 08    |       | todo   |
-| P-02 promise.create (new / born-settled / idempotent re-create / target→task / delay)  | `P-02-promise.create.lean`              | 04, 08    |       | todo   |
-| P-03 promise.settle (settle / projected-timeout race / idempotent re-settle / cascade) | `P-03-promise.settle.lean`              | 04, 08    |       | todo   |
-| P-04 promise.register_callback (422 non-target awaiter; skip-if-awaiter-expired)       | `P-04-promise.register_callback.lean`   | 04, 08    |       | todo   |
-| P-05 promise.register_listener                                                         | `P-05-promise.register_listener.lean`   | 04, 08    |       | todo   |
-| P-06 promise.search — NOT IMPLEMENTED (501 per spec)                                   | `P-06-promise.search.lean`              | —         | n/a   | done   |
+| Spec action                                                                            | Lean source                             | Impl spec | Tests                                            | Status  |
+| -------------------------------------------------------------------------------------- | --------------------------------------- | --------- | ------------------------------------------------ | ------- |
+| P-01 promise.get (incl. timeout projection)                                            | `spec/02-actions/P-01-promise.get.lean` | 04, 08    | `test/NetworkLocal.test.ts` (oracle side)        | partial |
+| P-02 promise.create (new / born-settled / idempotent re-create / target→task / delay)  | `P-02-promise.create.lean`              | 04, 08    | `test/NetworkLocal.test.ts` "P-02" (oracle side) | partial |
+| P-03 promise.settle (settle / projected-timeout race / idempotent re-settle / cascade) | `P-03-promise.settle.lean`              | 04, 08    | `test/NetworkLocal.test.ts` "P-03" (oracle side) | partial |
+| P-04 promise.register_callback (422 non-target awaiter; skip-if-awaiter-expired)       | `P-04-promise.register_callback.lean`   | 04, 08    | `test/NetworkLocal.test.ts` "P-04" (oracle side) | partial |
+| P-05 promise.register_listener                                                         | `P-05-promise.register_listener.lean`   | 04, 08    | `test/NetworkLocal.test.ts` "P-05" (oracle side) | partial |
+| P-06 promise.search — NOT IMPLEMENTED (501 per spec)                                   | `P-06-promise.search.lean`              | —         | n/a                                              | done    |
 
 ## Task actions
 
@@ -44,13 +44,13 @@ Statuses: `todo` | `partial` | `done`.
 
 ## Environment transitions
 
-| Transition                                                                       | Lean source                        | Impl spec | Tests | Status |
-| -------------------------------------------------------------------------------- | ---------------------------------- | --------- | ----- | ------ |
-| resume cascade (suspended→pending; buffer for non-suspended; version NOT bumped) | `spec/02-actions/00-resume.lean`   | 05, 14    |       | todo   |
-| onPromiseTimeout (persist projection; cascade; backdated settledAt)              | `spec/02-actions/02-timeouts.lean` | 04        |       | todo   |
-| onTaskRetryTimeout (self-rescheduling execute redelivery)                        | `02-timeouts.lean`                 | 05        |       | todo   |
-| onTaskLeaseTimeout (→pending; no version bump)                                   | `02-timeouts.lean`                 | 05, 13    |       | todo   |
-| schedule catchUp (one promiseCreate per missed tick, backdated)                  | `02-timeouts.lean`                 | 06        |       | todo   |
+| Transition                                                                       | Lean source                        | Impl spec | Tests                                                         | Status |
+| -------------------------------------------------------------------------------- | ---------------------------------- | --------- | ------------------------------------------------------------- | ------ |
+| resume cascade (suspended→pending; buffer for non-suspended; version NOT bumped) | `spec/02-actions/00-resume.lean`   | 05, 14    |                                                               | todo   |
+| onPromiseTimeout (persist projection; cascade; backdated settledAt)              | `spec/02-actions/02-timeouts.lean` | 04        | `test/NetworkLocal.test.ts` "timeout projection and the tick" | done   |
+| onTaskRetryTimeout (self-rescheduling execute redelivery)                        | `02-timeouts.lean`                 | 05        |                                                               | todo   |
+| onTaskLeaseTimeout (→pending; no version bump)                                   | `02-timeouts.lean`                 | 05, 13    |                                                               | todo   |
+| schedule catchUp (one promiseCreate per missed tick, backdated)                  | `02-timeouts.lean`                 | 06        |                                                               | todo   |
 
 ## Structural invariants (the test oracle — assert after EVERY op in oracle tests)
 

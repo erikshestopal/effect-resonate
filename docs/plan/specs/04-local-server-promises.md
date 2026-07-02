@@ -71,3 +71,27 @@ The in-memory server's promise half: P-01…P-05 handlers, timeout projection,
 
 - `vp run check` green; CONFORMANCE.md P-01…P-05 rows → partial (oracle side),
   onPromiseTimeout → done.
+
+## Notes (implementation decisions)
+
+- Handlers are pure transitions over an immutable `ServerState` behind one
+  `Ref` (the Lean `StateM` shape); `send` re-encodes each response through
+  `Protocol.ResponseFromWire` and back through `decodeResponse`, so every
+  oracle response is proven wire-schema-valid and the generic `send<K>`
+  narrows without casts.
+- No "eager" timeout mode (the native local server's default): the Lean model
+  projects on read and persists only at the tick, and the spec's TestClock
+  test requires observing the projection before persistence. Convergence in
+  tests is driven by explicit `debug.tick` requests (tick interval pushed out).
+- `debug.start/stop/reset/snap/tick` are implemented now (the tick machinery
+  exists anyway; `snap` is the oracle-inspection hook the tests and spec 09
+  need). Searches and task/schedule ops return 501 until specs 05/06.
+- Outbox coalescing follows the Lean keys (one execute per task id, one
+  unblock per promise+address) with in-place replacement; the native server
+  appends unblocks unconditionally — spec wins. Same-key execute coalescing
+  becomes observable (and tested) with task retries in spec 05.
+- `TaskObject.toRecord` reports `resumes` as a COUNT (Lean `toRecord`); the
+  native local server emits the id list. Verify against the shipped server in
+  spec 09 and revisit if it disagrees.
+- Config: `retryTimeout` defaults to the spec's 5000ms (native local uses a
+  30s `PENDING_RETRY_TTL`), tick interval 1s in dev; both configurable.
