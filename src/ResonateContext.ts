@@ -117,19 +117,54 @@ interface RuntimeState {
   seq: number;
 }
 
-const RuntimeState = {
-  cachePromise(options: { readonly state: RuntimeState; readonly promise: Protocol.PromiseRecord }): void {
-    options.state.cache = HashMap.set(options.state.cache, options.promise.id, options.promise);
-  },
-  cachePromises(options: {
+namespace RuntimeState {
+  export interface MakeOptions {
+    readonly task: Protocol.TaskAcquired;
+    readonly promise: Protocol.PromiseRecord;
+  }
+
+  export interface CachePromiseOptions {
+    readonly state: RuntimeState;
+    readonly promise: Protocol.PromiseRecord;
+  }
+
+  export interface CachePromisesOptions {
     readonly state: RuntimeState;
     readonly promises: ReadonlyArray<Protocol.PromiseRecord>;
-  }): void {
+  }
+
+  export const make = (options: MakeOptions): RuntimeState => {
+    const rootTarget = options.promise.tags.reserved["resonate:target"];
+    return {
+      root: options.promise.id,
+      version: options.task.version,
+      timeoutAt: options.promise.timeoutAt,
+      targetTransport: rootTarget?.transport ?? "poll",
+      targetGroup: rootTarget?.group ?? Protocol.WorkerGroup.make("default"),
+      originId: Protocol.promiseOrigin(options.promise),
+      prefixId: options.promise.tags.reserved["resonate:prefix"] ?? options.promise.id,
+      parentId: options.promise.tags.reserved["resonate:parent"] ?? options.promise.id,
+      branchId: options.promise.tags.reserved["resonate:branch"] ?? options.promise.id,
+      cache: HashMap.empty(),
+      children: [],
+      attachedRemote: HashMap.empty(),
+      awaiting: HashMap.empty(),
+      externalPromises: HashSet.empty(),
+      attempt: 0,
+      seq: 0,
+    };
+  };
+
+  export const cachePromise = (options: CachePromiseOptions): void => {
+    options.state.cache = HashMap.set(options.state.cache, options.promise.id, options.promise);
+  };
+
+  export const cachePromises = (options: CachePromisesOptions): void => {
     for (const promise of options.promises) {
       RuntimeState.cachePromise({ state: options.state, promise });
     }
-  },
-};
+  };
+}
 
 interface SettleOptions {
   readonly state: RuntimeState;
@@ -981,25 +1016,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
 
       return ExecutionEngine.of({
         execute: Effect.fn("ExecutionEngine.execute")(function* (options) {
-          const rootTarget = options.promise.tags.reserved["resonate:target"];
-          const state: RuntimeState = {
-            root: options.promise.id,
-            version: options.task.version,
-            timeoutAt: options.promise.timeoutAt,
-            targetTransport: rootTarget?.transport ?? "poll",
-            targetGroup: rootTarget?.group ?? Protocol.WorkerGroup.make("default"),
-            originId: Protocol.promiseOrigin(options.promise),
-            prefixId: options.promise.tags.reserved["resonate:prefix"] ?? options.promise.id,
-            parentId: options.promise.tags.reserved["resonate:parent"] ?? options.promise.id,
-            branchId: options.promise.tags.reserved["resonate:branch"] ?? options.promise.id,
-            cache: HashMap.empty(),
-            children: [],
-            attachedRemote: HashMap.empty(),
-            awaiting: HashMap.empty(),
-            externalPromises: HashSet.empty(),
-            attempt: 0,
-            seq: 0,
-          };
+          const state = RuntimeState.make({ task: options.task, promise: options.promise });
           RuntimeState.cachePromises({ state, promises: options.preload ?? [] });
 
           if (options.promise.state !== "pending") {
