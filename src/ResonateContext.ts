@@ -698,74 +698,6 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
       });
 
       const layerFor = (state: RuntimeState): Layer.Layer<ResonateContext, never, never> => {
-        const beginRun: ResonateContextService["beginRun"] = Effect.fn("ResonateContext.beginRun")(function* (
-          effect: Effect.Effect<unknown, unknown>,
-          options?: ContextOptions,
-        ): Effect.fn.Return<LocalDurableHandle, unknown> {
-          const promise = yield* createLocal(state, options);
-          const deferred = yield* Deferred.make<unknown, unknown>();
-          if (promise.state !== "pending") {
-            const settled = yield* decodeSettled(promise).pipe(Effect.exit);
-            yield* Deferred.done(deferred, settled);
-            return makeHandle(state, promise, deferred);
-          }
-          if (isExternalPromise(promise)) {
-            return makeHandle(state, promise, deferred);
-          }
-          const fiber = yield* runWithRetry(
-            state,
-            effect,
-            options?.retryPolicy ?? RetryPolicy.exponential(),
-            options?.nonRetryableErrors ?? [],
-          ).pipe(
-            Effect.flatMap((exit) => settle(state, promise.id, exit)),
-            Effect.flatMap((settled) =>
-              decodeSettled(settled).pipe(
-                Effect.exit,
-                Effect.flatMap((exit) => Deferred.done(deferred, exit)),
-              ),
-            ),
-            Effect.forkDetach,
-          );
-          state.children.push({ id: promise.id, fiber });
-          return makeHandle(state, promise, deferred);
-        });
-
-        const run: ResonateContextService["run"] = Effect.fn("ResonateContext.run")(function* (effect, options) {
-          const handle = yield* beginRun(effect, options);
-          return yield* handle.await;
-        });
-
-        const now: ResonateContextService["now"] = run(Clock.currentTimeMillis).pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Finite)),
-          Effect.map(timestamp),
-        );
-
-        const random: ResonateContextService["random"] = run(Random.next).pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Finite)),
-        );
-
-        const sleepUntil: ResonateContextService["sleepUntil"] = Effect.fn("ResonateContext.sleepUntil")(
-          function* (instant) {
-            const promise = yield* createSleep(state, instant);
-            if (promise.state !== "pending") {
-              yield* decodeSettled(promise);
-              return;
-            }
-            const parked = HashMap.get(state.awaiting, promise.id);
-            if (Option.isSome(parked)) {
-              return yield* Effect.fail(parked.value);
-            }
-            const suspended = new SuspendedExecution({ awaited: [promise.id] });
-            state.awaiting = HashMap.set(state.awaiting, promise.id, suspended);
-            return yield* suspended;
-          },
-        );
-
-        const sleep: ResonateContextService["sleep"] = Effect.fn("ResonateContext.sleep")(function* (duration) {
-          return yield* sleepUntil(timestamp((yield* Clock.currentTimeMillis) + Duration.toMillis(duration)));
-        });
-
         const beginRpcImpl = Effect.fn("ResonateContext.beginRpc")(function* (
           targetFunction: AnyFunction | string,
           args: ReadonlyArray<unknown>,
@@ -779,153 +711,198 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           }
           return makeHandle(state, promise, deferred);
         });
-        const beginRpc: ResonateContextService["beginRpc"] = beginRpcImpl;
 
-        const rpc: ResonateContextService["rpc"] = Effect.fn("ResonateContext.rpc")(function* (
-          targetFunction: AnyFunction | string,
-          args: ReadonlyArray<unknown>,
-          options?: ContextOptions,
-        ): Effect.fn.Return<unknown, unknown> {
-          const handle = yield* beginRpcImpl(targetFunction, args, options);
-          return yield* handle.await;
-        });
-
-        const detached: ResonateContextService["detached"] = Effect.fn("ResonateContext.detached")(function* (
-          targetFunction: AnyFunction | string,
-          args: ReadonlyArray<unknown>,
-          options?: ContextOptions,
-        ): Effect.fn.Return<LocalDurableHandle, unknown> {
-          const promise = yield* createRemote(state, targetFunction, args, options, "detached");
-          const deferred = yield* Deferred.make<unknown, unknown>();
-          if (promise.state !== "pending") {
-            const settled = yield* decodeSettled(promise).pipe(Effect.exit);
-            yield* Deferred.done(deferred, settled);
-          }
-          return makeHandle(state, promise, deferred);
-        });
-
-        const promise: ResonateContextService["promise"] = Effect.fn("ResonateContext.promise")(
-          function* (declaration, options) {
+        const service = ResonateContext.of({
+          info: {
+            get attempt() {
+              return state.attempt;
+            },
+            id: state.root,
+            originId: state.originId,
+            prefixId: state.prefixId,
+            parentId: state.parentId,
+            branchId: state.branchId,
+            timeoutAt: state.timeoutAt,
+            version: state.version,
+          },
+          beginRun: Effect.fn("ResonateContext.beginRun")(function* (
+            effect: Effect.Effect<unknown, unknown>,
+            options?: ContextOptions,
+          ): Effect.fn.Return<LocalDurableHandle, unknown> {
+            const promise = yield* createLocal(state, options);
+            const deferred = yield* Deferred.make<unknown, unknown>();
+            if (promise.state !== "pending") {
+              const settled = yield* decodeSettled(promise).pipe(Effect.exit);
+              yield* Deferred.done(deferred, settled);
+              return makeHandle(state, promise, deferred);
+            }
+            if (isExternalPromise(promise)) {
+              return makeHandle(state, promise, deferred);
+            }
+            const fiber = yield* runWithRetry(
+              state,
+              effect,
+              options?.retryPolicy ?? RetryPolicy.exponential(),
+              options?.nonRetryableErrors ?? [],
+            ).pipe(
+              Effect.flatMap((exit) => settle(state, promise.id, exit)),
+              Effect.flatMap((settled) =>
+                decodeSettled(settled).pipe(
+                  Effect.exit,
+                  Effect.flatMap((exit) => Deferred.done(deferred, exit)),
+                ),
+              ),
+              Effect.forkDetach,
+            );
+            state.children.push({ id: promise.id, fiber });
+            return makeHandle(state, promise, deferred);
+          }),
+          run: Effect.fn("ResonateContext.run")(function* (effect, options) {
+            const handle = yield* service.beginRun(effect, options);
+            return yield* handle.await;
+          }),
+          get now() {
+            return service
+              .run(Clock.currentTimeMillis)
+              .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Finite)), Effect.map(timestamp));
+          },
+          get random() {
+            return service.run(Random.next).pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Finite)));
+          },
+          sleepUntil: Effect.fn("ResonateContext.sleepUntil")(function* (instant) {
+            const promise = yield* createSleep(state, instant);
+            if (promise.state !== "pending") {
+              yield* decodeSettled(promise);
+              return;
+            }
+            const parked = HashMap.get(state.awaiting, promise.id);
+            if (Option.isSome(parked)) {
+              return yield* Effect.fail(parked.value);
+            }
+            const suspended = new SuspendedExecution({ awaited: [promise.id] });
+            state.awaiting = HashMap.set(state.awaiting, promise.id, suspended);
+            return yield* suspended;
+          }),
+          sleep: Effect.fn("ResonateContext.sleep")(function* (duration) {
+            return yield* service.sleepUntil(timestamp((yield* Clock.currentTimeMillis) + Duration.toMillis(duration)));
+          }),
+          beginRpc: beginRpcImpl,
+          rpc: Effect.fn("ResonateContext.rpc")(function* (
+            targetFunction: AnyFunction | string,
+            args: ReadonlyArray<unknown>,
+            options?: ContextOptions,
+          ): Effect.fn.Return<unknown, unknown> {
+            const handle = yield* beginRpcImpl(targetFunction, args, options);
+            return yield* handle.await;
+          }),
+          detached: Effect.fn("ResonateContext.detached")(function* (
+            targetFunction: AnyFunction | string,
+            args: ReadonlyArray<unknown>,
+            options?: ContextOptions,
+          ): Effect.fn.Return<LocalDurableHandle, unknown> {
+            const promise = yield* createRemote(state, targetFunction, args, options, "detached");
+            const deferred = yield* Deferred.make<unknown, unknown>();
+            if (promise.state !== "pending") {
+              const settled = yield* decodeSettled(promise).pipe(Effect.exit);
+              yield* Deferred.done(deferred, settled);
+            }
+            return makeHandle(state, promise, deferred);
+          }),
+          promise: Effect.fn("ResonateContext.promise")(function* (declaration, options) {
             const promise = yield* createExternalPromise(state, declaration, options);
             return makePromiseHandle(state, promise, declaration);
-          },
-        );
-
-        return Layer.succeed(
-          ResonateContext,
-          ResonateContext.of({
-            info: {
-              get attempt() {
-                return state.attempt;
-              },
-              id: state.root,
-              originId: state.originId,
-              prefixId: state.prefixId,
-              parentId: state.parentId,
-              branchId: state.branchId,
-              timeoutAt: state.timeoutAt,
-              version: state.version,
-            },
-            run,
-            beginRun,
-            now,
-            random,
-            sleep,
-            sleepUntil,
-            beginRpc,
-            rpc,
-            detached,
-            promise,
-            all: (effects) =>
-              Effect.gen(function* () {
-                const exits = yield* Effect.forEach(effects, (effect) => effect.pipe(Effect.result));
-                const values: Array<unknown> = [];
-                const awaited: Array<Protocol.PromiseId> = [];
-                for (const exit of exits) {
-                  if (Result.isSuccess(exit)) {
-                    values.push(exit.success);
-                    continue;
-                  }
-                  if (isSuspendedExecution(exit.failure)) {
-                    awaited.push(...exit.failure.awaited);
-                    continue;
-                  }
-                  return yield* Effect.fail(exit.failure);
-                }
-                if (awaited.length > 0) {
-                  return yield* new SuspendedExecution({ awaited });
-                }
-                return values;
-              }),
-            panic: (message) => new DurablePanic({ message }),
           }),
-        );
+          all: (effects) =>
+            Effect.gen(function* () {
+              const exits = yield* Effect.forEach(effects, (effect) => effect.pipe(Effect.result));
+              const values: Array<unknown> = [];
+              const awaited: Array<Protocol.PromiseId> = [];
+              for (const exit of exits) {
+                if (Result.isSuccess(exit)) {
+                  values.push(exit.success);
+                  continue;
+                }
+                if (isSuspendedExecution(exit.failure)) {
+                  awaited.push(...exit.failure.awaited);
+                  continue;
+                }
+                return yield* Effect.fail(exit.failure);
+              }
+              if (awaited.length > 0) {
+                return yield* new SuspendedExecution({ awaited });
+              }
+              return values;
+            }),
+          panic: (message) => new DurablePanic({ message }),
+        });
+
+        return Layer.succeed(ResonateContext, service);
       };
 
-      const execute: ExecutionEngineService["execute"] = Effect.fn("ExecutionEngine.execute")(function* (options) {
-        const rootTarget = options.promise.tags.reserved["resonate:target"];
-        const state: RuntimeState = {
-          root: options.promise.id,
-          version: options.task.version,
-          timeoutAt: options.promise.timeoutAt,
-          targetTransport: rootTarget?.transport ?? "poll",
-          targetGroup: rootTarget?.group ?? Protocol.WorkerGroup.make("default"),
-          originId: options.promise.tags.reserved["resonate:origin"] ?? options.promise.id,
-          prefixId: options.promise.tags.reserved["resonate:prefix"] ?? options.promise.id,
-          parentId: options.promise.tags.reserved["resonate:parent"] ?? options.promise.id,
-          branchId: options.promise.tags.reserved["resonate:branch"] ?? options.promise.id,
-          cache: HashMap.empty(),
-          children: [],
-          attachedRemote: HashMap.empty(),
-          awaiting: HashMap.empty(),
-          externalPromises: new Set(),
-          attempt: 0,
-          seq: 0,
-        };
-        addPreload(state, options.preload ?? []);
+      return ExecutionEngine.of({
+        execute: Effect.fn("ExecutionEngine.execute")(function* (options) {
+          const rootTarget = options.promise.tags.reserved["resonate:target"];
+          const state: RuntimeState = {
+            root: options.promise.id,
+            version: options.task.version,
+            timeoutAt: options.promise.timeoutAt,
+            targetTransport: rootTarget?.transport ?? "poll",
+            targetGroup: rootTarget?.group ?? Protocol.WorkerGroup.make("default"),
+            originId: options.promise.tags.reserved["resonate:origin"] ?? options.promise.id,
+            prefixId: options.promise.tags.reserved["resonate:prefix"] ?? options.promise.id,
+            parentId: options.promise.tags.reserved["resonate:parent"] ?? options.promise.id,
+            branchId: options.promise.tags.reserved["resonate:branch"] ?? options.promise.id,
+            cache: HashMap.empty(),
+            children: [],
+            attachedRemote: HashMap.empty(),
+            awaiting: HashMap.empty(),
+            externalPromises: new Set(),
+            attempt: 0,
+            seq: 0,
+          };
+          addPreload(state, options.preload ?? []);
 
-        if (options.promise.state !== "pending") {
-          return new EngineDone({ promise: options.promise });
-        }
+          if (options.promise.state !== "pending") {
+            return new EngineDone({ promise: options.promise });
+          }
 
-        const invocation = yield* codec
-          .decode(options.promise.param)
-          .pipe(Effect.flatMap(Schema.decodeUnknownEffect(InvocationParam)));
-        const item = yield* Option.match(options.registry.get(invocation.func, invocation.version), {
-          onNone: () => Effect.die(`Function '${invocation.func}' is not registered`),
-          onSome: Effect.succeed,
-        });
-        const decoded = yield* Schema.decodeUnknownEffect(item.definition.payload)(invocation.args).pipe(
-          Effect.catchCause(() => Schema.decodeUnknownEffect(item.definition.payload)(invocation.args[0])),
-        );
-        const args = Array.isArray(decoded) ? decoded : [decoded];
-        const result: Effect.Effect<unknown, unknown> = Reflect.apply(item.handler, undefined, args);
-        if (!Effect.isEffect(result)) {
-          return yield* Effect.die(`Function '${invocation.func}' did not return an Effect`);
-        }
-        const exit = yield* result.pipe(
-          Effect.provide(layerFor(state)),
-          Effect.map((value) => new CompletedExecution({ value })),
-          Effect.catch((error) => (isSuspendedExecution(error) ? Effect.succeed(error) : Effect.fail(error))),
-          Effect.exit,
-        );
-        yield* drainChildren(state);
-        const attachedAwaited = Array.from(HashMap.keys(state.attachedRemote));
-        if (Exit.isSuccess(exit)) {
-          if (Predicate.isTagged(exit.value, "SuspendedExecution")) {
-            return new EngineSuspended({ awaited: [...new Set([...attachedAwaited, ...exit.value.awaited])] });
+          const invocation = yield* codec
+            .decode(options.promise.param)
+            .pipe(Effect.flatMap(Schema.decodeUnknownEffect(InvocationParam)));
+          const item = yield* Option.match(options.registry.get(invocation.func, invocation.version), {
+            onNone: () => Effect.die(`Function '${invocation.func}' is not registered`),
+            onSome: Effect.succeed,
+          });
+          const decoded = yield* Schema.decodeUnknownEffect(item.definition.payload)(invocation.args).pipe(
+            Effect.catchCause(() => Schema.decodeUnknownEffect(item.definition.payload)(invocation.args[0])),
+          );
+          const args = Array.isArray(decoded) ? decoded : [decoded];
+          const result: Effect.Effect<unknown, unknown> = Reflect.apply(item.handler, undefined, args);
+          if (!Effect.isEffect(result)) {
+            return yield* Effect.die(`Function '${invocation.func}' did not return an Effect`);
           }
-          if (attachedAwaited.length > 0) {
-            return new EngineSuspended({ awaited: [...new Set(attachedAwaited)] });
+          const exit = yield* result.pipe(
+            Effect.provide(layerFor(state)),
+            Effect.map((value) => new CompletedExecution({ value })),
+            Effect.catch((error) => (isSuspendedExecution(error) ? Effect.succeed(error) : Effect.fail(error))),
+            Effect.exit,
+          );
+          yield* drainChildren(state);
+          const attachedAwaited = Array.from(HashMap.keys(state.attachedRemote));
+          if (Exit.isSuccess(exit)) {
+            if (Predicate.isTagged(exit.value, "SuspendedExecution")) {
+              return new EngineSuspended({ awaited: [...new Set([...attachedAwaited, ...exit.value.awaited])] });
+            }
+            if (attachedAwaited.length > 0) {
+              return new EngineSuspended({ awaited: [...new Set(attachedAwaited)] });
+            }
+            const promise = yield* fulfillRoot(state, Exit.succeed(exit.value.value));
+            return new EngineDone({ promise });
           }
-          const promise = yield* fulfillRoot(state, Exit.succeed(exit.value.value));
+          const promise = yield* fulfillRoot(state, exit);
           return new EngineDone({ promise });
-        }
-        const promise = yield* fulfillRoot(state, exit);
-        return new EngineDone({ promise });
+        }),
       });
-
-      return ExecutionEngine.of({ execute });
     }),
   );
 }

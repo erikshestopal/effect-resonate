@@ -19,7 +19,7 @@ export interface SchedulesService {
     id: Protocol.ScheduleId,
   ) => Effect.Effect<Protocol.ScheduleRecord, ResonateProtocolError | TransportError>;
   readonly create: (
-    data: typeof Protocol.ScheduleCreateRequest.Type.data,
+    data: Protocol.ScheduleCreateRequest["data"],
   ) => Effect.Effect<Protocol.ScheduleRecord, ResonateProtocolError | TransportError>;
   readonly delete: (id: Protocol.ScheduleId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
 }
@@ -36,33 +36,31 @@ export class Schedules extends Context.Service<Schedules, SchedulesService>()("e
         return Protocol.RequestHead.make({ corrId, version: Protocol.protocolVersion });
       });
 
-      const get: SchedulesService["get"] = Effect.fn("Schedules.get")(function* (id) {
-        const response = yield* network.send(Protocol.ScheduleGetRequest.make({ head: yield* head(), data: { id } }));
-        if (isGetSuccess(response)) {
-          return response.data.schedule;
-        }
-        return yield* Effect.fail(scheduleError(id, response.head.status, response.data));
+      return Schedules.of({
+        get: Effect.fn("Schedules.get")(function* (id) {
+          const response = yield* network.send(Protocol.ScheduleGetRequest.make({ head: yield* head(), data: { id } }));
+          if (isGetSuccess(response)) {
+            return response.data.schedule;
+          }
+          return yield* Effect.fail(scheduleError(id, response.head.status, response.data));
+        }),
+        create: Effect.fn("Schedules.create")(function* (data) {
+          const response = yield* network.send(Protocol.ScheduleCreateRequest.make({ head: yield* head(), data }));
+          if (isCreateSuccess(response)) {
+            return response.data.schedule;
+          }
+          return yield* Effect.fail(scheduleError(data.id, response.head.status, response.data));
+        }),
+        delete: Effect.fn("Schedules.delete")(function* (id) {
+          const response = yield* network.send(
+            Protocol.ScheduleDeleteRequest.make({ head: yield* head(), data: { id } }),
+          );
+          if (isDeleteSuccess(response)) {
+            return;
+          }
+          return yield* Effect.fail(scheduleError(id, response.head.status, response.data));
+        }),
       });
-
-      const create: SchedulesService["create"] = Effect.fn("Schedules.create")(function* (data) {
-        const response = yield* network.send(Protocol.ScheduleCreateRequest.make({ head: yield* head(), data }));
-        if (isCreateSuccess(response)) {
-          return response.data.schedule;
-        }
-        return yield* Effect.fail(scheduleError(data.id, response.head.status, response.data));
-      });
-
-      const deleteSchedule: SchedulesService["delete"] = Effect.fn("Schedules.delete")(function* (id) {
-        const response = yield* network.send(
-          Protocol.ScheduleDeleteRequest.make({ head: yield* head(), data: { id } }),
-        );
-        if (isDeleteSuccess(response)) {
-          return;
-        }
-        return yield* Effect.fail(scheduleError(id, response.head.status, response.data));
-      });
-
-      return Schedules.of({ get, create, delete: deleteSchedule });
     }),
   );
 }

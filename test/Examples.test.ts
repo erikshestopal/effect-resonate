@@ -144,6 +144,74 @@ const examples: ReadonlyArray<{ readonly file: string; readonly importPath: stri
   { file: "examples/templated-agent.ts", importPath: "../examples/templated-agent.ts" },
 ];
 
+interface RunningExample {
+  readonly file: string;
+  readonly repo: string;
+  readonly functionName: string;
+  readonly sampleArgs: ReadonlyArray<unknown>;
+  readonly group: string;
+  readonly target: string;
+  readonly worker: Bun.Subprocess;
+  readonly stdout: Promise<string>;
+  readonly stderr: Promise<string>;
+}
+
+const startExample = async (example: (typeof examples)[number]): Promise<RunningExample> => {
+  const module = (await import(example.importPath)) as {
+    readonly repo: string;
+    readonly functionName: string;
+    readonly sampleArgs: ReadonlyArray<unknown>;
+  };
+  const group = `examples-${Date.now()}-${module.repo}`;
+  const target = `poll://any@${group}`;
+  const worker = spawn(["bun", example.file], {
+    RESONATE_URL: serverUrl,
+    RESONATE_GROUP: group,
+    RESONATE_PID: `${module.repo}-worker`,
+  });
+  const stdout = new Response(worker.stdout).text();
+  const stderr = new Response(worker.stderr).text();
+
+  return {
+    file: example.file,
+    repo: module.repo,
+    functionName: module.functionName,
+    sampleArgs: module.sampleArgs,
+    group,
+    target,
+    worker,
+    stdout,
+    stderr,
+  };
+};
+
+const runExample = async (example: RunningExample) => {
+  try {
+    const id = `${example.group}-run`;
+    await run([
+      "resonate",
+      "invoke",
+      "--server",
+      serverUrl,
+      "--func",
+      example.functionName,
+      "--target",
+      example.target,
+      "--json-args",
+      JSON.stringify(example.sampleArgs),
+      id,
+    ]);
+    const promise = await waitForSettled(id);
+    expect(promise.state).toBe("resolved");
+    expect(await run(["resonate", "tree", "--server", serverUrl, id])).toContain(id);
+  } catch (cause) {
+    kill(example.worker);
+    throw new Error(`${example.file} failed\nstdout:\n${await example.stdout}\nstderr:\n${await example.stderr}`, {
+      cause,
+    });
+  }
+};
+
 describe("official TypeScript example repos", () => {
   it("runs one self-contained Effect port per official TypeScript example repo against the shipped server", async () => {
     if (Bun.which("resonate") === null) {
@@ -154,44 +222,22 @@ describe("official TypeScript example repos", () => {
 
     const server = spawn(["resonate", "dev", "--server-port", String(serverPort), "--observability-metrics-port", "0"]);
     await sleep(2_000);
-    const logs: Array<string> = [];
 
     try {
-      for (const example of examples) {
-        const module = (await import(example.importPath)) as {
-          readonly repo: string;
-          readonly functionName: string;
-          readonly sampleArgs: ReadonlyArray<unknown>;
-        };
-        const group = `examples-${Date.now()}-${module.repo}`;
-        const target = `poll://any@${group}`;
-        const worker = spawn(["bun", example.file], {
-          RESONATE_URL: serverUrl,
-          RESONATE_GROUP: group,
-          RESONATE_PID: `${module.repo}-worker`,
-        });
-        try {
-          await sleep(350);
-          const id = `${group}-run`;
-          await run([
-            "resonate",
-            "invoke",
-            "--server",
-            serverUrl,
-            "--func",
-            module.functionName,
-            "--target",
-            target,
-            "--json-args",
-            JSON.stringify(module.sampleArgs),
-            id,
-          ]);
-          const promise = await waitForSettled(id);
-          expect(promise.state).toBe("resolved");
-          expect(await run(["resonate", "tree", "--server", serverUrl, id])).toContain(id);
-        } finally {
-          kill(worker);
-          logs.push(await new Response(worker.stdout).text());
+      const running = await Promise.all(examples.map(startExample));
+      try {
+        await sleep(2_000);
+        const results = await Promise.allSettled(running.map(runExample));
+        const failures = results.filter((result) => result.status === "rejected");
+        if (failures.length > 0) {
+          throw new AggregateError(
+            failures.map((failure) => failure.reason),
+            `${failures.length} examples failed`,
+          );
+        }
+      } finally {
+        for (const example of running) {
+          kill(example.worker);
         }
       }
     } finally {

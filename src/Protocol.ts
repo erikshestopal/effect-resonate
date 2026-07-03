@@ -426,6 +426,7 @@ export const PromiseGetRequest = Schema.Struct({
   head: RequestHead,
   data: Schema.Struct({ id: PromiseId }),
 });
+export type PromiseGetRequest = typeof PromiseGetRequest.Type;
 
 export const PromiseCreateRequest = Schema.Struct({
   kind: Schema.tag("promise.create"),
@@ -437,6 +438,7 @@ export const PromiseCreateRequest = Schema.Struct({
     tags: TagsFromWire,
   }),
 });
+export type PromiseCreateRequest = typeof PromiseCreateRequest.Type;
 
 export const PromiseSettleRequest = Schema.Struct({
   kind: Schema.tag("promise.settle"),
@@ -447,6 +449,7 @@ export const PromiseSettleRequest = Schema.Struct({
     value: Value,
   }),
 });
+export type PromiseSettleRequest = typeof PromiseSettleRequest.Type;
 
 export const PromiseRegisterCallbackRequest = Schema.Struct({
   kind: Schema.tag("promise.register_callback"),
@@ -456,6 +459,7 @@ export const PromiseRegisterCallbackRequest = Schema.Struct({
     awaiter: PromiseId,
   }),
 });
+export type PromiseRegisterCallbackRequest = typeof PromiseRegisterCallbackRequest.Type;
 
 export const PromiseRegisterListenerRequest = Schema.Struct({
   kind: Schema.tag("promise.register_listener"),
@@ -465,6 +469,7 @@ export const PromiseRegisterListenerRequest = Schema.Struct({
     address: TargetAddressFromString,
   }),
 });
+export type PromiseRegisterListenerRequest = typeof PromiseRegisterListenerRequest.Type;
 
 export const PromiseSearchRequest = Schema.Struct({
   kind: Schema.tag("promise.search"),
@@ -476,12 +481,14 @@ export const PromiseSearchRequest = Schema.Struct({
     cursor: Schema.optionalKey(Schema.String),
   }),
 });
+export type PromiseSearchRequest = typeof PromiseSearchRequest.Type;
 
 export const TaskGetRequest = Schema.Struct({
   kind: Schema.tag("task.get"),
   head: RequestHead,
   data: Schema.Struct({ id: TaskId }),
 });
+export type TaskGetRequest = typeof TaskGetRequest.Type;
 
 export const TaskCreateRequest = Schema.Struct({
   kind: Schema.tag("task.create"),
@@ -492,6 +499,7 @@ export const TaskCreateRequest = Schema.Struct({
     action: PromiseCreateRequest,
   }),
 });
+export type TaskCreateRequest = typeof TaskCreateRequest.Type;
 
 export const TaskAcquireRequest = Schema.Struct({
   kind: Schema.tag("task.acquire"),
@@ -503,12 +511,14 @@ export const TaskAcquireRequest = Schema.Struct({
     ttl: Ttl,
   }),
 });
+export type TaskAcquireRequest = typeof TaskAcquireRequest.Type;
 
 export const TaskReleaseRequest = Schema.Struct({
   kind: Schema.tag("task.release"),
   head: RequestHead,
   data: Schema.Struct({ id: TaskId, version: TaskVersion }),
 });
+export type TaskReleaseRequest = typeof TaskReleaseRequest.Type;
 
 export const TaskSuspendRequest = Schema.Struct({
   kind: Schema.tag("task.suspend"),
@@ -519,18 +529,21 @@ export const TaskSuspendRequest = Schema.Struct({
     actions: Schema.Array(PromiseRegisterCallbackRequest),
   }),
 });
+export type TaskSuspendRequest = typeof TaskSuspendRequest.Type;
 
 export const TaskHaltRequest = Schema.Struct({
   kind: Schema.tag("task.halt"),
   head: RequestHead,
   data: Schema.Struct({ id: TaskId }),
 });
+export type TaskHaltRequest = typeof TaskHaltRequest.Type;
 
 export const TaskContinueRequest = Schema.Struct({
   kind: Schema.tag("task.continue"),
   head: RequestHead,
   data: Schema.Struct({ id: TaskId }),
 });
+export type TaskContinueRequest = typeof TaskContinueRequest.Type;
 
 export const TaskFulfillRequest = Schema.Struct({
   kind: Schema.tag("task.fulfill"),
@@ -541,6 +554,7 @@ export const TaskFulfillRequest = Schema.Struct({
     action: PromiseSettleRequest,
   }),
 });
+export type TaskFulfillRequest = typeof TaskFulfillRequest.Type;
 
 export const TaskFenceRequest = Schema.Struct({
   kind: Schema.tag("task.fence"),
@@ -551,6 +565,7 @@ export const TaskFenceRequest = Schema.Struct({
     action: Schema.Union([PromiseCreateRequest, PromiseSettleRequest]),
   }),
 });
+export type TaskFenceRequest = typeof TaskFenceRequest.Type;
 
 export const TaskHeartbeatRequest = Schema.Struct({
   kind: Schema.tag("task.heartbeat"),
@@ -560,6 +575,7 @@ export const TaskHeartbeatRequest = Schema.Struct({
     tasks: Schema.Array(Schema.Struct({ id: TaskId, version: TaskVersion })),
   }),
 });
+export type TaskHeartbeatRequest = typeof TaskHeartbeatRequest.Type;
 
 export const TaskSearchRequest = Schema.Struct({
   kind: Schema.tag("task.search"),
@@ -570,12 +586,14 @@ export const TaskSearchRequest = Schema.Struct({
     cursor: Schema.optionalKey(Schema.String),
   }),
 });
+export type TaskSearchRequest = typeof TaskSearchRequest.Type;
 
 export const ScheduleGetRequest = Schema.Struct({
   kind: Schema.tag("schedule.get"),
   head: RequestHead,
   data: Schema.Struct({ id: ScheduleId }),
 });
+export type ScheduleGetRequest = typeof ScheduleGetRequest.Type;
 
 export const ScheduleCreateRequest = Schema.Struct({
   kind: Schema.tag("schedule.create"),
@@ -589,12 +607,14 @@ export const ScheduleCreateRequest = Schema.Struct({
     promiseTags: TagsFromWire,
   }),
 });
+export type ScheduleCreateRequest = typeof ScheduleCreateRequest.Type;
 
 export const ScheduleDeleteRequest = Schema.Struct({
   kind: Schema.tag("schedule.delete"),
   head: RequestHead,
   data: Schema.Struct({ id: ScheduleId }),
 });
+export type ScheduleDeleteRequest = typeof ScheduleDeleteRequest.Type;
 
 export const ScheduleSearchRequest = Schema.Struct({
   kind: Schema.tag("schedule.search"),
@@ -605,6 +625,7 @@ export const ScheduleSearchRequest = Schema.Struct({
     cursor: Schema.optionalKey(Schema.String),
   }),
 });
+export type ScheduleSearchRequest = typeof ScheduleSearchRequest.Type;
 
 const EmptyData = Schema.Struct({});
 
@@ -711,6 +732,8 @@ export const PromiseGetResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type PromiseGetResponse = typeof PromiseGetResponse.Type;
+
 export const PromiseCreateResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.tag("promise.create"),
@@ -723,6 +746,8 @@ export const PromiseCreateResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type PromiseCreateResponse = typeof PromiseCreateResponse.Type;
+
 export const PromiseSettleResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.tag("promise.settle"),
@@ -735,6 +760,8 @@ export const PromiseSettleResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type PromiseSettleResponse = typeof PromiseSettleResponse.Type;
+
 export const PromiseRegisterCallbackResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.tag("promise.register_callback"),
@@ -747,6 +774,8 @@ export const PromiseRegisterCallbackResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type PromiseRegisterCallbackResponse = typeof PromiseRegisterCallbackResponse.Type;
+
 export const PromiseRegisterListenerResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.tag("promise.register_listener"),
@@ -759,6 +788,8 @@ export const PromiseRegisterListenerResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type PromiseRegisterListenerResponse = typeof PromiseRegisterListenerResponse.Type;
+
 export const PromiseSearchResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.tag("promise.search"),
@@ -774,6 +805,7 @@ export const PromiseSearchResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type PromiseSearchResponse = typeof PromiseSearchResponse.Type;
 
 export const TaskGetResponse = Schema.Union([
   Schema.Struct({
@@ -787,6 +819,7 @@ export const TaskGetResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type TaskGetResponse = typeof TaskGetResponse.Type;
 
 export const TaskCreateResponse = Schema.Union([
   Schema.Struct({
@@ -804,6 +837,7 @@ export const TaskCreateResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type TaskCreateResponse = typeof TaskCreateResponse.Type;
 
 export const TaskAcquireResponse = Schema.Union([
   Schema.Struct({
@@ -821,6 +855,7 @@ export const TaskAcquireResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type TaskAcquireResponse = typeof TaskAcquireResponse.Type;
 
 export const TaskReleaseResponse = Schema.Union([
   Schema.Struct({
@@ -834,6 +869,7 @@ export const TaskReleaseResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type TaskReleaseResponse = typeof TaskReleaseResponse.Type;
 
 export const TaskSuspendResponse = Schema.Union([
   Schema.Struct({
@@ -852,6 +888,7 @@ export const TaskSuspendResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type TaskSuspendResponse = typeof TaskSuspendResponse.Type;
 
 export const TaskHaltResponse = Schema.Union([
   Schema.Struct({
@@ -865,6 +902,8 @@ export const TaskHaltResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type TaskHaltResponse = typeof TaskHaltResponse.Type;
+
 export const TaskContinueResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.tag("task.continue"),
@@ -877,6 +916,8 @@ export const TaskContinueResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type TaskContinueResponse = typeof TaskContinueResponse.Type;
+
 export const TaskFulfillResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.tag("task.fulfill"),
@@ -889,6 +930,7 @@ export const TaskFulfillResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type TaskFulfillResponse = typeof TaskFulfillResponse.Type;
 
 export const TaskFenceResponse = Schema.Union([
   Schema.Struct({
@@ -905,6 +947,7 @@ export const TaskFenceResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type TaskFenceResponse = typeof TaskFenceResponse.Type;
 
 export const TaskHeartbeatResponse = Schema.Union([
   Schema.Struct({
@@ -918,6 +961,7 @@ export const TaskHeartbeatResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type TaskHeartbeatResponse = typeof TaskHeartbeatResponse.Type;
 
 export const TaskSearchResponse = Schema.Union([
   Schema.Struct({
@@ -934,6 +978,7 @@ export const TaskSearchResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type TaskSearchResponse = typeof TaskSearchResponse.Type;
 
 const ScheduleData = Schema.Struct({ schedule: ScheduleRecord });
 
@@ -949,6 +994,8 @@ export const ScheduleGetResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type ScheduleGetResponse = typeof ScheduleGetResponse.Type;
+
 export const ScheduleCreateResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.tag("schedule.create"),
@@ -961,6 +1008,8 @@ export const ScheduleCreateResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type ScheduleCreateResponse = typeof ScheduleCreateResponse.Type;
+
 export const ScheduleDeleteResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.tag("schedule.delete"),
@@ -973,6 +1022,8 @@ export const ScheduleDeleteResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type ScheduleDeleteResponse = typeof ScheduleDeleteResponse.Type;
+
 export const ScheduleSearchResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.tag("schedule.search"),
@@ -988,6 +1039,7 @@ export const ScheduleSearchResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export type ScheduleSearchResponse = typeof ScheduleSearchResponse.Type;
 
 export const DebugTickAction = Schema.Union([
   Schema.Struct({

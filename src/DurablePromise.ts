@@ -30,16 +30,16 @@ export interface DurablePromisesService {
     id: Protocol.PromiseId,
   ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
   readonly create: (
-    data: typeof Protocol.PromiseCreateRequest.Type.data,
+    data: Protocol.PromiseCreateRequest["data"],
   ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
   readonly settle: (
-    data: typeof Protocol.PromiseSettleRequest.Type.data,
+    data: Protocol.PromiseSettleRequest["data"],
   ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
   readonly registerCallback: (
-    data: typeof Protocol.PromiseRegisterCallbackRequest.Type.data,
+    data: Protocol.PromiseRegisterCallbackRequest["data"],
   ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
   readonly registerListener: (
-    data: typeof Protocol.PromiseRegisterListenerRequest.Type.data,
+    data: Protocol.PromiseRegisterListenerRequest["data"],
   ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
   readonly awaitSettled: (
     id: Protocol.PromiseId,
@@ -60,58 +60,49 @@ export class DurablePromises extends Context.Service<DurablePromises, DurablePro
         return Protocol.RequestHead.make({ corrId, version: Protocol.protocolVersion });
       });
 
-      const get: DurablePromisesService["get"] = Effect.fn("DurablePromises.get")(function* (id) {
-        const response = yield* network.send(Protocol.PromiseGetRequest.make({ head: yield* head(), data: { id } }));
-        if (isGetSuccess(response)) {
-          return response.data.promise;
-        }
-        return yield* Effect.fail(promiseError(id, response.head.status, response.data));
-      });
-
-      const create: DurablePromisesService["create"] = Effect.fn("DurablePromises.create")(function* (data) {
-        const response = yield* network.send(Protocol.PromiseCreateRequest.make({ head: yield* head(), data }));
-        if (isCreateSuccess(response)) {
-          return response.data.promise;
-        }
-        return yield* Effect.fail(promiseError(data.id, response.head.status, response.data));
-      });
-
-      const settle: DurablePromisesService["settle"] = Effect.fn("DurablePromises.settle")(function* (data) {
-        const response = yield* network.send(Protocol.PromiseSettleRequest.make({ head: yield* head(), data }));
-        if (isSettleSuccess(response)) {
-          return response.data.promise;
-        }
-        return yield* Effect.fail(promiseError(data.id, response.head.status, response.data));
-      });
-
-      const registerCallback: DurablePromisesService["registerCallback"] = Effect.fn(
-        "DurablePromises.registerCallback",
-      )(function* (data) {
-        const response = yield* network.send(
-          Protocol.PromiseRegisterCallbackRequest.make({ head: yield* head(), data }),
-        );
-        if (isRegisterCallbackSuccess(response)) {
-          return response.data.promise;
-        }
-        return yield* Effect.fail(promiseError(data.awaited, response.head.status, response.data));
-      });
-
-      const registerListener: DurablePromisesService["registerListener"] = Effect.fn(
-        "DurablePromises.registerListener",
-      )(function* (data) {
-        const response = yield* network.send(
-          Protocol.PromiseRegisterListenerRequest.make({ head: yield* head(), data }),
-        );
-        if (isRegisterListenerSuccess(response)) {
-          return response.data.promise;
-        }
-        return yield* Effect.fail(promiseError(data.awaited, response.head.status, response.data));
-      });
-
-      const awaitSettled: DurablePromisesService["awaitSettled"] = Effect.fn("DurablePromises.awaitSettled")(
-        function* (id) {
+      const service = DurablePromises.of({
+        get: Effect.fn("DurablePromises.get")(function* (id) {
+          const response = yield* network.send(Protocol.PromiseGetRequest.make({ head: yield* head(), data: { id } }));
+          if (isGetSuccess(response)) {
+            return response.data.promise;
+          }
+          return yield* Effect.fail(promiseError(id, response.head.status, response.data));
+        }),
+        create: Effect.fn("DurablePromises.create")(function* (data) {
+          const response = yield* network.send(Protocol.PromiseCreateRequest.make({ head: yield* head(), data }));
+          if (isCreateSuccess(response)) {
+            return response.data.promise;
+          }
+          return yield* Effect.fail(promiseError(data.id, response.head.status, response.data));
+        }),
+        settle: Effect.fn("DurablePromises.settle")(function* (data) {
+          const response = yield* network.send(Protocol.PromiseSettleRequest.make({ head: yield* head(), data }));
+          if (isSettleSuccess(response)) {
+            return response.data.promise;
+          }
+          return yield* Effect.fail(promiseError(data.id, response.head.status, response.data));
+        }),
+        registerCallback: Effect.fn("DurablePromises.registerCallback")(function* (data) {
+          const response = yield* network.send(
+            Protocol.PromiseRegisterCallbackRequest.make({ head: yield* head(), data }),
+          );
+          if (isRegisterCallbackSuccess(response)) {
+            return response.data.promise;
+          }
+          return yield* Effect.fail(promiseError(data.awaited, response.head.status, response.data));
+        }),
+        registerListener: Effect.fn("DurablePromises.registerListener")(function* (data) {
+          const response = yield* network.send(
+            Protocol.PromiseRegisterListenerRequest.make({ head: yield* head(), data }),
+          );
+          if (isRegisterListenerSuccess(response)) {
+            return response.data.promise;
+          }
+          return yield* Effect.fail(promiseError(data.awaited, response.head.status, response.data));
+        }),
+        awaitSettled: Effect.fn("DurablePromises.awaitSettled")(function* (id) {
           const observed = yield* Effect.gen(function* () {
-            const promise = yield* registerListener({ awaited: id, address: network.unicast });
+            const promise = yield* service.registerListener({ awaited: id, address: network.unicast });
             if (promise.state !== "pending") {
               return Option.some(promise);
             }
@@ -136,10 +127,10 @@ export class DurablePromises extends Context.Service<DurablePromises, DurablePro
             onNone: () => Effect.die("DurablePromises.awaitSettled repeated without observing settlement"),
             onSome: Effect.succeed,
           });
-        },
-      );
+        }),
+      });
 
-      return DurablePromises.of({ get, create, settle, registerCallback, registerListener, awaitSettled });
+      return service;
     }),
   );
 }

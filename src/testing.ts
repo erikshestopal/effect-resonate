@@ -174,22 +174,6 @@ export class ResonateTest extends Context.Service<ResonateTest, ResonateTestServ
         const context = yield* Effect.context<Crypto.Crypto | Resonate.Handler<Fns[number]> | ResonateNetwork>();
         const workerScope = yield* Ref.make<Option.Option<Scope.Closeable>>(Option.none());
 
-        const snapshot: ResonateTestService["snapshot"] = Effect.gen(function* () {
-          const response = yield* network.send(
-            Protocol.DebugSnapRequest.make({
-              head: Protocol.RequestHead.make({
-                corrId: Protocol.CorrelationId.make("resonate-test-snapshot"),
-                version: Protocol.protocolVersion,
-              }),
-              data: {},
-            }),
-          );
-          if (!isDebugSnapSuccess(response)) {
-            return yield* Effect.die(response.data);
-          }
-          return response.data;
-        });
-
         const startWorker = Effect.fn("ResonateTest.startWorker")(function* () {
           const scope = yield* Scope.make();
           yield* Layer.buildWithScope(worker, scope).pipe(Effect.provide(context));
@@ -206,7 +190,21 @@ export class ResonateTest extends Context.Service<ResonateTest, ResonateTestServ
 
         yield* startWorker();
         return ResonateTest.of({
-          snapshot,
+          snapshot: Effect.gen(function* () {
+            const response = yield* network.send(
+              Protocol.DebugSnapRequest.make({
+                head: Protocol.RequestHead.make({
+                  corrId: Protocol.CorrelationId.make("resonate-test-snapshot"),
+                  version: Protocol.protocolVersion,
+                }),
+                data: {},
+              }),
+            );
+            if (!isDebugSnapSuccess(response)) {
+              return yield* Effect.die(response.data);
+            }
+            return response.data;
+          }),
           restartWorker: stopWorker().pipe(Effect.andThen(startWorker())),
         });
       }),

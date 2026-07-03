@@ -33,7 +33,7 @@ export class SuspendAccepted extends Schema.Class<SuspendAccepted>("SuspendAccep
 export type SuspendResult = SuspendAccepted | SuspendRefused;
 
 export interface FenceResult {
-  readonly action: typeof Protocol.PromiseCreateResponse.Type | typeof Protocol.PromiseSettleResponse.Type;
+  readonly action: Protocol.PromiseCreateResponse | Protocol.PromiseSettleResponse;
   readonly preload: ReadonlyArray<Protocol.PromiseRecord>;
 }
 
@@ -71,32 +71,32 @@ const taskError = (
 export interface TasksService {
   readonly get: (id: Protocol.TaskId) => Effect.Effect<Protocol.TaskRecord, ResonateProtocolError | TransportError>;
   readonly create: (
-    data: typeof Protocol.TaskCreateRequest.Type.data,
+    data: Protocol.TaskCreateRequest["data"],
   ) => Effect.Effect<TaskCreateResult, ResonateProtocolError | TransportError>;
   readonly acquire: (
-    data: typeof Protocol.TaskAcquireRequest.Type.data,
+    data: Protocol.TaskAcquireRequest["data"],
     options?: TaskRequestOptions,
   ) => Effect.Effect<TaskClaimResult, ResonateProtocolError | TransportError>;
   readonly release: (
-    data: typeof Protocol.TaskReleaseRequest.Type.data,
+    data: Protocol.TaskReleaseRequest["data"],
     options?: TaskRequestOptions,
   ) => Effect.Effect<void, ResonateProtocolError | TransportError>;
   readonly suspend: (
-    data: typeof Protocol.TaskSuspendRequest.Type.data,
+    data: Protocol.TaskSuspendRequest["data"],
     options?: TaskRequestOptions,
   ) => Effect.Effect<SuspendResult, ResonateProtocolError | TransportError>;
   readonly halt: (id: Protocol.TaskId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
   readonly continue: (id: Protocol.TaskId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
   readonly fulfill: (
-    data: typeof Protocol.TaskFulfillRequest.Type.data,
+    data: Protocol.TaskFulfillRequest["data"],
     options?: TaskRequestOptions,
   ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
   readonly fence: (
-    data: typeof Protocol.TaskFenceRequest.Type.data,
+    data: Protocol.TaskFenceRequest["data"],
     options?: TaskRequestOptions,
   ) => Effect.Effect<FenceResult, ResonateProtocolError | TransportError>;
   readonly heartbeat: (
-    data: typeof Protocol.TaskHeartbeatRequest.Type.data,
+    data: Protocol.TaskHeartbeatRequest["data"],
   ) => Effect.Effect<void, ResonateProtocolError | TransportError>;
 }
 
@@ -117,100 +117,82 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("effect-resona
       });
       const zero = Protocol.TaskVersion.make(0);
 
-      const get: TasksService["get"] = Effect.fn("Tasks.get")(function* (id) {
-        const response = yield* network.send(Protocol.TaskGetRequest.make({ head: yield* head(), data: { id } }));
-        if (isGetSuccess(response)) {
-          return response.data.task;
-        }
-        return yield* Effect.fail(taskError(id, zero, response.head.status, response.data));
-      });
-
-      const create: TasksService["create"] = Effect.fn("Tasks.create")(function* (data) {
-        const response = yield* network.send(Protocol.TaskCreateRequest.make({ head: yield* head(), data }));
-        if (isCreateSuccess(response)) {
-          return { promise: response.data.promise, task: response.data.task, preload: response.data.preload };
-        }
-        return yield* Effect.fail(taskError(data.action.data.id, zero, response.head.status, response.data));
-      });
-
-      const acquire: TasksService["acquire"] = Effect.fn("Tasks.acquire")(function* (data, options) {
-        const response = yield* network.send(Protocol.TaskAcquireRequest.make({ head: yield* head(options), data }));
-        if (isAcquireSuccess(response)) {
-          return { task: response.data.task, promise: response.data.promise, preload: response.data.preload };
-        }
-        return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
-      });
-
-      const release: TasksService["release"] = Effect.fn("Tasks.release")(function* (data, options) {
-        const response = yield* network.send(Protocol.TaskReleaseRequest.make({ head: yield* head(options), data }));
-        if (isReleaseSuccess(response)) {
-          return;
-        }
-        return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
-      });
-
-      const suspend: TasksService["suspend"] = Effect.fn("Tasks.suspend")(function* (data, options) {
-        const response = yield* network.send(Protocol.TaskSuspendRequest.make({ head: yield* head(options), data }));
-        if (isSuspendAccepted(response)) {
-          return SuspendAccepted.make({});
-        }
-        if (isSuspendRefused(response)) {
-          return SuspendRefused.make({ preload: response.data.preload });
-        }
-        return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
-      });
-
-      const halt: TasksService["halt"] = Effect.fn("Tasks.halt")(function* (id) {
-        const response = yield* network.send(Protocol.TaskHaltRequest.make({ head: yield* head(), data: { id } }));
-        if (isHaltSuccess(response)) {
-          return;
-        }
-        return yield* Effect.fail(taskError(id, zero, response.head.status, response.data));
-      });
-
-      const continueTask: TasksService["continue"] = Effect.fn("Tasks.continue")(function* (id) {
-        const response = yield* network.send(Protocol.TaskContinueRequest.make({ head: yield* head(), data: { id } }));
-        if (isContinueSuccess(response)) {
-          return;
-        }
-        return yield* Effect.fail(taskError(id, zero, response.head.status, response.data));
-      });
-
-      const fulfill: TasksService["fulfill"] = Effect.fn("Tasks.fulfill")(function* (data, options) {
-        const response = yield* network.send(Protocol.TaskFulfillRequest.make({ head: yield* head(options), data }));
-        if (isFulfillSuccess(response)) {
-          return response.data.promise;
-        }
-        return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
-      });
-
-      const fence: TasksService["fence"] = Effect.fn("Tasks.fence")(function* (data, options) {
-        const response = yield* network.send(Protocol.TaskFenceRequest.make({ head: yield* head(options), data }));
-        if (isFenceSuccess(response)) {
-          return { action: response.data.action, preload: response.data.preload };
-        }
-        return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
-      });
-
-      const heartbeat: TasksService["heartbeat"] = Effect.fn("Tasks.heartbeat")(function* (data) {
-        const response = yield* network.send(Protocol.TaskHeartbeatRequest.make({ head: yield* head(), data }));
-        if (isHeartbeatSuccess(response)) {
-          return;
-        }
-        return yield* Effect.fail(new InvalidTarget({ message: "Task heartbeat failed" }));
-      });
-
       return Tasks.of({
-        get,
-        create,
-        acquire,
-        release,
-        suspend,
-        halt,
-        continue: continueTask,
-        fulfill,
-        fence,
-        heartbeat,
+        get: Effect.fn("Tasks.get")(function* (id) {
+          const response = yield* network.send(Protocol.TaskGetRequest.make({ head: yield* head(), data: { id } }));
+          if (isGetSuccess(response)) {
+            return response.data.task;
+          }
+          return yield* Effect.fail(taskError(id, zero, response.head.status, response.data));
+        }),
+        create: Effect.fn("Tasks.create")(function* (data) {
+          const response = yield* network.send(Protocol.TaskCreateRequest.make({ head: yield* head(), data }));
+          if (isCreateSuccess(response)) {
+            return { promise: response.data.promise, task: response.data.task, preload: response.data.preload };
+          }
+          return yield* Effect.fail(taskError(data.action.data.id, zero, response.head.status, response.data));
+        }),
+        acquire: Effect.fn("Tasks.acquire")(function* (data, options) {
+          const response = yield* network.send(Protocol.TaskAcquireRequest.make({ head: yield* head(options), data }));
+          if (isAcquireSuccess(response)) {
+            return { task: response.data.task, promise: response.data.promise, preload: response.data.preload };
+          }
+          return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
+        }),
+        release: Effect.fn("Tasks.release")(function* (data, options) {
+          const response = yield* network.send(Protocol.TaskReleaseRequest.make({ head: yield* head(options), data }));
+          if (isReleaseSuccess(response)) {
+            return;
+          }
+          return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
+        }),
+        suspend: Effect.fn("Tasks.suspend")(function* (data, options) {
+          const response = yield* network.send(Protocol.TaskSuspendRequest.make({ head: yield* head(options), data }));
+          if (isSuspendAccepted(response)) {
+            return SuspendAccepted.make({});
+          }
+          if (isSuspendRefused(response)) {
+            return SuspendRefused.make({ preload: response.data.preload });
+          }
+          return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
+        }),
+        halt: Effect.fn("Tasks.halt")(function* (id) {
+          const response = yield* network.send(Protocol.TaskHaltRequest.make({ head: yield* head(), data: { id } }));
+          if (isHaltSuccess(response)) {
+            return;
+          }
+          return yield* Effect.fail(taskError(id, zero, response.head.status, response.data));
+        }),
+        continue: Effect.fn("Tasks.continue")(function* (id) {
+          const response = yield* network.send(
+            Protocol.TaskContinueRequest.make({ head: yield* head(), data: { id } }),
+          );
+          if (isContinueSuccess(response)) {
+            return;
+          }
+          return yield* Effect.fail(taskError(id, zero, response.head.status, response.data));
+        }),
+        fulfill: Effect.fn("Tasks.fulfill")(function* (data, options) {
+          const response = yield* network.send(Protocol.TaskFulfillRequest.make({ head: yield* head(options), data }));
+          if (isFulfillSuccess(response)) {
+            return response.data.promise;
+          }
+          return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
+        }),
+        fence: Effect.fn("Tasks.fence")(function* (data, options) {
+          const response = yield* network.send(Protocol.TaskFenceRequest.make({ head: yield* head(options), data }));
+          if (isFenceSuccess(response)) {
+            return { action: response.data.action, preload: response.data.preload };
+          }
+          return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
+        }),
+        heartbeat: Effect.fn("Tasks.heartbeat")(function* (data) {
+          const response = yield* network.send(Protocol.TaskHeartbeatRequest.make({ head: yield* head(), data }));
+          if (isHeartbeatSuccess(response)) {
+            return;
+          }
+          return yield* Effect.fail(new InvalidTarget({ message: "Task heartbeat failed" }));
+        }),
       });
     }),
   );

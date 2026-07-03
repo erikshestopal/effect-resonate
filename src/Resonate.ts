@@ -559,7 +559,6 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           });
           return handle(id);
         });
-        const beginRpc: ResonateClientService["beginRpc"] = beginRpcImpl;
 
         const beginRunImpl = Effect.fn("ResonateClient.beginRun")(function* (
           targetFunction: AnyFunction | string,
@@ -587,21 +586,29 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           });
           return handle(id);
         });
-        const beginRun: ResonateClientService["beginRun"] = beginRunImpl;
 
-        const get: ResonateClientService["get"] = Effect.fn("ResonateClient.get")(function* <F extends AnyFunction>(
-          _fn: F,
-          executionId: Protocol.ExecutionId,
-        ): Effect.fn.Return<DurableHandle> {
-          return handle(prefixedId(executionId, idPrefix));
-        });
-
-        const cancel: ResonateClientService["cancel"] = Effect.fn("ResonateClient.cancel")(function* (id) {
-          yield* promises.settle({ id, state: canceledState, value: Protocol.emptyValue });
-        });
-
-        const resolve: ResonateClientService["resolve"] = Effect.fn("ResonateClient.resolve")(
-          function* (declaration, id, value) {
+        return ResonateClient.of({
+          beginRun: beginRunImpl,
+          run: Effect.fn("ResonateClient.run")(function* (
+            targetFunction: AnyFunction | string,
+            executionId: Protocol.ExecutionId,
+            args: ReadonlyArray<unknown>,
+            callOptions?: InvocationOptions,
+          ): Effect.fn.Return<unknown, unknown> {
+            const current = yield* beginRunImpl(targetFunction, executionId, args, callOptions);
+            return yield* current.await;
+          }),
+          beginRpc: beginRpcImpl,
+          rpc: Effect.fn("ResonateClient.rpc")(function* (
+            targetFunction: AnyFunction | string,
+            executionId: Protocol.ExecutionId,
+            args: ReadonlyArray<unknown>,
+            callOptions?: InvocationOptions,
+          ): Effect.fn.Return<unknown, unknown> {
+            const current = yield* beginRpcImpl(targetFunction, executionId, args, callOptions);
+            return yield* current.await;
+          }),
+          resolve: Effect.fn("ResonateClient.resolve")(function* (declaration, id, value) {
             const encoded = yield* Schema.encodeUnknownEffect(declaration.success)(value);
             const protocolValue = yield* codec.encode(encoded);
             yield* promises.settle({
@@ -609,11 +616,8 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
               state: resolvedState,
               value: withSchemaHeader(protocolValue, declaration.name),
             });
-          },
-        );
-
-        const reject: ResonateClientService["reject"] = Effect.fn("ResonateClient.reject")(
-          function* (declaration, id, error) {
+          }),
+          reject: Effect.fn("ResonateClient.reject")(function* (declaration, id, error) {
             if (Predicate.isUndefined(declaration.error)) {
               return yield* Effect.die(`Promise declaration '${declaration.name}' has no error schema`);
             }
@@ -624,38 +628,16 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
               state: rejectedState,
               value: withSchemaHeader(protocolValue, declaration.name),
             });
-          },
-        );
-
-        const run: ResonateClientService["run"] = Effect.fn("ResonateClient.run")(function* (
-          targetFunction: AnyFunction | string,
-          executionId: Protocol.ExecutionId,
-          args: ReadonlyArray<unknown>,
-          callOptions?: InvocationOptions,
-        ): Effect.fn.Return<unknown, unknown> {
-          const current = yield* beginRunImpl(targetFunction, executionId, args, callOptions);
-          return yield* current.await;
-        });
-
-        const rpc: ResonateClientService["rpc"] = Effect.fn("ResonateClient.rpc")(function* (
-          targetFunction: AnyFunction | string,
-          executionId: Protocol.ExecutionId,
-          args: ReadonlyArray<unknown>,
-          callOptions?: InvocationOptions,
-        ): Effect.fn.Return<unknown, unknown> {
-          const current = yield* beginRpcImpl(targetFunction, executionId, args, callOptions);
-          return yield* current.await;
-        });
-
-        return ResonateClient.of({
-          beginRun,
-          run,
-          beginRpc,
-          rpc,
-          resolve,
-          reject,
-          get,
-          cancel,
+          }),
+          get: Effect.fn("ResonateClient.get")(function* <F extends AnyFunction>(
+            _fn: F,
+            executionId: Protocol.ExecutionId,
+          ): Effect.fn.Return<DurableHandle> {
+            return handle(prefixedId(executionId, idPrefix));
+          }),
+          cancel: Effect.fn("ResonateClient.cancel")(function* (id) {
+            yield* promises.settle({ id, state: canceledState, value: Protocol.emptyValue });
+          }),
         });
       }),
     ).pipe(Layer.provideMerge(Layer.mergeAll(DurablePromises.layer, Tasks.layer)));
