@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Duration, Effect, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { ResonateCodec } from "../src/Codec.ts";
+import { currentCodec, ResonateCodec } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import * as Protocol from "../src/Protocol.ts";
 import * as Resonate from "../src/Resonate.ts";
@@ -42,7 +42,7 @@ describe("graph parity", () => {
   it.effect("walks the local promise graph shape used by the native twin harness", () =>
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handle = yield* client.beginRpc(GraphRoot, Protocol.ExecutionId.make("graph-local-1"), [1]);
       yield* TestClock.adjust(Duration.minutes(1));
       yield* Effect.yieldNow;

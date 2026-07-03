@@ -137,14 +137,20 @@ export interface ResonateEncryptorService {
 export class ResonateEncryptor extends Context.Service<ResonateEncryptor, ResonateEncryptorService>()(
   "effect-resonate/Encryptor",
 ) {
+  static readonly serviceNoop = ResonateEncryptor.of({
+    encrypt: Effect.succeed,
+    decrypt: Effect.succeed,
+  });
+
   static readonly layerNoop: Layer.Layer<ResonateEncryptor> = Layer.succeed(
     ResonateEncryptor,
-    ResonateEncryptor.of({
-      encrypt: Effect.succeed,
-      decrypt: Effect.succeed,
-    }),
+    ResonateEncryptor.serviceNoop,
   );
 }
+
+export const currentEncryptor: Effect.Effect<ResonateEncryptorService> = Effect.serviceOption(ResonateEncryptor).pipe(
+  Effect.map(Option.getOrElse(() => ResonateEncryptor.serviceNoop)),
+);
 
 const hasData = SchemaParser.is(ValueWithData);
 
@@ -153,33 +159,40 @@ export interface ResonateCodecService {
   readonly decode: (value: Protocol.Value) => Effect.Effect<unknown, EncodingError>;
 }
 
+const jsonCodec = (encryptor: Effect.Effect<ResonateEncryptorService>): ResonateCodecService => ({
+  encode: Effect.fn("ResonateCodec.encode")(function* (value) {
+    const current = yield* encryptor;
+    const encoded = yield* Schema.encodeUnknownEffect(ValueFromUnknown)(value).pipe(
+      Effect.mapError((cause) => new EncodingError({ direction: "encode", id: Option.none(), cause })),
+    );
+    return yield* current.encrypt(encoded);
+  }),
+  decode: Effect.fn("ResonateCodec.decode")(function* (value) {
+    if (!hasData(value)) {
+      return undefined;
+    }
+    const current = yield* encryptor;
+    const decrypted = yield* current.decrypt(value);
+    return yield* Schema.decodeUnknownEffect(ValueFromUnknown)(decrypted).pipe(
+      Effect.mapError((cause) => new EncodingError({ direction: "decode", id: Option.none(), cause })),
+    );
+  }),
+});
+
 export class ResonateCodec extends Context.Service<ResonateCodec, ResonateCodecService>()("effect-resonate/Codec") {
+  static readonly serviceJson = ResonateCodec.of(jsonCodec(currentEncryptor));
+
   static readonly layerJson: Layer.Layer<ResonateCodec, never, ResonateEncryptor> = Layer.effect(
     ResonateCodec,
     Effect.gen(function* () {
-      const encryptor = yield* ResonateEncryptor;
-
-      const encode: ResonateCodecService["encode"] = Effect.fn("ResonateCodec.encode")(function* (value) {
-        const encoded = yield* Schema.encodeUnknownEffect(ValueFromUnknown)(value).pipe(
-          Effect.mapError((cause) => new EncodingError({ direction: "encode", id: Option.none(), cause })),
-        );
-        return yield* encryptor.encrypt(encoded);
-      });
-
-      const decode: ResonateCodecService["decode"] = Effect.fn("ResonateCodec.decode")(function* (value) {
-        if (!hasData(value)) {
-          return undefined;
-        }
-        const decrypted = yield* encryptor.decrypt(value);
-        return yield* Schema.decodeUnknownEffect(ValueFromUnknown)(decrypted).pipe(
-          Effect.mapError((cause) => new EncodingError({ direction: "decode", id: Option.none(), cause })),
-        );
-      });
-
-      return ResonateCodec.of({ encode, decode });
+      return ResonateCodec.of(jsonCodec(Effect.succeed(yield* ResonateEncryptor)));
     }),
   );
 }
+
+export const currentCodec: Effect.Effect<ResonateCodecService> = Effect.serviceOption(ResonateCodec).pipe(
+  Effect.map(Option.getOrElse(() => ResonateCodec.serviceJson)),
+);
 
 export const schemaHeaderKey = "resonate:schema";
 

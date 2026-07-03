@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import { Cron, DateTime, Duration, Effect, Layer, Option, Schema, SchemaParser } from "effect";
 import { TestClock } from "effect/testing";
-import { ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
+import { currentCodec, ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import { makeRequestHead, ResonateNetwork } from "../src/Network.ts";
 import * as NetworkLocal from "../src/NetworkLocal.ts";
@@ -162,7 +162,7 @@ describe("Worker", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const promises = yield* DurablePromises;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handle = yield* client.beginRpc(Workflow, Protocol.ExecutionId.make("worker-root-1"), [1]);
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
@@ -176,7 +176,7 @@ describe("Worker", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const promises = yield* DurablePromises;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handle = yield* client.beginRpc(RemoteRoot, Protocol.ExecutionId.make("worker-remote-1"), [1]);
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
@@ -208,7 +208,7 @@ describe("Worker", () => {
   it.effect("suspends on a pending external await and resumes by replay after settlement", () =>
     Effect.gen(function* () {
       const promises = yield* DurablePromises;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const root = Protocol.PromiseId.make("worker-suspend-1");
       const child = Protocol.PromiseId.make("worker-suspend-1.0");
 
@@ -250,7 +250,7 @@ describe("Worker", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const promises = yield* DurablePromises;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handle = yield* client.beginRpc(Sleep, Protocol.ExecutionId.make("worker-sleep-1"), [1]);
 
       yield* Effect.yieldNow;
@@ -321,7 +321,7 @@ describe("Worker", () => {
     });
 
     return Effect.gen(function* () {
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const promises = yield* DurablePromises;
 
       const created = yield* scheduled.get;

@@ -1,5 +1,8 @@
+import * as BunCrypto from "@effect/platform-bun/BunCrypto";
+import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import { Crypto, Duration, Effect, Exit, Layer, Predicate, Ref, SchemaParser, Stream } from "effect";
 import { TaskFenced } from "./Errors.ts";
+import * as NetworkHttp from "./NetworkHttp.ts";
 import { ResonateNetwork } from "./Network.ts";
 import * as Protocol from "./Protocol.ts";
 import { type AnyFunction, type FunctionGroup } from "./Resonate.ts";
@@ -12,6 +15,11 @@ export interface WorkerConfig {
   readonly ttl?: Duration.Duration;
 }
 
+export interface HttpWorkerConfig extends WorkerConfig {
+  readonly url: string;
+  readonly token?: string;
+}
+
 interface HeldTask {
   readonly id: Protocol.TaskId;
   readonly version: Protocol.TaskVersion;
@@ -20,11 +28,7 @@ interface HeldTask {
 export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
   group: FunctionGroup<Fns>,
   config: WorkerConfig,
-): Layer.Layer<
-  never,
-  never,
-  ResonateNetwork | Tasks | ExecutionEngine | Crypto.Crypto | import("./Resonate.ts").Handler<Fns[number]>
-> =>
+): Layer.Layer<never, never, ResonateNetwork | Crypto.Crypto | import("./Resonate.ts").Handler<Fns[number]>> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const network = yield* ResonateNetwork;
@@ -140,4 +144,20 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
         Effect.forkScoped,
       );
     }),
+  ).pipe(Layer.provideMerge(ExecutionEngine.layer.pipe(Layer.provideMerge(Tasks.layer))));
+
+export const layerHttp = <const Fns extends ReadonlyArray<AnyFunction>>(
+  group: FunctionGroup<Fns>,
+  config: HttpWorkerConfig,
+): Layer.Layer<never, never, import("./Resonate.ts").Handler<Fns[number]>> =>
+  layer(group, config).pipe(
+    Layer.provideMerge(
+      NetworkHttp.layer({
+        url: config.url,
+        group: config.group,
+        pid: config.pid,
+        token: config.token,
+      }).pipe(Layer.provide(BunHttpClient.layer)),
+    ),
+    Layer.provideMerge(BunCrypto.layer),
   );

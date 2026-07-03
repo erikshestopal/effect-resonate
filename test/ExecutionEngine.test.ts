@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import { DateTime, Duration, Effect, Exit, Layer, Option, Predicate, Schema, SchemaParser } from "effect";
 import { TestClock } from "effect/testing";
-import { ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
+import { currentCodec, ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import { DurablePromiseTimedOut } from "../src/Errors.ts";
 import { makeRequestHead, ResonateNetwork } from "../src/Network.ts";
@@ -103,7 +103,7 @@ describe("ExecutionEngine", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const engine = yield* ExecutionEngine;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handlers = workflowGroup.toLayer(
         workflowGroup.of({
           Workflow: (value) =>
@@ -144,7 +144,7 @@ describe("ExecutionEngine", () => {
       const client = yield* Resonate.ResonateClient;
       const engine = yield* ExecutionEngine;
       const promises = yield* DurablePromises;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       let executions = 0;
       const handlers = workflowGroup.toLayer(
         workflowGroup.of({
@@ -190,7 +190,7 @@ describe("ExecutionEngine", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const engine = yield* ExecutionEngine;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handlers = remoteGroup.toLayer(
         remoteGroup.of({
           Workflow: () => Effect.void,
@@ -233,7 +233,7 @@ describe("ExecutionEngine", () => {
       const client = yield* Resonate.ResonateClient;
       const engine = yield* ExecutionEngine;
       const promises = yield* DurablePromises;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handlers = remoteGroup.toLayer(
         remoteGroup.of({
           Workflow: () => Effect.void,
@@ -335,7 +335,7 @@ describe("ExecutionEngine", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const engine = yield* ExecutionEngine;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handlers = remoteGroup.toLayer(
         remoteGroup.of({
           Workflow: () => Effect.void,
@@ -376,7 +376,7 @@ describe("ExecutionEngine", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const engine = yield* ExecutionEngine;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handlers = externalGroup.toLayer(
         externalGroup.of({
           ExternalWorkflow: () =>
@@ -472,7 +472,7 @@ describe("ExecutionEngine", () => {
       const client = yield* Resonate.ResonateClient;
       const engine = yield* ExecutionEngine;
       const promises = yield* DurablePromises;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handlers = externalGroup.toLayer(
         externalGroup.of({
           ExternalWorkflow: () =>
@@ -554,7 +554,7 @@ describe("ExecutionEngine", () => {
       const client = yield* Resonate.ResonateClient;
       const engine = yield* ExecutionEngine;
       const promises = yield* DurablePromises;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handlers = externalGroup.toLayer(
         externalGroup.of({
           ExternalWorkflow: () =>
@@ -601,7 +601,7 @@ describe("ExecutionEngine", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const engine = yield* ExecutionEngine;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handlers = workflowGroup.toLayer(
         workflowGroup.of({
           Workflow: () =>
@@ -671,7 +671,7 @@ describe("ExecutionEngine", () => {
       const client = yield* Resonate.ResonateClient;
       const engine = yield* ExecutionEngine;
       const promises = yield* DurablePromises;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handlers = externalGroup.toLayer(
         externalGroup.of({
           ExternalWorkflow: () =>
@@ -708,7 +708,7 @@ describe("ExecutionEngine", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const engine = yield* ExecutionEngine;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       let calls = 0;
       const handlers = retryGroup.toLayer(
         retryGroup.of({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { DateTime, Duration, Effect, Exit, Option, Ref, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { ResonateCodec } from "../src/Codec.ts";
+import { currentCodec, ResonateCodec } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import * as Protocol from "../src/Protocol.ts";
 import * as Resonate from "../src/Resonate.ts";
@@ -57,7 +57,7 @@ const perturb = Effect.fn("DstSimulator.perturb")(function* (prng: Prng) {
 
 const awaitResolved = Effect.fn("DstSimulator.awaitResolved")(function* (id: Protocol.PromiseId, seed: number) {
   const promises = yield* DurablePromises;
-  const codec = yield* ResonateCodec;
+  const codec = yield* currentCodec;
   const promise = yield* promises.get(id);
   if (promise.state !== "resolved") {
     return yield* Effect.die(`DST seed ${seed} left '${id}' in state '${promise.state}'`);
@@ -128,7 +128,7 @@ const runOperationFuzzer = Effect.fn("DstSimulator.runOperationFuzzer")(function
   );
   const program = Effect.gen(function* () {
     const promises = yield* DurablePromises;
-    const codec = yield* ResonateCodec;
+    const codec = yield* currentCodec;
     const created: Array<Protocol.PromiseId> = [];
 
     for (let index = 0; index < 12; index = index + 1) {

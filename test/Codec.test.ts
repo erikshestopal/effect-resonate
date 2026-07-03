@@ -1,17 +1,17 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Layer, Predicate } from "effect";
-import { ResonateCodec, ResonateEncryptor, withSchemaHeader } from "../src/Codec.ts";
+import { currentCodec, ResonateCodec, ResonateEncryptor, withSchemaHeader } from "../src/Codec.ts";
 import type * as Protocol from "../src/Protocol.ts";
 
-const layers = ResonateCodec.layerJson.pipe(Layer.provide(ResonateEncryptor.layerNoop));
+const layers = Layer.empty;
 
 const encodeValue = Effect.fn(function* (value: unknown) {
-  const codec = yield* ResonateCodec;
+  const codec = yield* currentCodec;
   return yield* codec.encode(value);
 });
 
 const decodeValue = Effect.fn(function* (value: Protocol.Value) {
-  const codec = yield* ResonateCodec;
+  const codec = yield* currentCodec;
   return yield* codec.decode(value);
 });
 
@@ -66,6 +66,12 @@ const nativeFixtures: ReadonlyArray<{ name: string; value: () => unknown; encode
 ];
 
 describe("byte compatibility with the native TS codec", () => {
+  it.effect("uses the native-compatible JSON codec without explicit codec or encryptor layers", () =>
+    Effect.gen(function* () {
+      expect(yield* encodeValue({ ok: true }).pipe(Effect.flatMap(decodeValue))).toEqual({ ok: true });
+    }),
+  );
+
   it.effect.each(nativeFixtures)("encodes $name exactly as native", ({ encoded, value }) =>
     Effect.gen(function* () {
       expect(yield* encodeValue(value())).toEqual(encoded);

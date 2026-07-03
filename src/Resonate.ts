@@ -1,11 +1,24 @@
-import { Clock, Context, Cron, Duration, Effect, Exit, Layer, Option, Pipeable, Predicate, Schema } from "effect";
+import {
+  Clock,
+  Context,
+  Cron,
+  Crypto,
+  Duration,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+  Pipeable,
+  Predicate,
+  Schema,
+} from "effect";
 import type * as HttpClient from "effect/unstable/http/HttpClient";
 import { DurablePromises } from "./DurablePromise.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, type EncodingError } from "./Errors.ts";
 import * as NetworkHttp from "./NetworkHttp.ts";
 import { ResonateNetwork } from "./Network.ts";
 import * as Protocol from "./Protocol.ts";
-import { ResonateCodec, withSchemaHeader } from "./Codec.ts";
+import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";
 import type { ResonateContext } from "./ResonateContext.ts";
 import { Schedules } from "./Schedule.ts";
@@ -219,10 +232,10 @@ export interface ScheduleValue<F extends AnyFunction = AnyFunction> {
   readonly cron: Cron.Cron;
   readonly definition: F;
   readonly payload: PayloadArgs<F>;
-  readonly create: Effect.Effect<Protocol.ScheduleRecord, unknown, Schedules | ResonateCodec | ResonateNetwork>;
+  readonly create: Effect.Effect<Protocol.ScheduleRecord, unknown, Schedules | ResonateNetwork>;
   readonly get: Effect.Effect<Protocol.ScheduleRecord, unknown, Schedules>;
   readonly delete: Effect.Effect<void, unknown, Schedules>;
-  readonly layer: Layer.Layer<never, unknown, Schedules | ResonateCodec | ResonateNetwork>;
+  readonly layer: Layer.Layer<never, unknown, Schedules | ResonateNetwork>;
 }
 
 const fullCronSegment = (values: ReadonlySet<number>, min: number, max: number): boolean => {
@@ -270,7 +283,7 @@ export const schedule = <F extends AnyFunction>(options: ScheduleOptions<F>): Sc
 
   const create: ScheduleValue<F>["create"] = Effect.gen(function* () {
     const schedules = yield* Schedules;
-    const codec = yield* ResonateCodec;
+    const codec = yield* currentCodec;
     const network = yield* ResonateNetwork;
     const encodedArgs = yield* Schema.encodeUnknownEffect(options.function.payload)(options.payload).pipe(
       Effect.catchCause(() =>
@@ -455,15 +468,13 @@ export interface ResonateClientService {
 }
 
 export class ResonateClient extends Context.Service<ResonateClient, ResonateClientService>()("effect-resonate/Client") {
-  static layer(
-    options?: ResonateClientOptions,
-  ): Layer.Layer<ResonateClient, never, DurablePromises | Tasks | ResonateCodec | ResonateNetwork> {
+  static layer(options?: ResonateClientOptions): Layer.Layer<ResonateClient, never, ResonateNetwork | Crypto.Crypto> {
     return Layer.effect(
       ResonateClient,
       Effect.gen(function* () {
         const promises = yield* DurablePromises;
         const tasks = yield* Tasks;
-        const codec = yield* ResonateCodec;
+        const codec = yield* currentCodec;
         const network = yield* ResonateNetwork;
         const groupName = options?.group ?? Protocol.WorkerGroup.make("default");
         const pid = options?.pid ?? Protocol.ProcessId.make("client");
@@ -684,6 +695,6 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           cancel,
         });
       }),
-    );
+    ).pipe(Layer.provideMerge(Layer.mergeAll(DurablePromises.layer, Tasks.layer)));
   }
 }

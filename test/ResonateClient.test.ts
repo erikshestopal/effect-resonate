@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import { Duration, Effect, Exit, Layer, Option, Predicate, Schema, SchemaParser } from "effect";
-import { ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
+import { currentCodec } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import { DurablePromiseCanceled } from "../src/Errors.ts";
 import { makeRequestHead, ResonateNetwork } from "../src/Network.ts";
@@ -25,19 +25,15 @@ const baseLayer = Layer.mergeAll(
     retryTimeout: Duration.seconds(5),
   }),
   BunCrypto.layer,
-  ResonateEncryptor.layerNoop,
 );
 
-const codecLayer = ResonateCodec.layerJson.pipe(Layer.provide(baseLayer));
-const protocolLayer = Layer.mergeAll(DurablePromises.layer, Tasks.layer).pipe(
-  Layer.provide(Layer.mergeAll(baseLayer, codecLayer)),
-);
+const protocolLayer = Layer.mergeAll(DurablePromises.layer, Tasks.layer).pipe(Layer.provide(baseLayer));
 const clientLayer = Resonate.ResonateClient.layer({
   group: Protocol.WorkerGroup.make("workers"),
   pid: Protocol.ProcessId.make("client-1"),
   ttl: Duration.seconds(30),
-}).pipe(Layer.provide(Layer.mergeAll(baseLayer, codecLayer, protocolLayer)));
-const layer = Layer.mergeAll(baseLayer, codecLayer, protocolLayer, clientLayer);
+}).pipe(Layer.provide(baseLayer));
+const layer = Layer.mergeAll(baseLayer, protocolLayer, clientLayer);
 
 const snap = Effect.fn("ResonateClientTest.snap")(function* () {
   const network = yield* ResonateNetwork;
@@ -52,7 +48,7 @@ describe("ResonateClient", () => {
   it.effect("beginRpc creates a target-tagged promise and handle await decodes the value", () =>
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const promises = yield* DurablePromises;
       const handle = yield* client.beginRpc(Checkout, Protocol.ExecutionId.make("rpc-1"), [{ id: "order-1" }], {
         target: Protocol.WorkerGroup.make("payments"),
@@ -108,7 +104,7 @@ describe("ResonateClient", () => {
   it.effect("string-name rpc encodes raw positional args with default version", () =>
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handle = yield* client.beginRpc("RemoteCheckout", Protocol.ExecutionId.make("string-rpc-1"), [1, "two"]);
 
       const state = yield* snap();
@@ -122,7 +118,7 @@ describe("ResonateClient", () => {
   it.effect("persists retry policy in invocation params", () =>
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
       const handle = yield* client.beginRun(Checkout, Protocol.ExecutionId.make("retry-param-1"), [{ id: "order-4" }], {
         retryPolicy: RetryPolicy.linear({ delay: Duration.seconds(2), maxRetries: 7 }),
       });

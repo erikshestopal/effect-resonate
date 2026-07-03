@@ -14,7 +14,6 @@ import {
   Scope,
   Stream,
 } from "effect";
-import { ResonateCodec, ResonateEncryptor } from "./Codec.ts";
 import { DurablePromises } from "./DurablePromise.ts";
 import type { TransportError } from "./Errors.ts";
 import { decodeResponse, ResonateNetwork } from "./Network.ts";
@@ -22,7 +21,6 @@ import * as NetworkLocal from "./NetworkLocal.ts";
 import type { DebugState } from "./NetworkLocal.ts";
 import * as Protocol from "./Protocol.ts";
 import * as Resonate from "./Resonate.ts";
-import { ExecutionEngine } from "./ResonateContext.ts";
 import { Schedules } from "./Schedule.ts";
 import { Tasks } from "./Task.ts";
 import * as Worker from "./Worker.ts";
@@ -151,31 +149,23 @@ export class ResonateTest extends Context.Service<ResonateTest, ResonateTestServ
         retryTimeout: options?.retryTimeout ?? Duration.seconds(5),
       }),
       BunCrypto.layer,
-      ResonateEncryptor.layerNoop,
     );
-    const core = Layer.mergeAll(
-      ResonateCodec.layerJson,
-      DurablePromises.layer,
-      Tasks.layer,
-      Schedules.layer,
-      handlers,
-    ).pipe(Layer.provideMerge(base));
+    const core = Layer.mergeAll(DurablePromises.layer, Tasks.layer, Schedules.layer, handlers).pipe(
+      Layer.provideMerge(base),
+    );
     const services = Layer.mergeAll(
       Resonate.ResonateClient.layer({
         group: workerGroup,
         pid: options?.clientPid ?? Protocol.ProcessId.make("client-1"),
         ttl,
       }),
-      ExecutionEngine.layer,
     ).pipe(Layer.provideMerge(core));
     const worker = Worker.layer(group, { group: workerGroup, pid: workerPid, ttl });
     const test = Layer.effect(
       ResonateTest,
       Effect.gen(function* () {
         const network = yield* ResonateNetwork;
-        const context = yield* Effect.context<
-          Crypto.Crypto | ExecutionEngine | Resonate.Handler<Fns[number]> | ResonateNetwork | Tasks
-        >();
+        const context = yield* Effect.context<Crypto.Crypto | Resonate.Handler<Fns[number]> | ResonateNetwork>();
         const workerScope = yield* Ref.make<Option.Option<Scope.Closeable>>(Option.none());
 
         const snapshot: ResonateTestService["snapshot"] = Effect.gen(function* () {

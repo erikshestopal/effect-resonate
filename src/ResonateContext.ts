@@ -15,7 +15,7 @@ import {
   Schema,
   SchemaParser,
 } from "effect";
-import { ResonateCodec, withSchemaHeader } from "./Codec.ts";
+import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, EncodingError } from "./Errors.ts";
 import * as Protocol from "./Protocol.ts";
 import type { AnyFunction, PayloadArgs, PromiseDeclaration, PromiseSuccess, Registry } from "./Resonate.ts";
@@ -208,11 +208,11 @@ export interface ExecutionEngineService {
 export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionEngineService>()(
   "effect-resonate/ExecutionEngine",
 ) {
-  static readonly layer: Layer.Layer<ExecutionEngine, never, Tasks | ResonateCodec> = Layer.effect(
+  static readonly layer: Layer.Layer<ExecutionEngine, never, Tasks> = Layer.effect(
     ExecutionEngine,
     Effect.gen(function* () {
       const tasks = yield* Tasks;
-      const codec = yield* ResonateCodec;
+      const codec = yield* currentCodec;
 
       const addPreload = (state: RuntimeState, preload: ReadonlyArray<Protocol.PromiseRecord>) => {
         for (const promise of preload) {
