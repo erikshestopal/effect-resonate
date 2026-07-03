@@ -1,0 +1,10 @@
+id: no-process-env
+language: TypeScript
+severity: error
+message: Use effect Config instead of reading process.env directly.
+files:
+  - src/**/*.ts
+  - examples/**/*.ts
+  - test/**/*.ts
+rule:
+  pattern: process.env

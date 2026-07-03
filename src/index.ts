@@ -1,9 +1,9 @@
 export * as Codec from "./Codec.ts";
 export * as DurablePromise from "./DurablePromise.ts";
 export * as Errors from "./Errors.ts";
-export * as Network from "./Network.ts";
-export * as NetworkHttp from "./NetworkHttp.ts";
-export * as NetworkLocal from "./NetworkLocal.ts";
+export * as Network from "./network/network.ts";
+export * as NetworkHttp from "./network/http.ts";
+export * as NetworkLocal from "./network/local.ts";
 export * as Protocol from "./Protocol.ts";
 export * as Resonate from "./Resonate.ts";
 export * as ResonateContext from "./ResonateContext.ts";

@@ -16,9 +16,9 @@ import {
 } from "effect";
 import { DurablePromises } from "./DurablePromise.ts";
 import type { TransportError } from "./Errors.ts";
-import { decodeResponse, ResonateNetwork } from "./Network.ts";
-import * as NetworkLocal from "./NetworkLocal.ts";
-import type { DebugState } from "./NetworkLocal.ts";
+import { decodeResponse, ResonateNetwork } from "./network/network.ts";
+import * as NetworkLocal from "./network/local.ts";
+import type { DebugState } from "./network/local.ts";
 import * as Protocol from "./Protocol.ts";
 import * as Resonate from "./Resonate.ts";
 import { Schedules } from "./Schedule.ts";

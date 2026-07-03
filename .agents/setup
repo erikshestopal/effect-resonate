@@ -14,6 +14,7 @@ else
 fi
 
 vp install --frozen-lockfile --ignore-scripts
+bunx --bun @effect/tsgo setup --ignoreConfig
 bunx --bun effect-tsgo patch
 bun install --cwd repos/resonate-sdk-ts --ignore-scripts
 

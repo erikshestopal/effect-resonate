@@ -15,8 +15,8 @@ import {
 import type * as HttpClient from "effect/unstable/http/HttpClient";
 import { DurablePromises } from "./DurablePromise.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, type EncodingError } from "./Errors.ts";
-import * as NetworkHttp from "./NetworkHttp.ts";
-import { ResonateNetwork } from "./Network.ts";
+import * as NetworkHttp from "./network/http.ts";
+import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";

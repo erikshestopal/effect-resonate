@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import { Effect, Exit, Option, Predicate, Schema, SchemaParser, Stream } from "effect";
 import { TransportError } from "../src/Errors.ts";
-import { checkEnvelope, makeRequestHead, ResonateNetwork } from "../src/Network.ts";
+import { checkEnvelope, makeRequestHead, ResonateNetwork } from "../src/network/network.ts";
 import * as Protocol from "../src/Protocol.ts";
 import { TestNetwork } from "../src/testing.ts";
 

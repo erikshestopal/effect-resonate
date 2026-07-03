@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Schema, SchemaParser } from "effect";
 import { ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
-import { decodeResponse, encodeRequest } from "../src/Network.ts";
+import { decodeResponse, encodeRequest } from "../src/network/network.ts";
 import * as Protocol from "../src/Protocol.ts";
 
 const serverPort = 8011;
@@ -17,7 +17,7 @@ const isPromiseGetSuccess = SchemaParser.is(Protocol.PromiseGetResponse.members[
 
 const spawn = (command: Array<string>, env: Record<string, string> = {}) =>
   Bun.spawn(command, {
-    env: { ...process.env, ...env },
+    env: { ...Bun.env, ...env },
     stdout: "pipe",
     stderr: "pipe",
   });

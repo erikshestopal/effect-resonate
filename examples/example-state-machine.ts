@@ -1,14 +1,11 @@
 import { BunRuntime } from "@effect/platform-bun";
-import { Duration, Effect, Layer, Schema } from "effect";
+import { Config, Duration, Effect, Layer, Schema } from "effect";
 import { Protocol, Resonate, ResonateContext, Worker } from "effect-resonate";
 
 export const repo = "example-state-machine-ts";
 export const functionName = "orderLifecycle";
 export const sampleArgs = [{ orderId: "order-1", path: "deliver" }] as const;
-
-const url = process.env.RESONATE_URL ?? "http://127.0.0.1:8001";
-const group = Protocol.WorkerGroup.make(process.env.RESONATE_GROUP ?? "example-state-machine-ts");
-const pid = Protocol.ProcessId.make(process.env.RESONATE_PID ?? "example-state-machine-ts-worker");
+// Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-state-machine-ts --func orderLifecycle --json-args '[{"orderId":"order-1","path":"deliver"}]' example-state-machine-ts-demo
 
 const Payload = Schema.Struct({ orderId: Schema.String, path: Schema.Literals(["deliver", "cancel", "crash"]) });
 const workflow = Resonate.function(functionName, { payload: Payload });
@@ -35,7 +32,16 @@ const handlers = App.toLayer(
   }),
 );
 
-const worker = Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+const worker = Layer.unwrap(
+  Effect.gen(function* () {
+    const url = yield* Config.string("RESONATE_URL").pipe(Config.withDefault("http://127.0.0.1:8001"));
+    const groupName = yield* Config.string("RESONATE_GROUP").pipe(Config.withDefault("example-state-machine-ts"));
+    const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault("example-state-machine-ts-worker"));
+    const group = Protocol.WorkerGroup.make(groupName);
+    const pid = Protocol.ProcessId.make(pidName);
+    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+  }),
+);
 
 if (import.meta.main) {
   BunRuntime.runMain(Layer.launch(worker));

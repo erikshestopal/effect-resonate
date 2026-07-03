@@ -15,8 +15,8 @@ import {
   SchemaParser,
   Stream,
 } from "effect";
-import { decodeResponse, ResonateNetwork } from "./Network.ts";
-import * as Protocol from "./Protocol.ts";
+import * as Protocol from "../Protocol.ts";
+import { decodeResponse, ResonateNetwork } from "./network.ts";
 
 export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/PromiseObject")({
   id: Protocol.PromiseId,

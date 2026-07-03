@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, SchemaParser } from "effect";
 import * as Protocol from "../src/Protocol.ts";
-import { decodeResponse, encodeRequest } from "../src/Network.ts";
+import { decodeResponse, encodeRequest } from "../src/network/network.ts";
 
 const serverPort = 8012;
 const serverUrl = `http://127.0.0.1:${serverPort}`;
@@ -14,7 +14,7 @@ const kill = (process: Bun.Subprocess) => {
 
 const spawn = (command: Array<string>, env: Record<string, string> = {}) =>
   Bun.spawn(command, {
-    env: { ...process.env, ...env },
+    env: { ...Bun.env, ...env },
     stdout: "pipe",
     stderr: "pipe",
   });

@@ -1,7 +1,7 @@
 import type { Stream } from "effect";
 import { Context, Crypto, Effect, Schema } from "effect";
-import { TransportError } from "./Errors.ts";
-import * as Protocol from "./Protocol.ts";
+import { TransportError } from "../Errors.ts";
+import * as Protocol from "../Protocol.ts";
 
 export interface ResonateNetworkService {
   readonly send: <K extends Protocol.RequestKind>(

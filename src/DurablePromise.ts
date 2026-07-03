@@ -6,7 +6,7 @@ import {
   type ResonateProtocolError,
   type TransportError,
 } from "./Errors.ts";
-import { ResonateNetwork } from "./Network.ts";
+import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
 
 const isGetSuccess = SchemaParser.is(Protocol.PromiseGetResponse.members[0]);

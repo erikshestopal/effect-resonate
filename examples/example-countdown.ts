@@ -1,14 +1,11 @@
 import { BunRuntime } from "@effect/platform-bun";
-import { Duration, Effect, Layer, Schema } from "effect";
+import { Config, Duration, Effect, Layer, Schema } from "effect";
 import { Protocol, Resonate, ResonateContext, Worker } from "effect-resonate";
 
 export const repo = "example-countdown-ts";
 export const functionName = "countdown";
 export const sampleArgs = [2, 1] as const;
-
-const url = process.env.RESONATE_URL ?? "http://127.0.0.1:8001";
-const group = Protocol.WorkerGroup.make(process.env.RESONATE_GROUP ?? "example-countdown-ts");
-const pid = Protocol.ProcessId.make(process.env.RESONATE_PID ?? "example-countdown-ts-worker");
+// Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-countdown-ts --func countdown --json-args '[2,1]' example-countdown-ts-demo
 
 const Payload = Schema.Tuple([Schema.Number, Schema.Number]);
 const workflow = Resonate.function(functionName, { payload: Payload });
@@ -28,7 +25,16 @@ const handlers = App.toLayer(
   }),
 );
 
-const worker = Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+const worker = Layer.unwrap(
+  Effect.gen(function* () {
+    const url = yield* Config.string("RESONATE_URL").pipe(Config.withDefault("http://127.0.0.1:8001"));
+    const groupName = yield* Config.string("RESONATE_GROUP").pipe(Config.withDefault("example-countdown-ts"));
+    const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault("example-countdown-ts-worker"));
+    const group = Protocol.WorkerGroup.make(groupName);
+    const pid = Protocol.ProcessId.make(pidName);
+    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+  }),
+);
 
 if (import.meta.main) {
   BunRuntime.runMain(Layer.launch(worker));

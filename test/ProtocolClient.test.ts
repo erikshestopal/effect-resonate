@@ -4,8 +4,8 @@ import { Duration, Effect, Fiber, Layer, Predicate, Schema, SchemaParser } from 
 import { TestClock } from "effect/testing";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import { PromiseNotFound, ScheduleNotFound, TaskFenced } from "../src/Errors.ts";
-import { makeRequestHead, ResonateNetwork } from "../src/Network.ts";
-import * as NetworkLocal from "../src/NetworkLocal.ts";
+import { makeRequestHead, ResonateNetwork } from "../src/network/network.ts";
+import * as NetworkLocal from "../src/network/local.ts";
 import * as Protocol from "../src/Protocol.ts";
 import { Schedules } from "../src/Schedule.ts";
 import { Tasks } from "../src/Task.ts";

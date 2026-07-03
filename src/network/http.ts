@@ -1,8 +1,8 @@
 import { Duration, Effect, Filter, Layer, Option, Schedule, Schema, Stream } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
-import { TransportError } from "./Errors.ts";
-import { decodeResponse, encodeRequest, ResonateNetwork } from "./Network.ts";
-import * as Protocol from "./Protocol.ts";
+import { TransportError } from "../Errors.ts";
+import * as Protocol from "../Protocol.ts";
+import { decodeResponse, encodeRequest, ResonateNetwork } from "./network.ts";
 
 export interface NetworkHttpOptions {
   readonly url: string;

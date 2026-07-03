@@ -1,39 +1,73 @@
 import { BunRuntime } from "@effect/platform-bun";
-import { Duration, Effect, Layer, Schema } from "effect";
+import { Config, Duration, Effect, Layer, Schema } from "effect";
 import { Protocol, Resonate, ResonateContext, Worker } from "effect-resonate";
 
 export const repo = "example-node-drain-orchestrator-ts";
-export const functionName = "drainNode";
-export const sampleArgs = [{ nodeId: "node-1" }] as const;
+export const functionName = "drainAllNodes";
+export const sampleArgs = [
+  "drain-demo",
+  {
+    evictionTimeout: 60000,
+    drainTimeout: 300000,
+    ignoreDaemonSets: true,
+    deleteLocalData: true,
+    force: false,
+    gracePeriod: 30,
+  },
+  { pool: "workers" },
+] as const;
+// Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-node-drain-orchestrator-ts --func drainAllNodes --json-args '["drain-demo",{"evictionTimeout":60000,"drainTimeout":300000,"ignoreDaemonSets":true,"deleteLocalData":true,"force":false,"gracePeriod":30},{"pool":"workers"}]' example-node-drain-orchestrator-ts-demo
 
-const url = process.env.RESONATE_URL ?? "http://127.0.0.1:8001";
-const group = Protocol.WorkerGroup.make(process.env.RESONATE_GROUP ?? "example-node-drain-orchestrator-ts");
-const pid = Protocol.ProcessId.make(process.env.RESONATE_PID ?? "example-node-drain-orchestrator-ts-worker");
-
-const Payload = Schema.Struct({ nodeId: Schema.String });
+const Payload = Schema.Tuple([
+  Schema.String,
+  Schema.Struct({
+    evictionTimeout: Schema.Number,
+    drainTimeout: Schema.Number,
+    ignoreDaemonSets: Schema.Boolean,
+    deleteLocalData: Schema.Boolean,
+    force: Schema.Boolean,
+    gracePeriod: Schema.Number,
+  }),
+  Schema.Struct({ pool: Schema.String }),
+]);
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
   App.of({
-    [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<unknown, unknown, ResonateContext.ResonateContext> {
+    [functionName]: (operationId, options, nodeSelector) =>
+      Effect.gen(function* () {
         const ctx = yield* ResonateContext.ResonateContext;
+        const startedAt = new Date().toISOString();
         const results: Array<unknown> = [];
-        results.push(
-          yield* ctx.run(Effect.logInfo(`cordon ${input.nodeId}`).pipe(Effect.as(`cordon ${input.nodeId}`))),
-        );
-        results.push(yield* ctx.run(Effect.logInfo(`drain ${input.nodeId}`).pipe(Effect.as(`drain ${input.nodeId}`))));
-        results.push(
-          yield* ctx.run(Effect.logInfo(`uncordon ${input.nodeId}`).pipe(Effect.as(`uncordon ${input.nodeId}`))),
-        );
-        yield* ctx.sleep(Duration.millis(1));
-        return { repo, functionName, results };
+        for (const node of [nodeSelector.pool]) {
+          yield* ctx.run(Effect.logInfo(`[Drain] Cordoning node ${node}`));
+          yield* ctx.run(Effect.logInfo(`[Drain] Getting pods on node ${node}`));
+          yield* ctx.run(Effect.logInfo(`[Drain] Evicting pods on ${node}`));
+          results.push({
+            node,
+            success: options.force || node.length > 0,
+            startedAt,
+            completedAt: new Date().toISOString(),
+            podsEvicted: 0,
+          });
+          yield* ctx.run(Effect.logInfo(`[Drain] Uncordoning node ${node}`));
+        }
+        return { operationId, status: "completed", startedAt, completedAt: new Date().toISOString(), nodes: results };
       }),
   }),
 );
 
-const worker = Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+const worker = Layer.unwrap(
+  Effect.gen(function* () {
+    const url = yield* Config.string("RESONATE_URL").pipe(Config.withDefault("http://127.0.0.1:8001"));
+    const groupName = yield* Config.string("RESONATE_GROUP").pipe(Config.withDefault(repo));
+    const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault(`${repo}-worker`));
+    const group = Protocol.WorkerGroup.make(groupName);
+    const pid = Protocol.ProcessId.make(pidName);
+    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(30) }).pipe(Layer.provideMerge(handlers));
+  }),
+);
 
 if (import.meta.main) {
   BunRuntime.runMain(Layer.launch(worker));

@@ -2,8 +2,8 @@ import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import { DateTime, Duration, Effect, Layer, Option, SchemaParser, Stream } from "effect";
 import { TestClock } from "effect/testing";
-import { makeRequestHead, ResonateNetwork } from "../src/Network.ts";
-import * as NetworkLocal from "../src/NetworkLocal.ts";
+import { makeRequestHead, ResonateNetwork } from "../src/network/network.ts";
+import * as NetworkLocal from "../src/network/local.ts";
 import * as Protocol from "../src/Protocol.ts";
 import { assertInvariants } from "../src/testing.ts";
 

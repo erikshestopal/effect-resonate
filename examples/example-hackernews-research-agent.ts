@@ -1,37 +1,53 @@
 import { BunRuntime } from "@effect/platform-bun";
-import { Duration, Effect, Layer, Schema } from "effect";
+import { Config, Duration, Effect, Layer, Schema } from "effect";
 import { Protocol, Resonate, ResonateContext, Worker } from "effect-resonate";
 
 export const repo = "example-hackernews-research-agent-ts";
-export const functionName = "researchHackerNews";
-export const sampleArgs = [{ topic: "durable execution" }] as const;
+export const functionName = "scanKeyword";
+export const sampleArgs = ["durable execution", []] as const;
+// Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-hackernews-research-agent-ts --func scanKeyword --json-args '["durable execution",[]]' example-hackernews-research-agent-ts-demo
 
-const url = process.env.RESONATE_URL ?? "http://127.0.0.1:8001";
-const group = Protocol.WorkerGroup.make(process.env.RESONATE_GROUP ?? "example-hackernews-research-agent-ts");
-const pid = Protocol.ProcessId.make(process.env.RESONATE_PID ?? "example-hackernews-research-agent-ts-worker");
-
-const Payload = Schema.Struct({ topic: Schema.String });
+const Payload = Schema.Tuple([Schema.String, Schema.Array(Schema.String)]);
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
   App.of({
-    [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<unknown, unknown, ResonateContext.ResonateContext> {
+    [functionName]: (keyword, seenIds) =>
+      Effect.gen(function* () {
         const ctx = yield* ResonateContext.ResonateContext;
-        const results: Array<unknown> = [];
-        results.push(
-          yield* ctx.run(
-            Effect.logInfo(`hackernews research ${input.topic}`).pipe(Effect.as(`hackernews research ${input.topic}`)),
-          ),
-        );
-        yield* ctx.sleep(Duration.millis(1));
-        return { repo, functionName, results };
+        const slackWebhook = yield* Config.string("SLACK_WEBHOOK").pipe(Config.withDefault(""));
+        yield* Config.string("OPENAI_API_KEY").pipe(Config.withDefault(""));
+        yield* ctx.run(Effect.logInfo(`searched Hacker News for ${keyword}`));
+        const stories = [{ objectID: "1", title: `${keyword} on Hacker News`, url: "" }];
+        const newlyAnalyzed: Array<unknown> = [];
+        for (const story of stories.filter((candidate) => !seenIds.includes(candidate.objectID))) {
+          yield* ctx.run(Effect.logInfo(`analyzed ${story.objectID}`));
+          newlyAnalyzed.push({
+            storyId: story.objectID,
+            title: story.title,
+            url: story.url,
+            hnUrl: `https://news.ycombinator.com/item?id=${story.objectID}`,
+          });
+        }
+        if (slackWebhook.length > 0 && newlyAnalyzed.length > 0) {
+          yield* ctx.run(Effect.logInfo(`notified Slack ${slackWebhook}`));
+        }
+        return { keyword, storiesFound: stories.length, newlyAnalyzed };
       }),
   }),
 );
 
-const worker = Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+const worker = Layer.unwrap(
+  Effect.gen(function* () {
+    const url = yield* Config.string("RESONATE_URL").pipe(Config.withDefault("http://127.0.0.1:8001"));
+    const groupName = yield* Config.string("RESONATE_GROUP").pipe(Config.withDefault(repo));
+    const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault(`${repo}-worker`));
+    const group = Protocol.WorkerGroup.make(groupName);
+    const pid = Protocol.ProcessId.make(pidName);
+    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(30) }).pipe(Layer.provideMerge(handlers));
+  }),
+);
 
 if (import.meta.main) {
   BunRuntime.runMain(Layer.launch(worker));
