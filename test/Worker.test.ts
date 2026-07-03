@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
-import { DateTime, Duration, Effect, Layer, Option, Schema, SchemaParser } from "effect";
+import { Cron, DateTime, Duration, Effect, Layer, Option, Schema, SchemaParser } from "effect";
 import { TestClock } from "effect/testing";
 import { ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
@@ -9,6 +9,7 @@ import * as NetworkLocal from "../src/NetworkLocal.ts";
 import * as Protocol from "../src/Protocol.ts";
 import * as Resonate from "../src/Resonate.ts";
 import { ExecutionEngine, ResonateContext } from "../src/ResonateContext.ts";
+import { Schedules } from "../src/Schedule.ts";
 import { Tasks } from "../src/Task.ts";
 import * as Worker from "../src/Worker.ts";
 
@@ -36,7 +37,11 @@ const RemoteChild = Resonate.function("WorkerRemoteChild", {
   payload: Schema.Number,
 });
 
-const group = Resonate.group(Workflow, Blocking, Suspend, Sleep, RemoteRoot, RemoteChild);
+const Scheduled = Resonate.function("ScheduledWorkflow", {
+  payload: Schema.Struct({ id: Schema.String }),
+});
+
+const group = Resonate.group(Workflow, Blocking, Suspend, Sleep, RemoteRoot, RemoteChild, Scheduled);
 const isDebugSnapSuccess = SchemaParser.is(Protocol.DebugSnapResponse.members[0]);
 
 const baseLayer = Layer.mergeAll(
@@ -50,7 +55,7 @@ const baseLayer = Layer.mergeAll(
   ResonateEncryptor.layerNoop,
 );
 const codecLayer = ResonateCodec.layerJson;
-const protocolLayer = Layer.mergeAll(DurablePromises.layer, Tasks.layer);
+const protocolLayer = Layer.mergeAll(DurablePromises.layer, Tasks.layer, Schedules.layer);
 const clientLayer = Resonate.ResonateClient.layer({
   group: Protocol.WorkerGroup.make("workers"),
   pid: Protocol.ProcessId.make("client-1"),
@@ -87,6 +92,7 @@ const handlerLayer = group.toLayer(
         return yield* ctx.rpc(RemoteChild, [Number(value) + 1], { target: Protocol.WorkerGroup.make("workers") });
       }),
     WorkerRemoteChild: (value) => Effect.succeed(Number(value) + 1),
+    ScheduledWorkflow: (payload) => Effect.succeed(`scheduled:${payload.id}`),
   }),
 );
 const workerLayer = Worker.layer(group, {
@@ -301,6 +307,78 @@ describe("Worker", () => {
       const timedOutRoot = yield* promises.get(handle.id);
       expect(resolvedTimer.state).toBe("resolved");
       expect(timedOutRoot.state).toBe("rejected_timedout");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("creates schedules through Resonate.schedule.layer and executes fired promises", () => {
+    const scheduled = Resonate.schedule({
+      id: Protocol.ScheduleId.make("api-nightly"),
+      cron: Cron.parseUnsafe("* * * * *"),
+      function: Scheduled,
+      payload: [{ id: "order-1" }],
+      timeout: Duration.seconds(30),
+      target: Protocol.WorkerGroup.make("workers"),
+    });
+
+    return Effect.gen(function* () {
+      const codec = yield* ResonateCodec;
+      const promises = yield* DurablePromises;
+
+      const created = yield* scheduled.get;
+      expect(created.id).toBe("api-nightly");
+      expect(created.cron).toBe("* * * * *");
+      expect(created.promiseId).toBe("{{.id}}.{{.timestamp}}");
+      expect(created.promiseTags.reserved["resonate:target"]?.address).toBe("local://any@workers");
+      expect(yield* codec.decode(created.promiseParam)).toEqual({
+        func: "ScheduledWorkflow",
+        args: [{ id: "order-1" }],
+        version: 1,
+      });
+
+      yield* TestClock.adjust(Duration.minutes(1));
+      yield* tick(60_000);
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+
+      const fired = yield* promises.get(Protocol.PromiseId.make("api-nightly.60000"));
+      expect(fired.state).toBe("resolved");
+      if (fired.state === "pending") {
+        return yield* Effect.die("scheduled promise was not resolved");
+      }
+      expect(yield* codec.decode(fired.value)).toBe("scheduled:order-1");
+    }).pipe(Effect.provide(scheduled.layer), Effect.provide(layer));
+  });
+
+  it.effect("keeps schedule create idempotent without drift checks", () =>
+    Effect.gen(function* () {
+      const schedules = yield* Schedules;
+      const initial = Resonate.schedule({
+        id: Protocol.ScheduleId.make("api-idempotent"),
+        cron: Cron.parseUnsafe("* * * * *"),
+        function: Scheduled,
+        payload: [{ id: "first" }],
+        target: Protocol.WorkerGroup.make("workers"),
+      });
+      const changed = Resonate.schedule({
+        id: Protocol.ScheduleId.make("api-idempotent"),
+        cron: Cron.parseUnsafe("*/5 * * * *"),
+        function: Scheduled,
+        payload: [{ id: "changed" }],
+        target: Protocol.WorkerGroup.make("workers"),
+      });
+
+      const created = yield* initial.create;
+      const recreated = yield* changed.create;
+      const stored = yield* schedules.get(Protocol.ScheduleId.make("api-idempotent"));
+
+      expect(recreated.cron).toBe(created.cron);
+      expect(recreated.promiseParam).toEqual(created.promiseParam);
+      expect(stored).toEqual(created);
+
+      yield* schedules.delete(Protocol.ScheduleId.make("api-idempotent"));
+      yield* TestClock.adjust(Duration.minutes(1));
+      yield* tick(60_000);
+      expect((yield* snap()).promises.some((promise) => promise.id === "api-idempotent.60000")).toBe(false);
     }).pipe(Effect.provide(layer)),
   );
 });

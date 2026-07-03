@@ -51,3 +51,7 @@ The unified schedule value: single options struct → `.layer` / `.create` / `.g
 ## Acceptance
 
 - `vp run check` green; CONFORMANCE.md S-rows (API side) → done.
+
+## Implementation notes
+
+- Done in spec 20: `Resonate.schedule` constructs a reusable schedule value exposing `.create`, `.get`, `.delete`, and `.layer`. Creation encodes invocation params once, writes the native `{{.id}}.{{.timestamp}}` promise id template, serializes five-field cron values, emits target/global tags, preserves native idempotent re-create behavior without drift checks, and leaves deletion explicit.

@@ -1,4 +1,4 @@
-import { Clock, Context, Duration, Effect, Exit, Layer, Option, Pipeable, Predicate, Schema } from "effect";
+import { Clock, Context, Cron, Duration, Effect, Exit, Layer, Option, Pipeable, Predicate, Schema } from "effect";
 import type * as HttpClient from "effect/unstable/http/HttpClient";
 import { DurablePromises } from "./DurablePromise.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, type EncodingError } from "./Errors.ts";
@@ -8,6 +8,7 @@ import * as Protocol from "./Protocol.ts";
 import { ResonateCodec, withSchemaHeader } from "./Codec.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";
 import type { ResonateContext } from "./ResonateContext.ts";
+import { Schedules } from "./Schedule.ts";
 import { Tasks } from "./Task.ts";
 
 export * as Worker from "./Worker.ts";
@@ -200,6 +201,123 @@ export { defineFunction as function };
 
 export const group = <const Fns extends ReadonlyArray<AnyFunction>>(...fns: Fns): FunctionGroup<Fns> =>
   makeFunctionGroupProto(fns);
+
+export interface ScheduleOptions<F extends AnyFunction> {
+  readonly id: Protocol.ScheduleId;
+  readonly cron: Cron.Cron;
+  readonly function: F;
+  readonly payload: PayloadArgs<F>;
+  readonly timeout?: Duration.Duration;
+  readonly target?: Protocol.WorkerGroup;
+  readonly tags?: Protocol.Tags;
+  readonly version?: Protocol.FunctionVersionOrLatest;
+  readonly retryPolicy?: RetryPolicy.RetryPolicy;
+}
+
+export interface ScheduleValue<F extends AnyFunction = AnyFunction> {
+  readonly id: Protocol.ScheduleId;
+  readonly cron: Cron.Cron;
+  readonly definition: F;
+  readonly payload: PayloadArgs<F>;
+  readonly create: Effect.Effect<Protocol.ScheduleRecord, unknown, Schedules | ResonateCodec | ResonateNetwork>;
+  readonly get: Effect.Effect<Protocol.ScheduleRecord, unknown, Schedules>;
+  readonly delete: Effect.Effect<void, unknown, Schedules>;
+  readonly layer: Layer.Layer<never, unknown, Schedules | ResonateCodec | ResonateNetwork>;
+}
+
+const fullCronSegment = (values: ReadonlySet<number>, min: number, max: number): boolean => {
+  if (values.size === 0) {
+    return true;
+  }
+  if (values.size !== max - min + 1) {
+    return false;
+  }
+  for (let value = min; value <= max; value = value + 1) {
+    if (!values.has(value)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const cronSegment = (values: ReadonlySet<number>, min: number, max: number): string => {
+  if (fullCronSegment(values, min, max)) {
+    return "*";
+  }
+  return [...values].sort((left, right) => left - right).join(",");
+};
+
+const fiveFieldCronExpression = (cron: Cron.Cron): Effect.Effect<string, never> => {
+  if (cron.seconds.size !== 1 || !cron.seconds.has(0)) {
+    return Effect.die("Resonate schedules only support five-field cron expressions");
+  }
+  return Effect.succeed(
+    [
+      cronSegment(cron.minutes, 0, 59),
+      cronSegment(cron.hours, 0, 23),
+      cronSegment(cron.days, 1, 31),
+      cronSegment(cron.months, 1, 12),
+      cronSegment(cron.weekdays, 0, 6),
+    ].join(" "),
+  );
+};
+
+export const schedule = <F extends AnyFunction>(options: ScheduleOptions<F>): ScheduleValue<F> => {
+  const timeout = options.timeout ?? Duration.hours(24);
+  const tags = options.tags ?? Protocol.emptyTags;
+  const version = options.version ?? options.function.version;
+  const retry = options.retryPolicy;
+
+  const create: ScheduleValue<F>["create"] = Effect.gen(function* () {
+    const schedules = yield* Schedules;
+    const codec = yield* ResonateCodec;
+    const network = yield* ResonateNetwork;
+    const encodedArgs = yield* Schema.encodeUnknownEffect(options.function.payload)(options.payload).pipe(
+      Effect.catchCause(() =>
+        options.payload.length === 1
+          ? Schema.encodeUnknownEffect(options.function.payload)(options.payload[0])
+          : Effect.die("Invalid function payload"),
+      ),
+    );
+    const encoded = yield* codec.encode(
+      InvocationParam.make({
+        func: options.function.name,
+        args: Array.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
+        version,
+        ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
+      }),
+    );
+    const target = network.match(options.target ?? Protocol.WorkerGroup.make("default"));
+    return yield* schedules.create({
+      id: options.id,
+      cron: yield* fiveFieldCronExpression(options.cron),
+      promiseId: "{{.id}}.{{.timestamp}}",
+      promiseTimeout: timeout,
+      promiseParam: withSchemaHeader(encoded, options.function.name),
+      promiseTags: Protocol.Tags.make({
+        reserved: {
+          ...tags.reserved,
+          "resonate:target": target,
+          "resonate:scope": globalScope,
+        },
+        unrecognized: tags.unrecognized,
+        user: tags.user,
+      }),
+    });
+  });
+
+  const value = {
+    id: options.id,
+    cron: options.cron,
+    definition: options.function,
+    payload: options.payload,
+    create,
+    get: Schedules.pipe(Effect.flatMap((schedules) => schedules.get(options.id))),
+    delete: Schedules.pipe(Effect.flatMap((schedules) => schedules.delete(options.id))),
+    layer: Layer.effectDiscard(create),
+  };
+  return value;
+};
 
 const InvocationParam = Schema.Struct({
   func: Schema.String,
