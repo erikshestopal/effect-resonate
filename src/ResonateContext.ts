@@ -20,6 +20,7 @@ import {
   HashMap,
   HashSet,
   Layer,
+  Match,
   Number as Num,
   Option,
   Predicate,
@@ -273,20 +274,14 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
       };
 
       const decodeSettled = Effect.fn("ExecutionEngine.decodeSettled")(function* (promise: Protocol.PromiseRecord) {
-        if (promise.state === "pending") {
-          return yield* Effect.die(`Promise '${promise.id}' is still pending`);
-        }
-        if (promise.state === "rejected_canceled") {
-          return yield* new DurablePromiseCanceled({ id: promise.id });
-        }
-        if (promise.state === "rejected_timedout") {
-          return yield* new DurablePromiseTimedOut({ id: promise.id });
-        }
-        const value = yield* codec.decode(promise.value);
-        if (promise.state === "resolved") {
-          return value;
-        }
-        return yield* Effect.fail(value);
+        return yield* Match.value(promise).pipe(
+          Match.when({ state: "pending" }, (promise) => Effect.die(`Promise '${promise.id}' is still pending`)),
+          Match.when({ state: "rejected_canceled" }, (promise) => new DurablePromiseCanceled({ id: promise.id })),
+          Match.when({ state: "rejected_timedout" }, (promise) => new DurablePromiseTimedOut({ id: promise.id })),
+          Match.when({ state: "resolved" }, (promise) => codec.decode(promise.value)),
+          Match.when({ state: "rejected" }, (promise) => codec.decode(promise.value).pipe(Effect.flatMap(Effect.fail))),
+          Match.exhaustive,
+        );
       });
 
       const actionPromise = (action: unknown): Effect.Effect<Protocol.PromiseRecord> => {

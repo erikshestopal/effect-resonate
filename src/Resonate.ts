@@ -39,6 +39,7 @@ import {
   Exit,
   HashSet,
   Layer,
+  Match,
   Number as Num,
   Option,
   Order,
@@ -624,17 +625,15 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           });
 
         const decodeSettled = Effect.fn("ResonateClient.decodeSettled")(function* (promise: Protocol.PromiseSettled) {
-          if (promise.state === "rejected_canceled") {
-            return yield* new DurablePromiseCanceled({ id: promise.id });
-          }
-          if (promise.state === "rejected_timedout") {
-            return yield* new DurablePromiseTimedOut({ id: promise.id });
-          }
-          const value = yield* codec.decode(promise.value);
-          if (promise.state === "resolved") {
-            return value;
-          }
-          return yield* Effect.fail(value);
+          return yield* Match.value(promise).pipe(
+            Match.when({ state: "rejected_canceled" }, (promise) => new DurablePromiseCanceled({ id: promise.id })),
+            Match.when({ state: "rejected_timedout" }, (promise) => new DurablePromiseTimedOut({ id: promise.id })),
+            Match.when({ state: "resolved" }, (promise) => codec.decode(promise.value)),
+            Match.when({ state: "rejected" }, (promise) =>
+              codec.decode(promise.value).pipe(Effect.flatMap(Effect.fail)),
+            ),
+            Match.exhaustive,
+          );
         });
 
         const handle = (id: Protocol.PromiseId): DurableHandle => ({
