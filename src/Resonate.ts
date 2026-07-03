@@ -29,6 +29,7 @@
  * @since 0.0.0
  */
 import {
+  Array as Arr,
   Clock,
   Context,
   Cron,
@@ -38,6 +39,7 @@ import {
   Exit,
   Layer,
   Option,
+  Order,
   Pipeable,
   Predicate,
   Schema,
@@ -108,6 +110,7 @@ export interface RegistryItem<F extends AnyFunction = AnyFunction> {
 
 const RegistryTypeId = "effect-resonate/Registry";
 const FunctionGroupTypeId = "effect-resonate/FunctionGroup";
+const RegistryItemByVersion = Order.mapInput(Order.Number, (item: RegistryItem) => item.definition.version);
 
 export interface Registry {
   readonly [RegistryTypeId]: typeof RegistryTypeId;
@@ -137,16 +140,14 @@ export const makeRegistry = (items: ReadonlyArray<RegistryItem>): Effect.Effect<
     items,
     get(options) {
       const version = options.version ?? "latest";
-      const named = items.filter((item) => item.definition.name === options.name);
-      if (named.length === 0) {
-        return Option.none();
-      }
-      if (version !== "latest") {
-        return Option.fromNullishOr(named.find((item) => item.definition.version === version));
-      }
-      return Option.some(
-        named.reduce((left, right) => (left.definition.version > right.definition.version ? left : right)),
-      );
+      const named = Arr.filter(items, (item) => item.definition.name === options.name);
+      return Arr.match(named, {
+        onEmpty: Option.none,
+        onNonEmpty: (named) =>
+          version !== "latest"
+            ? Arr.findFirst(named, (item) => item.definition.version === version)
+            : Option.some(Arr.max(named, RegistryItemByVersion)),
+      });
     },
   });
 };
@@ -236,13 +237,16 @@ export const group = <const Fns extends ReadonlyArray<AnyFunction>>(...fns: Fns)
     );
   },
   toLayerHandler(options) {
-    const definition = fns.find((fn) => fn.name === options.name);
-    if (Predicate.isUndefined(definition)) {
-      return Layer.effectContext(Effect.die(`Function '${options.name}' is not part of this group`));
-    }
-    return Layer.effect(
-      Handler(definition),
-      Effect.isEffect(options.build) ? options.build : Effect.succeed(options.build),
+    return Option.match(
+      Arr.findFirst(fns, (fn) => fn.name === options.name),
+      {
+        onNone: () => Layer.effectContext(Effect.die(`Function '${options.name}' is not part of this group`)),
+        onSome: (definition) =>
+          Layer.effect(
+            Handler(definition),
+            Effect.isEffect(options.build) ? options.build : Effect.succeed(options.build),
+          ),
+      },
     );
   },
   registry: Effect.gen(function* () {
@@ -305,7 +309,7 @@ const cronSegment = (options: {
   if (fullCronSegment(options)) {
     return "*";
   }
-  return [...options.values].sort((left, right) => left - right).join(",");
+  return Arr.sort(options.values, Order.Number).join(",");
 };
 
 const fiveFieldCronExpression = (cron: Cron.Cron): Effect.Effect<string, never> => {

@@ -8,6 +8,7 @@
  * @since 0.0.0
  */
 import {
+  Array as Arr,
   Clock,
   Context,
   DateTime,
@@ -811,7 +812,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           if (Result.isSuccess(result)) {
             return Exit.succeed(result.success);
           }
-          if (nonRetryableErrors.some((schema) => SchemaParser.is(schema)(result.failure))) {
+          if (Arr.some(nonRetryableErrors, (schema) => SchemaParser.is(schema)(result.failure))) {
             return Exit.fail(result.failure);
           }
           const retryIn = RetryPolicy.next(policy, attempt);
