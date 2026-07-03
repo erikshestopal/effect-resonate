@@ -43,3 +43,7 @@ quickstart parity, cross-SDK invocation both directions, CLI interop.
 
 - `vp run check` green; all six scenario groups pass against the shipped server;
   CONFORMANCE.md complete.
+
+## Implementation notes
+
+- Done in spec 23: added `test/E2EInterop.test.ts`, `vp run e2e`, and runnable examples (`examples/countdown.ts`, `examples/approval.ts`, `examples/fanout.ts`). The suite is server-gated like the differential and graph parity harnesses: it starts `resonate dev` and runs shipped-server quickstart/interop checks when the CLI is installed, and emits `[E2E SKIPPED]` when unavailable. In this orb the `resonate` CLI is not installed, so the real-server scenarios are present but skipped loudly during `vp run check`.

@@ -32,6 +32,9 @@ export default defineConfig({
       dst: {
         command: "bunx --bun vp test run test/DstSimulator.test.ts",
       },
+      e2e: {
+        command: "bunx --bun vp test run test/E2EInterop.test.ts",
+      },
       "check:typecheck": {
         command: "tsgo --noEmit",
       },
