@@ -36,6 +36,14 @@ const contextLayer = Layer.succeed(
     all: (effects) => Effect.forEach(effects, (effect) => effect),
     sleep: () => Effect.void,
     sleepUntil: () => Effect.void,
+    beginRpc: () =>
+      Effect.succeed({
+        id: Protocol.PromiseId.make("test.1"),
+        await: Effect.void,
+        poll: Effect.succeed(Option.none()),
+        cancel: Effect.void,
+      }),
+    rpc: () => Effect.void,
     panic: (message) => Effect.die(message),
   }),
 );

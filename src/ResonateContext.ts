@@ -14,10 +14,10 @@ import {
   Schema,
   SchemaParser,
 } from "effect";
-import { ResonateCodec } from "./Codec.ts";
+import { ResonateCodec, withSchemaHeader } from "./Codec.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut } from "./Errors.ts";
 import * as Protocol from "./Protocol.ts";
-import type { Registry } from "./Resonate.ts";
+import type { AnyFunction, PayloadArgs, Registry } from "./Resonate.ts";
 import { Tasks } from "./Task.ts";
 
 export class DurablePanic extends Schema.TaggedErrorClass<DurablePanic>()("DurablePanic", {
@@ -38,8 +38,10 @@ const InvocationParam = Schema.Struct({
 
 export interface ContextOptions {
   readonly id?: Protocol.PromiseId;
+  readonly target?: Protocol.WorkerGroup;
   readonly timeout?: Duration.Duration;
   readonly tags?: Protocol.Tags;
+  readonly version?: Protocol.FunctionVersionOrLatest;
 }
 
 export interface ContextInfo {
@@ -68,6 +70,8 @@ interface RuntimeState {
   readonly root: Protocol.PromiseId;
   readonly version: Protocol.TaskVersion;
   readonly timeoutAt: Protocol.Timestamp;
+  readonly targetTransport: "poll" | "local";
+  readonly targetGroup: Protocol.WorkerGroup;
   readonly originId: Protocol.PromiseId;
   readonly prefixId: Protocol.PromiseId;
   readonly parentId: Protocol.PromiseId;
@@ -143,6 +147,18 @@ export interface ResonateContextService {
   ) => Effect.Effect<ReadonlyArray<unknown>, unknown, unknown>;
   readonly sleep: (duration: Duration.Input) => Effect.Effect<void, unknown>;
   readonly sleepUntil: (instant: DateTime.Utc) => Effect.Effect<void, unknown>;
+  readonly beginRpc: {
+    <F extends AnyFunction>(
+      fn: F,
+      args: PayloadArgs<F>,
+      options?: ContextOptions,
+    ): Effect.Effect<LocalDurableHandle, unknown>;
+    (name: string, args: ReadonlyArray<unknown>, options?: ContextOptions): Effect.Effect<LocalDurableHandle, unknown>;
+  };
+  readonly rpc: {
+    <F extends AnyFunction>(fn: F, args: PayloadArgs<F>, options?: ContextOptions): Effect.Effect<unknown, unknown>;
+    (name: string, args: ReadonlyArray<unknown>, options?: ContextOptions): Effect.Effect<unknown, unknown>;
+  };
   readonly panic: (message: string) => Effect.Effect<never, DurablePanic>;
 }
 
@@ -240,6 +256,41 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         return timestamp(Math.min(now + Duration.toMillis(duration), DateTime.toEpochMillis(parent)));
       });
 
+      const encodeInvocation = Effect.fn("ExecutionEngine.encodeInvocation")(function* (
+        name: string,
+        args: ReadonlyArray<unknown>,
+        version: Protocol.FunctionVersionOrLatest,
+      ): Effect.fn.Return<Protocol.Value, unknown> {
+        const encoded = yield* codec.encode(InvocationParam.make({ func: name, args, version }));
+        return withSchemaHeader(encoded, name);
+      });
+
+      const encodeTargetPayload = Effect.fn("ExecutionEngine.encodeTargetPayload")(function* (
+        target: AnyFunction | string,
+        args: ReadonlyArray<unknown>,
+        options?: ContextOptions,
+      ): Effect.fn.Return<Protocol.Value, unknown> {
+        if (Predicate.isString(target)) {
+          return yield* encodeInvocation(
+            target,
+            args,
+            Predicate.isUndefined(options?.version) ? Protocol.FunctionVersion.make(1) : options.version,
+          );
+        }
+        const encodedArgs = yield* Schema.encodeUnknownEffect(target.payload)(args).pipe(
+          Effect.catchCause(() =>
+            args.length === 1
+              ? Schema.encodeUnknownEffect(target.payload)(args[0])
+              : Effect.die("Invalid function payload"),
+          ),
+        );
+        return yield* encodeInvocation(
+          target.name,
+          Array.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
+          options?.version ?? target.version,
+        );
+      });
+
       const localTags = (state: RuntimeState, id: Protocol.PromiseId, extra: Protocol.Tags): Protocol.Tags =>
         Protocol.Tags.make({
           reserved: {
@@ -313,6 +364,54 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
                 },
                 unrecognized: {},
                 user: {},
+              }),
+            },
+          }),
+        });
+        addPreload(state, result.preload);
+        const promise = yield* actionPromise(result.action);
+        state.cache.set(promise.id, promise);
+        return promise;
+      });
+
+      const createRemote = Effect.fn("ExecutionEngine.createRemote")(function* (
+        state: RuntimeState,
+        targetFunction: AnyFunction | string,
+        args: ReadonlyArray<unknown>,
+        options: ContextOptions | undefined,
+      ) {
+        const id = options?.id ?? childId(state.root, state.seq);
+        state.seq = state.seq + 1;
+        const cached = state.cache.get(id);
+        if (Predicate.isNotUndefined(cached)) {
+          return cached;
+        }
+        const targetGroup = options?.target ?? state.targetGroup;
+        const target =
+          state.targetTransport === "local"
+            ? Protocol.TargetAddress.localAny(targetGroup)
+            : Protocol.TargetAddress.pollAny(targetGroup);
+        const result = yield* tasks.fence({
+          id: state.root,
+          version: state.version,
+          action: Protocol.PromiseCreateRequest.make({
+            head: requestHead(`${state.root}:${id}:rpc`),
+            data: {
+              id,
+              timeoutAt: yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
+              param: yield* encodeTargetPayload(targetFunction, args, options),
+              tags: Protocol.Tags.make({
+                reserved: {
+                  ...(options?.tags ?? Protocol.emptyTags).reserved,
+                  "resonate:origin": Predicate.isUndefined(options?.id) ? state.originId : id,
+                  "resonate:prefix": state.prefixId,
+                  "resonate:branch": id,
+                  "resonate:parent": state.root,
+                  "resonate:scope": globalScope,
+                  "resonate:target": target,
+                },
+                unrecognized: options?.tags?.unrecognized ?? {},
+                user: options?.tags?.user ?? {},
               }),
             },
           }),
@@ -416,6 +515,30 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           return yield* sleepUntil(timestamp((yield* Clock.currentTimeMillis) + Duration.toMillis(duration)));
         });
 
+        const beginRpcImpl = Effect.fn("ResonateContext.beginRpc")(function* (
+          targetFunction: AnyFunction | string,
+          args: ReadonlyArray<unknown>,
+          options?: ContextOptions,
+        ): Effect.fn.Return<LocalDurableHandle, unknown> {
+          const promise = yield* createRemote(state, targetFunction, args, options);
+          const deferred = yield* Deferred.make<unknown, unknown>();
+          if (promise.state !== "pending") {
+            const settled = yield* decodeSettled(promise).pipe(Effect.exit);
+            yield* Deferred.done(deferred, settled);
+          }
+          return makeHandle(state, promise, deferred);
+        });
+        const beginRpc: ResonateContextService["beginRpc"] = beginRpcImpl;
+
+        const rpc: ResonateContextService["rpc"] = Effect.fn("ResonateContext.rpc")(function* (
+          targetFunction: AnyFunction | string,
+          args: ReadonlyArray<unknown>,
+          options?: ContextOptions,
+        ): Effect.fn.Return<unknown, unknown> {
+          const handle = yield* beginRpcImpl(targetFunction, args, options);
+          return yield* handle.await;
+        });
+
         return Layer.succeed(
           ResonateContext,
           ResonateContext.of({
@@ -432,6 +555,8 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             beginRun,
             sleep,
             sleepUntil,
+            beginRpc,
+            rpc,
             all: (effects) =>
               Effect.gen(function* () {
                 const exits = yield* Effect.forEach(effects, (effect) => effect.pipe(Effect.result));
@@ -459,10 +584,13 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
       };
 
       const execute: ExecutionEngineService["execute"] = Effect.fn("ExecutionEngine.execute")(function* (options) {
+        const rootTarget = options.promise.tags.reserved["resonate:target"];
         const state: RuntimeState = {
           root: options.promise.id,
           version: options.task.version,
           timeoutAt: options.promise.timeoutAt,
+          targetTransport: rootTarget?.transport ?? "poll",
+          targetGroup: rootTarget?.group ?? Protocol.WorkerGroup.make("default"),
           originId: options.promise.tags.reserved["resonate:origin"] ?? options.promise.id,
           prefixId: options.promise.tags.reserved["resonate:prefix"] ?? options.promise.id,
           parentId: options.promise.tags.reserved["resonate:parent"] ?? options.promise.id,

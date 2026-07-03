@@ -16,7 +16,16 @@ const Workflow = Resonate.function("Workflow", {
   payload: Schema.Number,
 });
 
-const group = Resonate.group(Workflow);
+const RemoteChild = Resonate.function("RemoteChild", {
+  payload: Schema.Number,
+});
+
+const RemoteParent = Resonate.function("RemoteParent", {
+  payload: Schema.Number,
+});
+
+const workflowGroup = Resonate.group(Workflow);
+const remoteGroup = Resonate.group(Workflow, RemoteChild, RemoteParent);
 
 const baseLayer = Layer.mergeAll(
   NetworkLocal.layer({
@@ -66,8 +75,8 @@ describe("ExecutionEngine", () => {
       const client = yield* Resonate.ResonateClient;
       const engine = yield* ExecutionEngine;
       const codec = yield* ResonateCodec;
-      const handlers = group.toLayer(
-        group.of({
+      const handlers = workflowGroup.toLayer(
+        workflowGroup.of({
           Workflow: (value) =>
             Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
@@ -76,7 +85,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* group.registry().pipe(Effect.provide(handlers));
+      const registry = yield* workflowGroup.registry().pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(Workflow, Protocol.ExecutionId.make("engine-root-1"), [1]);
       const root = yield* acquiredRoot(handle.id);
@@ -101,8 +110,8 @@ describe("ExecutionEngine", () => {
       const promises = yield* DurablePromises;
       const codec = yield* ResonateCodec;
       let executions = 0;
-      const handlers = group.toLayer(
-        group.of({
+      const handlers = workflowGroup.toLayer(
+        workflowGroup.of({
           Workflow: () =>
             Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
@@ -116,7 +125,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* group.registry().pipe(Effect.provide(handlers));
+      const registry = yield* workflowGroup.registry().pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(Workflow, Protocol.ExecutionId.make("engine-root-2"), [0]);
       const root = yield* acquiredRoot(handle.id);
@@ -138,6 +147,48 @@ describe("ExecutionEngine", () => {
       const completedRoot = state.promises.find((promise) => promise.id === handle.id);
       expect(executions).toBe(0);
       expect(yield* codec.decode(completedRoot?.value ?? Protocol.emptyValue)).toBe(42);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("creates targeted remote child invocations and suspends while awaiting them", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const engine = yield* ExecutionEngine;
+      const codec = yield* ResonateCodec;
+      const handlers = remoteGroup.toLayer(
+        remoteGroup.of({
+          Workflow: () => Effect.void,
+          RemoteChild: (value) => Effect.succeed(Number(value) + 1),
+          RemoteParent: (value) =>
+            Effect.gen(function* (): Effect.fn.Return<unknown, unknown, ResonateContext> {
+              const ctx = yield* ResonateContext;
+              return yield* ctx.rpc(RemoteChild, [Number(value) + 1], {
+                target: Protocol.WorkerGroup.make("remote-workers"),
+              });
+            }),
+        }),
+      );
+      const registry = yield* remoteGroup.registry().pipe(Effect.provide(handlers));
+
+      const handle = yield* client.beginRun(RemoteParent, Protocol.ExecutionId.make("engine-remote-1"), [1]);
+      const root = yield* acquiredRoot(handle.id);
+      const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
+      expect(Predicate.isTagged(outcome, "Suspended")).toBe(true);
+
+      const state = yield* snap();
+      const child = state.promises.find((promise) => promise.id === "engine-remote-1.0");
+      expect(child?.state).toBe("pending");
+      expect(child?.tags.reserved["resonate:scope"]).toBe("global");
+      expect(child?.tags.reserved["resonate:target"]?.address).toBe("local://any@remote-workers");
+      expect(child?.tags.reserved["resonate:origin"]).toBe(handle.id);
+      expect(child?.tags.reserved["resonate:prefix"]).toBe(handle.id);
+      expect(child?.tags.reserved["resonate:branch"]).toBe("engine-remote-1.0");
+      expect(child?.tags.reserved["resonate:parent"]).toBe(handle.id);
+      expect(yield* codec.decode(child?.param ?? Protocol.emptyValue)).toEqual({
+        func: "RemoteChild",
+        args: [2],
+        version: 1,
+      });
     }).pipe(Effect.provide(layer)),
   );
 });

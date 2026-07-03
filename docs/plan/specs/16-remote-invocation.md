@@ -54,3 +54,8 @@ fire-and-forget with independent lifecycle.
 
 - `vp run check` green; CONFORMANCE.md structured-concurrency + tag-vocabulary
   rows → done.
+
+## Notes
+
+- Attached `ctx.beginRpc`/`ctx.rpc` landed first: remote children are created through `task.fence` with global scope, target group, idempotent child id, encoded invocation param, and existing suspension semantics when awaited.
+- Remaining before done: detached ids/lineage, attached-but-unawaited flush, fan-out single-suspend coverage, explicit-id lineage break, and cross-worker execution coverage.
