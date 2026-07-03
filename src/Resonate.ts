@@ -220,6 +220,48 @@ export interface DurableHandle<A = unknown, E = unknown> {
   readonly cancel: Effect.Effect<void, unknown>;
 }
 
+export interface PromiseDeclaration<
+  Name extends string = string,
+  Success extends Schema.Codec<unknown, unknown, never, never> = Schema.Codec<unknown, unknown, never, never>,
+  Failure extends Schema.Codec<unknown, unknown, never, never> | undefined =
+    | Schema.Codec<unknown, unknown, never, never>
+    | undefined,
+> {
+  readonly name: Name;
+  readonly success: Success;
+  readonly error: Failure;
+  readonly id: (executionId: Protocol.ExecutionId | Protocol.PromiseId) => Protocol.PromiseId;
+}
+
+export type PromiseSuccess<P extends PromiseDeclaration> = P["success"]["Type"];
+export type PromiseFailure<P extends PromiseDeclaration> =
+  P["error"] extends Schema.Codec<unknown, unknown, never, never> ? P["error"]["Type"] : never;
+
+export function promise<const Name extends string, Success extends Schema.Codec<unknown, unknown, never, never>>(
+  name: Name,
+  options: { readonly success: Success },
+): PromiseDeclaration<Name, Success, undefined>;
+export function promise<
+  const Name extends string,
+  Success extends Schema.Codec<unknown, unknown, never, never>,
+  Failure extends Schema.Codec<unknown, unknown, never, never>,
+>(
+  name: Name,
+  options: { readonly success: Success; readonly error: Failure },
+): PromiseDeclaration<Name, Success, Failure>;
+export function promise<
+  const Name extends string,
+  Success extends Schema.Codec<unknown, unknown, never, never>,
+  Failure extends Schema.Codec<unknown, unknown, never, never>,
+>(name: Name, options: { readonly success: Success; readonly error?: Failure }) {
+  return {
+    name,
+    success: options.success,
+    error: options.error,
+    id: (executionId: Protocol.ExecutionId | Protocol.PromiseId) => Protocol.PromiseId.make(`${executionId}.${name}`),
+  };
+}
+
 export interface ResonateClientOptions {
   readonly group?: Protocol.WorkerGroup;
   readonly pid?: Protocol.ProcessId;
@@ -259,6 +301,8 @@ export interface AwaitInvocationMethods {
 }
 
 const globalScope = Schema.Literal("global").make("global");
+const resolvedState = Schema.Literal("resolved").make("resolved");
+const rejectedState = Schema.Literal("rejected").make("rejected");
 const canceledState = Schema.Literal("rejected_canceled").make("rejected_canceled");
 
 const prefixedId = (id: Protocol.ExecutionId, prefix: Option.Option<string>): Protocol.PromiseId =>
@@ -274,6 +318,16 @@ export interface ResonateClientService {
   readonly run: AwaitInvocationMethods;
   readonly beginRpc: InvocationMethods;
   readonly rpc: AwaitInvocationMethods;
+  readonly resolve: <P extends PromiseDeclaration>(
+    declaration: P,
+    id: Protocol.PromiseId,
+    value: PromiseSuccess<P>,
+  ) => Effect.Effect<void, unknown>;
+  readonly reject: <P extends PromiseDeclaration>(
+    declaration: P,
+    id: Protocol.PromiseId,
+    error: PromiseFailure<P>,
+  ) => Effect.Effect<void, unknown>;
   readonly get: <F extends AnyFunction>(fn: F, id: Protocol.ExecutionId) => Effect.Effect<DurableHandle>;
   readonly cancel: (id: Protocol.PromiseId) => Effect.Effect<void, unknown>;
 }
@@ -450,6 +504,33 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           yield* promises.settle({ id, state: canceledState, value: Protocol.emptyValue });
         });
 
+        const resolve: ResonateClientService["resolve"] = Effect.fn("ResonateClient.resolve")(
+          function* (declaration, id, value) {
+            const encoded = yield* Schema.encodeUnknownEffect(declaration.success)(value);
+            const protocolValue = yield* codec.encode(encoded);
+            yield* promises.settle({
+              id,
+              state: resolvedState,
+              value: withSchemaHeader(protocolValue, declaration.name),
+            });
+          },
+        );
+
+        const reject: ResonateClientService["reject"] = Effect.fn("ResonateClient.reject")(
+          function* (declaration, id, error) {
+            if (Predicate.isUndefined(declaration.error)) {
+              return yield* Effect.die(`Promise declaration '${declaration.name}' has no error schema`);
+            }
+            const encoded = yield* Schema.encodeUnknownEffect(declaration.error)(error);
+            const protocolValue = yield* codec.encode(encoded);
+            yield* promises.settle({
+              id,
+              state: rejectedState,
+              value: withSchemaHeader(protocolValue, declaration.name),
+            });
+          },
+        );
+
         const run: ResonateClientService["run"] = Effect.fn("ResonateClient.run")(function* (
           targetFunction: AnyFunction | string,
           executionId: Protocol.ExecutionId,
@@ -475,6 +556,8 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           run,
           beginRpc,
           rpc,
+          resolve,
+          reject,
           get,
           cancel,
         });

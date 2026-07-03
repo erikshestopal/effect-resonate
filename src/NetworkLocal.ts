@@ -56,7 +56,7 @@ export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/Pro
   }
 
   get external(): boolean {
-    return Option.isSome(this.target) || this.isTimer;
+    return Option.isSome(this.target) || this.isTimer || this.tags.reserved["resonate:scope"] === "global";
   }
 
   get timedOutState(): "resolved" | "rejected_timedout" {

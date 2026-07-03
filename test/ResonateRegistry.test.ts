@@ -51,6 +51,13 @@ const contextLayer = Layer.succeed(
         poll: Effect.succeed(Option.none()),
         cancel: Effect.void,
       }),
+    promise: () =>
+      Effect.succeed({
+        id: Protocol.PromiseId.make("test.3"),
+        await: Effect.void,
+        poll: Effect.succeed(Option.none()),
+        cancel: Effect.void,
+      }),
     panic: (message) => Effect.die(message),
   }),
 );

@@ -60,3 +60,7 @@ primitive, typed on both the awaiting and settling sides.
 ## Acceptance
 
 - `vp run check` green.
+
+## Notes
+
+- Done in spec 17: schema declarations, stable declaration-derived ids, `ctx.promise`, client `resolve`/`reject`, typed resolution/rejection decode, duplicate declaration defects, malformed raw-settle defects, and local-oracle latent-promise timeout arming.

@@ -15,9 +15,9 @@ import {
   SchemaParser,
 } from "effect";
 import { ResonateCodec, withSchemaHeader } from "./Codec.ts";
-import { DurablePromiseCanceled, DurablePromiseTimedOut } from "./Errors.ts";
+import { DurablePromiseCanceled, DurablePromiseTimedOut, EncodingError } from "./Errors.ts";
 import * as Protocol from "./Protocol.ts";
-import type { AnyFunction, PayloadArgs, Registry } from "./Resonate.ts";
+import type { AnyFunction, PayloadArgs, PromiseDeclaration, PromiseSuccess, Registry } from "./Resonate.ts";
 import { Tasks } from "./Task.ts";
 
 export class DurablePanic extends Schema.TaggedErrorClass<DurablePanic>()("DurablePanic", {
@@ -54,10 +54,10 @@ export interface ContextInfo {
   readonly version: Protocol.TaskVersion;
 }
 
-export interface LocalDurableHandle {
+export interface LocalDurableHandle<A = unknown, E = unknown> {
   readonly id: Protocol.PromiseId;
-  readonly await: Effect.Effect<unknown, unknown>;
-  readonly poll: Effect.Effect<Option.Option<Exit.Exit<unknown, unknown>>, unknown>;
+  readonly await: Effect.Effect<A, E>;
+  readonly poll: Effect.Effect<Option.Option<Exit.Exit<A, E>>, unknown>;
   readonly cancel: Effect.Effect<void, unknown>;
 }
 
@@ -80,6 +80,7 @@ interface RuntimeState {
   readonly children: Array<RunningChild>;
   readonly attachedRemote: Map<Protocol.PromiseId, SuspendedExecution>;
   readonly awaiting: Map<Protocol.PromiseId, SuspendedExecution>;
+  readonly externalPromises: Set<string>;
   seq: number;
 }
 
@@ -179,6 +180,10 @@ export interface ResonateContextService {
     ): Effect.Effect<LocalDurableHandle, unknown>;
     (name: string, args: ReadonlyArray<unknown>, options?: ContextOptions): Effect.Effect<LocalDurableHandle, unknown>;
   };
+  readonly promise: <P extends PromiseDeclaration>(
+    declaration: P,
+    options?: Pick<ContextOptions, "id" | "timeout" | "tags">,
+  ) => Effect.Effect<LocalDurableHandle<PromiseSuccess<P>, unknown>, unknown>;
   readonly panic: (message: string) => Effect.Effect<never, DurablePanic>;
 }
 
@@ -394,6 +399,58 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         return promise;
       });
 
+      const createExternalPromise = Effect.fn("ExecutionEngine.createExternalPromise")(function* (
+        state: RuntimeState,
+        declaration: PromiseDeclaration,
+        options: Pick<ContextOptions, "id" | "timeout" | "tags"> | undefined,
+      ) {
+        if (Predicate.isUndefined(options?.id)) {
+          if (state.externalPromises.has(declaration.name)) {
+            return yield* Effect.die(`Promise declaration '${declaration.name}' was created more than once`);
+          }
+          state.externalPromises.add(declaration.name);
+        }
+        const id = options?.id ?? declaration.id(state.root);
+        const cached = state.cache.get(id);
+        if (Predicate.isNotUndefined(cached)) {
+          if (cached.state === "pending") {
+            state.attachedRemote.set(cached.id, new SuspendedExecution({ awaited: [cached.id] }));
+          }
+          return cached;
+        }
+        const result = yield* tasks.fence({
+          id: state.root,
+          version: state.version,
+          action: Protocol.PromiseCreateRequest.make({
+            head: requestHead(`${state.root}:${id}:promise`),
+            data: {
+              id,
+              timeoutAt: yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
+              param: Protocol.emptyValue,
+              tags: Protocol.Tags.make({
+                reserved: {
+                  ...(options?.tags ?? Protocol.emptyTags).reserved,
+                  "resonate:origin": state.originId,
+                  "resonate:prefix": state.prefixId,
+                  "resonate:branch": id,
+                  "resonate:parent": state.root,
+                  "resonate:scope": globalScope,
+                },
+                unrecognized: options?.tags?.unrecognized ?? {},
+                user: options?.tags?.user ?? {},
+              }),
+            },
+          }),
+        });
+        addPreload(state, result.preload);
+        const promise = yield* actionPromise(result.action);
+        state.cache.set(promise.id, promise);
+        if (promise.state === "pending") {
+          state.attachedRemote.set(promise.id, new SuspendedExecution({ awaited: [promise.id] }));
+        }
+        return promise;
+      });
+
       const createRemote = Effect.fn("ExecutionEngine.createRemote")(function* (
         state: RuntimeState,
         targetFunction: AnyFunction | string,
@@ -484,6 +541,63 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           Effect.asVoid,
         ),
       });
+
+      const makePromiseHandle = <P extends PromiseDeclaration>(
+        state: RuntimeState,
+        promise: Protocol.PromiseRecord,
+        declaration: P,
+      ): LocalDurableHandle<PromiseSuccess<P>, unknown> => {
+        const awaitExternal: Effect.Effect<PromiseSuccess<P>, unknown> = Effect.suspend(() => {
+          if (promise.state === "pending") {
+            const parked = state.awaiting.get(promise.id);
+            if (Predicate.isNotUndefined(parked)) {
+              return Effect.fail(parked);
+            }
+            const suspended = new SuspendedExecution({ awaited: [promise.id] });
+            state.awaiting.set(promise.id, suspended);
+            return Effect.fail(suspended);
+          }
+          if (promise.state === "rejected_canceled") {
+            return new DurablePromiseCanceled({ id: promise.id });
+          }
+          if (promise.state === "rejected_timedout") {
+            return new DurablePromiseTimedOut({ id: promise.id });
+          }
+          return codec.decode(promise.value).pipe(
+            Effect.catch((cause) =>
+              Effect.die(new EncodingError({ direction: "decode", id: Option.some(promise.id), cause })),
+            ),
+            Effect.flatMap((value) => {
+              if (promise.state === "resolved") {
+                return Schema.decodeUnknownEffect(declaration.success)(value).pipe(
+                  Effect.catch((cause) =>
+                    Effect.die(new EncodingError({ direction: "decode", id: Option.some(promise.id), cause })),
+                  ),
+                );
+              }
+              if (Predicate.isUndefined(declaration.error)) {
+                return Effect.die(
+                  new EncodingError({ direction: "decode", id: Option.some(promise.id), cause: value }),
+                );
+              }
+              return Schema.decodeUnknownEffect(declaration.error)(value).pipe(
+                Effect.catch((cause) =>
+                  Effect.die(new EncodingError({ direction: "decode", id: Option.some(promise.id), cause })),
+                ),
+                Effect.flatMap(Effect.fail),
+              );
+            }),
+          );
+        });
+        return {
+          id: promise.id,
+          await: awaitExternal,
+          poll: awaitExternal.pipe(Effect.exit, Effect.map(Option.some)),
+          cancel: settle(state, promise.id, Exit.fail(new DurablePromiseCanceled({ id: promise.id }))).pipe(
+            Effect.asVoid,
+          ),
+        };
+      };
 
       const drainChildren = Effect.fn("ExecutionEngine.drainChildren")(function* (state: RuntimeState) {
         for (const child of state.children) {
@@ -585,6 +699,13 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           return makeHandle(state, promise, deferred);
         });
 
+        const promise: ResonateContextService["promise"] = Effect.fn("ResonateContext.promise")(
+          function* (declaration, options) {
+            const promise = yield* createExternalPromise(state, declaration, options);
+            return makePromiseHandle(state, promise, declaration);
+          },
+        );
+
         return Layer.succeed(
           ResonateContext,
           ResonateContext.of({
@@ -604,6 +725,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             beginRpc,
             rpc,
             detached,
+            promise,
             all: (effects) =>
               Effect.gen(function* () {
                 const exits = yield* Effect.forEach(effects, (effect) => effect.pipe(Effect.result));
@@ -646,6 +768,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           children: [],
           attachedRemote: new Map(),
           awaiting: new Map(),
+          externalPromises: new Set(),
           seq: 0,
         };
         addPreload(state, options.preload ?? []);

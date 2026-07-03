@@ -1,8 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
-import { DateTime, Duration, Effect, Layer, Predicate, Schema, SchemaParser } from "effect";
+import { DateTime, Duration, Effect, Exit, Layer, Option, Predicate, Schema, SchemaParser } from "effect";
 import { ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
+import { DurablePromiseTimedOut } from "../src/Errors.ts";
 import { makeRequestHead, ResonateNetwork } from "../src/Network.ts";
 import * as NetworkLocal from "../src/NetworkLocal.ts";
 import * as Protocol from "../src/Protocol.ts";
@@ -24,8 +25,25 @@ const RemoteParent = Resonate.function("RemoteParent", {
   payload: Schema.Number,
 });
 
+class ApprovalDenied extends Schema.TaggedErrorClass<ApprovalDenied>()("ApprovalDenied", {
+  reason: Schema.String,
+}) {}
+
+const Approval = Resonate.promise("approval", {
+  success: Schema.Struct({ approvedBy: Schema.String }),
+  error: ApprovalDenied,
+});
+
+const isApprovalDenied = SchemaParser.is(ApprovalDenied);
+const isDurablePromiseTimedOut = SchemaParser.is(DurablePromiseTimedOut);
+
+const ExternalWorkflow = Resonate.function("ExternalWorkflow", {
+  payload: Schema.String,
+});
+
 const workflowGroup = Resonate.group(Workflow);
 const remoteGroup = Resonate.group(Workflow, RemoteChild, RemoteParent);
+const externalGroup = Resonate.group(ExternalWorkflow);
 
 const baseLayer = Layer.mergeAll(
   NetworkLocal.layer({
@@ -333,6 +351,252 @@ describe("ExecutionEngine", () => {
       expect(DateTime.toEpochMillis(child?.timeoutAt ?? DateTime.makeUnsafe(-1))).toBe(86_400_000);
       expect(completedRoot?.state).toBe("resolved");
       expect(yield* codec.decode(completedRoot?.value ?? Protocol.emptyValue)).toBe("detached-parent");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("creates named external promises and resumes after typed resolution", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const engine = yield* ExecutionEngine;
+      const codec = yield* ResonateCodec;
+      const handlers = externalGroup.toLayer(
+        externalGroup.of({
+          ExternalWorkflow: () =>
+            Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
+              const ctx = yield* ResonateContext;
+              const approval = yield* ctx.promise(Approval, { timeout: Duration.hours(1) });
+              const published = yield* ctx.run(Effect.succeed(approval.id));
+              const result = yield* approval.await;
+              if (!Predicate.isString(published)) {
+                return yield* Effect.die("published id was not a string");
+              }
+              return `${published}:${result.approvedBy}`;
+            }),
+        }),
+      );
+      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+
+      const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-1"), ["ok"]);
+      const root = yield* acquiredRoot(handle.id);
+      const suspended = yield* engine.execute({ task: root.task, promise: root.promise, registry });
+      expect(Predicate.isTagged(suspended, "Suspended")).toBe(true);
+      if (Predicate.isTagged(suspended, "Suspended")) {
+        expect(suspended.awaited).toEqual(["engine-external-1.approval"]);
+      }
+
+      yield* client.resolve(Approval, Approval.id(Protocol.ExecutionId.make("engine-external-1")), {
+        approvedBy: "erik",
+      });
+      const state = yield* snap();
+      const settled = state.promises.find((promise) => promise.id === "engine-external-1.approval");
+      if (Predicate.isUndefined(settled)) {
+        return yield* Effect.die("approval promise missing");
+      }
+      const done = yield* engine.execute({ task: root.task, promise: root.promise, registry, preload: [settled] });
+      expect(Predicate.isTagged(done, "Done")).toBe(true);
+
+      const completed = yield* client.get(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-1"));
+      const exit = yield* completed.await.pipe(Effect.exit);
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isSuccess(exit)) {
+        expect(exit.value).toBe("engine-external-1.approval:erik");
+      }
+      const approval = state.promises.find((promise) => promise.id === "engine-external-1.approval");
+      expect(yield* codec.decode(approval?.value ?? Protocol.emptyValue)).toEqual({ approvedBy: "erik" });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("decodes typed external promise rejection into the awaiting function", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const engine = yield* ExecutionEngine;
+      const handlers = externalGroup.toLayer(
+        externalGroup.of({
+          ExternalWorkflow: () =>
+            Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
+              const ctx = yield* ResonateContext;
+              const approval = yield* ctx.promise(Approval);
+              const result = yield* approval.await.pipe(
+                Effect.catch((error) => (isApprovalDenied(error) ? Effect.succeed(error.reason) : Effect.fail(error))),
+              );
+              if (Predicate.isString(result)) {
+                return result;
+              }
+              return yield* Effect.die("expected approval denial");
+            }),
+        }),
+      );
+      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+
+      const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-reject-1"), [
+        "ok",
+      ]);
+      const root = yield* acquiredRoot(handle.id);
+      yield* engine.execute({ task: root.task, promise: root.promise, registry });
+      yield* client.reject(
+        Approval,
+        Approval.id(Protocol.ExecutionId.make("engine-external-reject-1")),
+        new ApprovalDenied({ reason: "nope" }),
+      );
+      const state = yield* snap();
+      const settled = state.promises.find((promise) => promise.id === "engine-external-reject-1.approval");
+      if (Predicate.isUndefined(settled)) {
+        return yield* Effect.die("approval promise missing");
+      }
+      yield* engine.execute({ task: root.task, promise: root.promise, registry, preload: [settled] });
+      const completed = yield* client.get(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-reject-1"));
+      expect(yield* completed.await).toBe("nope");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("surfaces external promise timeout as a typed await error", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const engine = yield* ExecutionEngine;
+      const promises = yield* DurablePromises;
+      const codec = yield* ResonateCodec;
+      const handlers = externalGroup.toLayer(
+        externalGroup.of({
+          ExternalWorkflow: () =>
+            Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
+              const ctx = yield* ResonateContext;
+              const approval = yield* ctx.promise(Approval, { timeout: Duration.minutes(30) });
+              const result = yield* approval.await.pipe(
+                Effect.catch((error) =>
+                  isDurablePromiseTimedOut(error) ? Effect.succeed(`timed-out:${error.id}`) : Effect.fail(error),
+                ),
+              );
+              if (Predicate.isString(result)) {
+                return result;
+              }
+              return yield* Effect.die("expected promise timeout");
+            }),
+        }),
+      );
+      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+
+      const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-timeout-1"), [
+        "ok",
+      ]);
+      const root = yield* acquiredRoot(handle.id);
+      yield* engine.execute({ task: root.task, promise: root.promise, registry });
+      const state = yield* snap();
+      const pending = state.promises.find((promise) => promise.id === "engine-external-timeout-1.approval");
+      if (Predicate.isUndefined(pending)) {
+        return yield* Effect.die("approval promise missing");
+      }
+      const approval = new Protocol.PromiseSettled({
+        id: pending.id,
+        state: Schema.Literal("rejected_timedout").make("rejected_timedout"),
+        param: pending.param,
+        value: pending.value,
+        tags: pending.tags,
+        timeoutAt: pending.timeoutAt,
+        createdAt: pending.createdAt,
+        settledAt: Option.some(pending.timeoutAt),
+      });
+      yield* engine.execute({ task: root.task, promise: root.promise, registry, preload: [approval] });
+      const completed = yield* promises.get(handle.id);
+      expect(completed.state).toBe("resolved");
+      expect(yield* codec.decode(completed.value)).toBe("timed-out:engine-external-timeout-1.approval");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("keeps named external promise ids stable when earlier steps are inserted", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const engine = yield* ExecutionEngine;
+      const handlers = externalGroup.toLayer(
+        externalGroup.of({
+          ExternalWorkflow: () =>
+            Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
+              const ctx = yield* ResonateContext;
+              yield* ctx.run(Effect.succeed("before"));
+              const approval = yield* ctx.promise(Approval);
+              return approval.id;
+            }),
+        }),
+      );
+      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+
+      const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-stable-1"), [
+        "ok",
+      ]);
+      const root = yield* acquiredRoot(handle.id);
+      const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
+      expect(Predicate.isTagged(outcome, "Suspended")).toBe(true);
+      const state = yield* snap();
+      expect(state.promises.some((promise) => promise.id === "engine-external-stable-1.0")).toBe(true);
+      expect(state.promises.some((promise) => promise.id === "engine-external-stable-1.approval")).toBe(true);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("defects on duplicate named external promises without explicit ids", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const engine = yield* ExecutionEngine;
+      const handlers = externalGroup.toLayer(
+        externalGroup.of({
+          ExternalWorkflow: () =>
+            Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
+              const ctx = yield* ResonateContext;
+              yield* ctx.promise(Approval);
+              yield* ctx.promise(Approval);
+              return "unreachable";
+            }),
+        }),
+      );
+      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+
+      const handle = yield* client.beginRun(
+        ExternalWorkflow,
+        Protocol.ExecutionId.make("engine-external-duplicate-1"),
+        ["ok"],
+      );
+      const root = yield* acquiredRoot(handle.id);
+      const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
+      expect(Predicate.isTagged(outcome, "Done")).toBe(true);
+      const completed = yield* client.get(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-duplicate-1"));
+      const exit = yield* completed.await.pipe(Effect.exit);
+      expect(Exit.isFailure(exit)).toBe(true);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("defects when an externally settled value does not match the declaration schema", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const engine = yield* ExecutionEngine;
+      const promises = yield* DurablePromises;
+      const codec = yield* ResonateCodec;
+      const handlers = externalGroup.toLayer(
+        externalGroup.of({
+          ExternalWorkflow: () =>
+            Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
+              const ctx = yield* ResonateContext;
+              const approval = yield* ctx.promise(Approval);
+              const value = yield* approval.await;
+              return value.approvedBy;
+            }),
+        }),
+      );
+      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+
+      const handle = yield* client.beginRun(
+        ExternalWorkflow,
+        Protocol.ExecutionId.make("engine-external-malformed-1"),
+        ["ok"],
+      );
+      const root = yield* acquiredRoot(handle.id);
+      yield* engine.execute({ task: root.task, promise: root.promise, registry });
+      const settled = yield* promises.settle({
+        id: Approval.id(Protocol.ExecutionId.make("engine-external-malformed-1")),
+        state: Schema.Literal("resolved").make("resolved"),
+        value: yield* codec.encode({ wrong: true }),
+      });
+      yield* engine.execute({ task: root.task, promise: root.promise, registry, preload: [settled] });
+      const completed = yield* client.get(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-malformed-1"));
+      const exit = yield* completed.await.pipe(Effect.exit);
+      expect(Exit.isFailure(exit)).toBe(true);
     }).pipe(Effect.provide(layer)),
   );
 });

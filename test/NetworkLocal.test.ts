@@ -28,6 +28,12 @@ const timerTags = Protocol.Tags.make({
   user: {},
 });
 
+const latentExternalTags = Protocol.Tags.make({
+  reserved: { "resonate:scope": "global" },
+  unrecognized: {},
+  user: {},
+});
+
 const delayedTargetTags = (delay: DateTime.Utc) =>
   Protocol.Tags.make({
     reserved: { "resonate:target": anycastDefault, "resonate:delay": delay },
@@ -388,10 +394,11 @@ describe("P-02 promise.create", () => {
   it.effect("only external promises arm a promise timeout", () =>
     Effect.gen(function* () {
       yield* create("internal", 10_000);
+      yield* create("latent", 10_000, latentExternalTags);
       yield* create("external", 10_000, targetTags);
       yield* create("timer", 10_000, timerTags);
       const state = yield* snap();
-      expect(state.promiseTimeouts.map((entry) => entry.id).sort()).toEqual(["external", "timer"]);
+      expect(state.promiseTimeouts.map((entry) => entry.id).sort()).toEqual(["external", "latent", "timer"]);
     }).pipe(Effect.provide(layers)),
   );
 });
@@ -544,10 +551,12 @@ describe("timeout projection and the tick (P-01 + onPromiseTimeout)", () => {
   it.effect("get observes the projection at the timeout instant, before the tick persists it", () =>
     Effect.gen(function* () {
       yield* create("plain", 10_000, targetTags);
+      yield* create("latent", 10_000, latentExternalTags);
       yield* create("timer", 10_000, timerTags);
       yield* TestClock.adjust(Duration.millis(10_000));
 
       expect((yield* getPromise("plain")).state).toBe("rejected_timedout");
+      expect((yield* getPromise("latent")).state).toBe("rejected_timedout");
       expect((yield* getPromise("timer")).state).toBe("resolved");
 
       const before = yield* snap();
@@ -556,9 +565,11 @@ describe("timeout projection and the tick (P-01 + onPromiseTimeout)", () => {
       yield* tick(10_000);
 
       const after = yield* snap();
-      expect(after.promises.map((promise) => promise.state).sort()).toEqual(
-        ["pending", "rejected_timedout", "resolved"].filter((s) => s !== "pending"),
-      );
+      expect(after.promises.map((promise) => promise.state).sort()).toEqual([
+        "rejected_timedout",
+        "rejected_timedout",
+        "resolved",
+      ]);
       const persistedPlain = yield* getPromise("plain");
       expect(persistedPlain.state).toBe("rejected_timedout");
       if (persistedPlain.state !== "pending") {
