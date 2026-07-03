@@ -121,16 +121,7 @@ namespace RuntimeState {
   export interface MakeOptions {
     readonly task: Protocol.TaskAcquired;
     readonly promise: Protocol.PromiseRecord;
-  }
-
-  export interface CachePromiseOptions {
-    readonly state: RuntimeState;
-    readonly promise: Protocol.PromiseRecord;
-  }
-
-  export interface CachePromisesOptions {
-    readonly state: RuntimeState;
-    readonly promises: ReadonlyArray<Protocol.PromiseRecord>;
+    readonly preload?: ReadonlyArray<Protocol.PromiseRecord>;
   }
 
   export const make = (options: MakeOptions): RuntimeState => {
@@ -145,7 +136,7 @@ namespace RuntimeState {
       prefixId: options.promise.tags.reserved["resonate:prefix"] ?? options.promise.id,
       parentId: options.promise.tags.reserved["resonate:parent"] ?? options.promise.id,
       branchId: options.promise.tags.reserved["resonate:branch"] ?? options.promise.id,
-      cache: HashMap.empty(),
+      cache: HashMap.fromIterable(Arr.map(options.preload ?? [], (promise) => [promise.id, promise] as const)),
       children: [],
       attachedRemote: HashMap.empty(),
       awaiting: HashMap.empty(),
@@ -153,16 +144,6 @@ namespace RuntimeState {
       attempt: 0,
       seq: 0,
     };
-  };
-
-  export const cachePromise = (options: CachePromiseOptions): void => {
-    options.state.cache = HashMap.set(options.state.cache, options.promise.id, options.promise);
-  };
-
-  export const cachePromises = (options: CachePromisesOptions): void => {
-    for (const promise of options.promises) {
-      RuntimeState.cachePromise({ state: options.state, promise });
-    }
   };
 }
 
@@ -175,6 +156,11 @@ interface SettleOptions {
 interface FulfillRootOptions {
   readonly state: RuntimeState;
   readonly exit: Exit.Exit<unknown, unknown>;
+}
+
+interface FenceOptions {
+  readonly state: RuntimeState;
+  readonly action: Protocol.TaskFenceRequest["data"]["action"];
 }
 
 export class EngineDone extends Schema.Class<EngineDone>("ExecutionEngine/Done")({
@@ -332,32 +318,35 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         );
       });
 
-      const actionPromise = (action: unknown): Effect.Effect<Protocol.PromiseRecord> => {
-        if (isPromiseCreateSuccess(action) || isPromiseSettleSuccess(action)) {
-          return Effect.succeed(action.data.promise);
+      const fence = Effect.fn("ExecutionEngine.fence")(function* (options: FenceOptions) {
+        const { state, action } = options;
+        const result = yield* tasks.fence({
+          data: { id: state.root, version: state.version, action },
+          options: { origin: state.originId },
+        });
+        state.cache = HashMap.setMany(
+          state.cache,
+          Arr.map(result.preload, (promise) => [promise.id, promise] as const),
+        );
+        if (!isPromiseCreateSuccess(result.action) && !isPromiseSettleSuccess(result.action)) {
+          return yield* Effect.die(result.action);
         }
-        return Effect.die(action);
-      };
+        const promise = result.action.data.promise;
+        state.cache = HashMap.set(state.cache, promise.id, promise);
+        return promise;
+      });
 
       const settle = Effect.fn("ExecutionEngine.settle")(function* (options: SettleOptions) {
         const { state, id, exit } = options;
         const settled = Exit.isSuccess(exit) ? resolvedState : rejectedState;
         const value = yield* codec.encode(Exit.isSuccess(exit) ? exit.value : exit.cause);
-        const result = yield* tasks.fence({
-          data: {
-            id: state.root,
-            version: state.version,
-            action: Protocol.PromiseSettleRequest.make({
-              head: requestHead({ corrId: `${state.root}:${id}:settle`, origin: state.originId }),
-              data: { id, state: settled, value },
-            }),
-          },
-          options: { origin: state.originId },
+        return yield* fence({
+          state,
+          action: Protocol.PromiseSettleRequest.make({
+            head: requestHead({ corrId: `${state.root}:${id}:settle`, origin: state.originId }),
+            data: { id, state: settled, value },
+          }),
         });
-        RuntimeState.cachePromises({ state, promises: result.preload });
-        const promise = yield* actionPromise(result.action);
-        RuntimeState.cachePromise({ state, promise });
-        return promise;
       });
 
       const fulfillRoot = Effect.fn("ExecutionEngine.fulfillRoot")(function* (options: FulfillRootOptions) {
@@ -375,7 +364,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           },
           options: { origin: state.originId },
         });
-        RuntimeState.cachePromise({ state, promise });
+        state.cache = HashMap.set(state.cache, promise.id, promise);
         return promise;
       });
 
@@ -481,34 +470,26 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         if (Option.isSome(cached)) {
           return cached.value;
         }
-        const result = yield* tasks.fence({
-          data: {
-            id: state.root,
-            version: state.version,
-            action: Protocol.PromiseCreateRequest.make({
-              head: requestHead({ corrId: `${state.root}:${id}:create`, origin: state.originId }),
-              data: {
+        return yield* fence({
+          state,
+          action: Protocol.PromiseCreateRequest.make({
+            head: requestHead({ corrId: `${state.root}:${id}:create`, origin: state.originId }),
+            data: {
+              id,
+              timeoutAt: yield* timeoutAt({
+                parent: state.timeoutAt,
+                duration: options?.timeout ?? Duration.hours(24),
+              }),
+              param: Protocol.emptyValue,
+              tags: localTags({
+                state,
                 id,
-                timeoutAt: yield* timeoutAt({
-                  parent: state.timeoutAt,
-                  duration: options?.timeout ?? Duration.hours(24),
-                }),
-                param: Protocol.emptyValue,
-                tags: localTags({
-                  state,
-                  id,
-                  extra: options?.tags ?? Protocol.emptyTags,
-                  breaksLineage: Predicate.isNotUndefined(options?.id),
-                }),
-              },
-            }),
-          },
-          options: { origin: state.originId },
+                extra: options?.tags ?? Protocol.emptyTags,
+                breaksLineage: Predicate.isNotUndefined(options?.id),
+              }),
+            },
+          }),
         });
-        RuntimeState.cachePromises({ state, promises: result.preload });
-        const promise = yield* actionPromise(result.action);
-        RuntimeState.cachePromise({ state, promise });
-        return promise;
       });
 
       const createSleep = Effect.fn("ExecutionEngine.createSleep")(function* ({
@@ -524,37 +505,29 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         if (Option.isSome(cached)) {
           return cached.value;
         }
-        const result = yield* tasks.fence({
-          data: {
-            id: state.root,
-            version: state.version,
-            action: Protocol.PromiseCreateRequest.make({
-              head: requestHead({ corrId: `${state.root}:${id}:sleep`, origin: state.originId }),
-              data: {
-                id,
-                timeoutAt: timestamp(Num.min(DateTime.toEpochMillis(instant), DateTime.toEpochMillis(state.timeoutAt))),
-                param: Protocol.emptyValue,
-                tags: Protocol.Tags.make({
-                  reserved: {
-                    "resonate:origin": state.originId,
-                    "resonate:prefix": state.prefixId,
-                    "resonate:branch": id,
-                    "resonate:parent": state.root,
-                    "resonate:scope": globalScope,
-                    "resonate:timer": timerTag,
-                  },
-                  unrecognized: {},
-                  user: {},
-                }),
-              },
-            }),
-          },
-          options: { origin: state.originId },
+        return yield* fence({
+          state,
+          action: Protocol.PromiseCreateRequest.make({
+            head: requestHead({ corrId: `${state.root}:${id}:sleep`, origin: state.originId }),
+            data: {
+              id,
+              timeoutAt: timestamp(Num.min(DateTime.toEpochMillis(instant), DateTime.toEpochMillis(state.timeoutAt))),
+              param: Protocol.emptyValue,
+              tags: Protocol.Tags.make({
+                reserved: {
+                  "resonate:origin": state.originId,
+                  "resonate:prefix": state.prefixId,
+                  "resonate:branch": id,
+                  "resonate:parent": state.root,
+                  "resonate:scope": globalScope,
+                  "resonate:timer": timerTag,
+                },
+                unrecognized: {},
+                user: {},
+              }),
+            },
+          }),
         });
-        RuntimeState.cachePromises({ state, promises: result.preload });
-        const promise = yield* actionPromise(result.action);
-        RuntimeState.cachePromise({ state, promise });
-        return promise;
       });
 
       const createExternalPromise = Effect.fn("ExecutionEngine.createExternalPromise")(function* ({
@@ -584,39 +557,32 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           }
           return cached.value;
         }
-        const result = yield* tasks.fence({
-          data: {
-            id: state.root,
-            version: state.version,
-            action: Protocol.PromiseCreateRequest.make({
-              head: requestHead({ corrId: `${state.root}:${id}:promise`, origin: state.originId }),
-              data: {
-                id,
-                timeoutAt: yield* timeoutAt({
-                  parent: state.timeoutAt,
-                  duration: options?.timeout ?? Duration.hours(24),
-                }),
-                param: Protocol.emptyValue,
-                tags: Protocol.Tags.make({
-                  reserved: {
-                    ...(options?.tags ?? Protocol.emptyTags).reserved,
-                    "resonate:origin": state.originId,
-                    "resonate:prefix": state.prefixId,
-                    "resonate:branch": id,
-                    "resonate:parent": state.root,
-                    "resonate:scope": globalScope,
-                  },
-                  unrecognized: options?.tags?.unrecognized ?? {},
-                  user: options?.tags?.user ?? {},
-                }),
-              },
-            }),
-          },
-          options: { origin: state.originId },
+        const promise = yield* fence({
+          state,
+          action: Protocol.PromiseCreateRequest.make({
+            head: requestHead({ corrId: `${state.root}:${id}:promise`, origin: state.originId }),
+            data: {
+              id,
+              timeoutAt: yield* timeoutAt({
+                parent: state.timeoutAt,
+                duration: options?.timeout ?? Duration.hours(24),
+              }),
+              param: Protocol.emptyValue,
+              tags: Protocol.Tags.make({
+                reserved: {
+                  ...(options?.tags ?? Protocol.emptyTags).reserved,
+                  "resonate:origin": state.originId,
+                  "resonate:prefix": state.prefixId,
+                  "resonate:branch": id,
+                  "resonate:parent": state.root,
+                  "resonate:scope": globalScope,
+                },
+                unrecognized: options?.tags?.unrecognized ?? {},
+                user: options?.tags?.user ?? {},
+              }),
+            },
+          }),
         });
-        RuntimeState.cachePromises({ state, promises: result.preload });
-        const promise = yield* actionPromise(result.action);
-        RuntimeState.cachePromise({ state, promise });
         if (promise.state === "pending") {
           state.attachedRemote = HashMap.set(
             state.attachedRemote,
@@ -661,40 +627,33 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             ? Protocol.TargetAddress.localAny({ group: targetGroup })
             : Protocol.TargetAddress.pollAny({ group: targetGroup });
         const now = yield* Clock.currentTimeMillis;
-        const result = yield* tasks.fence({
-          data: {
-            id: state.root,
-            version: state.version,
-            action: Protocol.PromiseCreateRequest.make({
-              head: requestHead({ corrId: `${state.root}:${id}:rpc`, origin: state.originId }),
-              data: {
-                id,
-                timeoutAt:
-                  mode === "detached"
-                    ? timestamp(now + Duration.toMillis(options?.timeout ?? Duration.hours(24)))
-                    : yield* timeoutAt({ parent: state.timeoutAt, duration: options?.timeout ?? Duration.hours(24) }),
-                param: yield* encodeTargetPayload({ target: targetFunction, args, options }),
-                tags: Protocol.Tags.make({
-                  reserved: {
-                    ...(options?.tags ?? Protocol.emptyTags).reserved,
-                    "resonate:origin": mode === "attached" && Predicate.isUndefined(options?.id) ? state.originId : id,
-                    "resonate:prefix": state.prefixId,
-                    "resonate:branch": id,
-                    "resonate:parent": state.root,
-                    "resonate:scope": globalScope,
-                    "resonate:target": target,
-                  },
-                  unrecognized: options?.tags?.unrecognized ?? {},
-                  user: options?.tags?.user ?? {},
-                }),
-              },
-            }),
-          },
-          options: { origin: state.originId },
+        const promise = yield* fence({
+          state,
+          action: Protocol.PromiseCreateRequest.make({
+            head: requestHead({ corrId: `${state.root}:${id}:rpc`, origin: state.originId }),
+            data: {
+              id,
+              timeoutAt:
+                mode === "detached"
+                  ? timestamp(now + Duration.toMillis(options?.timeout ?? Duration.hours(24)))
+                  : yield* timeoutAt({ parent: state.timeoutAt, duration: options?.timeout ?? Duration.hours(24) }),
+              param: yield* encodeTargetPayload({ target: targetFunction, args, options }),
+              tags: Protocol.Tags.make({
+                reserved: {
+                  ...(options?.tags ?? Protocol.emptyTags).reserved,
+                  "resonate:origin": mode === "attached" && Predicate.isUndefined(options?.id) ? state.originId : id,
+                  "resonate:prefix": state.prefixId,
+                  "resonate:branch": id,
+                  "resonate:parent": state.root,
+                  "resonate:scope": globalScope,
+                  "resonate:target": target,
+                },
+                unrecognized: options?.tags?.unrecognized ?? {},
+                user: options?.tags?.user ?? {},
+              }),
+            },
+          }),
         });
-        RuntimeState.cachePromises({ state, promises: result.preload });
-        const promise = yield* actionPromise(result.action);
-        RuntimeState.cachePromise({ state, promise });
         if (mode === "attached" && promise.state === "pending") {
           state.attachedRemote = HashMap.set(
             state.attachedRemote,
@@ -1016,8 +975,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
 
       return ExecutionEngine.of({
         execute: Effect.fn("ExecutionEngine.execute")(function* (options) {
-          const state = RuntimeState.make({ task: options.task, promise: options.promise });
-          RuntimeState.cachePromises({ state, promises: options.preload ?? [] });
+          const state = RuntimeState.make({ task: options.task, promise: options.promise, preload: options.preload });
 
           if (options.promise.state !== "pending") {
             return new EngineDone({ promise: options.promise });
