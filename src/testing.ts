@@ -1,8 +1,3 @@
-/**
- * Test harness exports (TestClock-driven local server, simulator).
- *
- * See `docs/DESIGN.md` §4.11 (Testing).
- */
 import { Context, Effect, Layer, Option, Predicate, Queue, Ref, Schema, Stream } from "effect";
 import type { TransportError } from "./Errors.ts";
 import { decodeResponse, ResonateNetwork } from "./Network.ts";
@@ -24,7 +19,6 @@ const suspendedHasConsumedCallback = (state: DebugState, id: Protocol.TaskId): b
     return Predicate.isUndefined(awaited) || awaited.state !== "pending";
   });
 
-/** Seven structural task invariants from `docs/DESIGN.md` §8. */
 export const assertInvariants = Effect.fn("assertInvariants")(function* (state: DebugState) {
   for (const task of state.tasks) {
     const promise = state.promises.find((promise) => promise.id === task.id);
@@ -52,26 +46,17 @@ export const assertInvariants = Effect.fn("assertInvariants")(function* (state: 
   }
 });
 
-/** Answers each request the network sends; runs in send order. */
 export type TestNetworkHandler = (request: Protocol.Request) => Effect.Effect<Protocol.Response, TransportError>;
 
-/**
- * A scripted `ResonateNetwork` stub for unit-testing layers 2–4 without the
- * local server — the role of the Rust SDK's `StubNetwork`.
- *
- * Responses produced by the handler are round-tripped through the wire schemas
- * and the shared envelope checks, so a stubbed exchange exercises exactly the
- * same decode/validate path as a real transport.
- */
-export class TestNetwork extends Context.Service<
-  TestNetwork,
-  {
-    /** Push a server message onto the network's message stream. */
-    readonly push: (message: Protocol.Message) => Effect.Effect<void>;
-    /** Requests observed by the scripted handler, in send order. */
-    readonly requests: Effect.Effect<ReadonlyArray<Protocol.Request>>;
-  }
->()("effect-resonate/testing/TestNetwork") {
+export interface TestNetworkService {
+  readonly push: (message: Protocol.Message) => Effect.Effect<void>;
+
+  readonly requests: Effect.Effect<ReadonlyArray<Protocol.Request>>;
+}
+
+export class TestNetwork extends Context.Service<TestNetwork, TestNetworkService>()(
+  "effect-resonate/testing/TestNetwork",
+) {
   static layer(
     handler: TestNetworkHandler,
     options?: { readonly group?: string; readonly pid?: string },
@@ -91,27 +76,10 @@ export class TestNetwork extends Context.Service<
             return yield* decodeResponse(request)(wire);
           }),
           messages: Stream.fromQueue(queue),
-          match: (target) =>
-            Protocol.TargetAddress.make({
-              transport: "poll",
-              cast: "any",
-              group: target,
-              id: Option.none(),
-            }),
-          unicast: Protocol.TargetAddress.make({
-            transport: "poll",
-            cast: "uni",
-            group,
-            id: Option.some(pid),
-          }),
-          // Native derives its anycast address with the process id attached.
-          anycast: (target) =>
-            Protocol.TargetAddress.make({
-              transport: "poll",
-              cast: "any",
-              group: target,
-              id: Option.some(pid),
-            }),
+          match: (target) => Protocol.TargetAddress.pollAny(target),
+          unicast: Protocol.TargetAddress.pollUni(group, pid),
+
+          anycast: (target) => Protocol.TargetAddress.pollAny(target, Option.some(pid)),
         });
 
         const test = TestNetwork.of({

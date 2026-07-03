@@ -1,8 +1,3 @@
-/**
- * Main entry point for `effect-resonate`.
- *
- * See `docs/DESIGN.md` §3 (Architecture) for the module layout.
- */
 export * as Codec from "./Codec.ts";
 export * as DurablePromise from "./DurablePromise.ts";
 export * as Errors from "./Errors.ts";

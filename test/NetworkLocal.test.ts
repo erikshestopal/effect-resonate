@@ -7,8 +7,6 @@ import * as NetworkLocal from "../src/NetworkLocal.ts";
 import * as Protocol from "../src/Protocol.ts";
 import { assertInvariants } from "../src/testing.ts";
 
-// The tick interval is set far out so tests drive convergence deterministically
-// via explicit debug.tick requests; TestClock stays in control of time.
 const layers = Layer.mergeAll(
   NetworkLocal.layer({ tickInterval: Duration.hours(24), retryTimeout: Duration.seconds(5) }),
   BunCrypto.layer,
@@ -16,12 +14,7 @@ const layers = Layer.mergeAll(
 
 const pid = (value: string) => Protocol.PromiseId.make(value);
 
-const anycastDefault = Protocol.TargetAddress.make({
-  transport: "poll",
-  cast: "any",
-  group: Protocol.WorkerGroup.make("default"),
-  id: Option.none(),
-});
+const anycastDefault = Protocol.TargetAddress.pollAny(Protocol.WorkerGroup.make("default"));
 
 const targetTags = Protocol.Tags.make({
   reserved: { "resonate:target": anycastDefault },
@@ -344,7 +337,7 @@ describe("P-02 promise.create", () => {
       expect(state.tasks).toHaveLength(1);
       expect(state.tasks[0]?.state).toBe("pending");
       expect(state.tasks[0]?.version).toBe(0);
-      // Retry timeout armed at now + retryTimeout (5s).
+
       expect(state.taskTimeouts).toEqual([{ id: "p1", type: 0, timeout: at(5_000) }]);
       const [message] = yield* Stream.runCollect(Stream.take(network.messages, 1));
       expect(message?.kind).toBe("execute");
@@ -419,7 +412,7 @@ describe("P-03 promise.settle", () => {
         expect(record.value).toEqual({ data: "NDI=" });
       }
       const state = yield* snap();
-      // Companion task force-fulfilled, its timeout deleted, promise timeout deleted.
+
       expect(state.tasks).toEqual([{ id: "p1", state: "fulfilled", version: 0, resumes: 0 }]);
       expect(state.taskTimeouts).toHaveLength(0);
       expect(state.promiseTimeouts).toHaveLength(0);
@@ -448,7 +441,7 @@ describe("P-03 promise.settle", () => {
         throw new Error("expected 200");
       }
       expect(response.data.promise.state).toBe("rejected_timedout");
-      // Persistence happens only at the tick: the raw store still says pending.
+
       const state = yield* snap();
       expect(state.promises[0]?.state).toBe("pending");
     }).pipe(Effect.provide(layers)),
@@ -457,19 +450,19 @@ describe("P-03 promise.settle", () => {
   it.effect("notifies listeners exactly once and resumes callbacks via the cascade", () =>
     Effect.gen(function* () {
       const network = yield* ResonateNetwork;
-      // W is an awaiter with a target (its task buffers the resume while pending).
+
       yield* create("w", 60_000, targetTags);
       yield* create("b", 60_000);
       yield* sendCallback("b", "w");
       yield* sendListener("b");
       yield* settle("b", "resolved");
-      // First message is w's create-dispatch; the settle then emits one unblock.
+
       const messages = yield* Stream.runCollect(Stream.take(network.messages, 2));
       expect(messages.map((message) => message.kind)).toEqual(["execute", "unblock"]);
-      // The pending awaiter task buffered the resume instead of re-dispatching.
+
       const state = yield* snap();
       expect(state.tasks).toEqual([{ id: "w", state: "pending", version: 0, resumes: 1 }]);
-      // Idempotent re-settle fires nothing new.
+
       yield* settle("b", "resolved");
       expect((yield* snap()).messages).toHaveLength(2);
     }).pipe(Effect.provide(layers)),
@@ -504,14 +497,12 @@ describe("P-04 promise.register_callback", () => {
       yield* sendCallback("b", "w");
       expect((yield* snap()).callbacks).toEqual([{ awaiter: "w", awaited: "b" }]);
 
-      // Settled awaited: 200 with the record, no registration.
       yield* create("done", 60_000);
       yield* settle("done", "resolved");
       const onSettled = yield* sendCallback("done", "w");
       expect(isCallbackOk(onSettled)).toBe(true);
       expect((yield* snap()).callbacks).toHaveLength(1);
 
-      // Expired awaiter: still 200, registration silently skipped.
       yield* create("expiring", 5_000, targetTags);
       yield* TestClock.adjust(Duration.millis(5_000));
       yield* create("b2", 60_000);
@@ -558,7 +549,7 @@ describe("timeout projection and the tick (P-01 + onPromiseTimeout)", () => {
 
       expect((yield* getPromise("plain")).state).toBe("rejected_timedout");
       expect((yield* getPromise("timer")).state).toBe("resolved");
-      // Raw store untouched: projection is logical, not persisted.
+
       const before = yield* snap();
       expect(before.promises.every((promise) => promise.state === "pending")).toBe(true);
 
@@ -571,10 +562,9 @@ describe("timeout projection and the tick (P-01 + onPromiseTimeout)", () => {
       const persistedPlain = yield* getPromise("plain");
       expect(persistedPlain.state).toBe("rejected_timedout");
       if (persistedPlain.state !== "pending") {
-        // Backdated to timeoutAt, not the tick time.
         expect(Option.map(persistedPlain.settledAt, DateTime.toEpochMillis)).toEqual(Option.some(10_000));
       }
-      // Companion task force-fulfilled by the tick (suspended→fulfilled path guard).
+
       expect(after.tasks).toEqual([{ id: "plain", state: "fulfilled", version: 0, resumes: 0 }]);
       expect(after.promiseTimeouts).toHaveLength(0);
     }).pipe(Effect.provide(layers)),
@@ -613,7 +603,6 @@ describe("timeout projection and the tick (P-01 + onPromiseTimeout)", () => {
       for (const response of [viaCreate, viaSettle, viaCallback, viaListener]) {
         expect(response.head.status).toBe(200);
         if (isCreated(viaCreate) && isSettled(viaSettle) && isCallbackOk(viaCallback) && isListenerOk(viaListener)) {
-          // noop — narrowing happens below per response
         }
       }
       if (!isCreated(viaCreate) || !isSettled(viaSettle) || !isCallbackOk(viaCallback) || !isListenerOk(viaListener)) {

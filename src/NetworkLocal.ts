@@ -1,16 +1,3 @@
-/**
- * In-memory server (dev + conformance oracle).
- *
- * Implements the Lean abstract machine 1:1 — `spec/02-actions/P-01…P-05`,
- * `00-resume.lean`, `02-timeouts.lean` — following the annotated native
- * reference (`repos/resonate-sdk-ts/src/network/local.ts`) where the Lean
- * model is silent. Written against Effect's `Clock`, so `TestClock` drives
- * all time-dependent behavior in tests and a periodic tick drives dev mode.
- *
- * See `docs/DESIGN.md` §3.1 (`NetworkLocal.layer`) and §8.
- *
- * Spec 06 adds schedule handlers and catch-up.
- */
 import {
   Cron,
   DateTime,
@@ -31,10 +18,6 @@ import {
 import { decodeResponse, ResonateNetwork } from "./Network.ts";
 import * as Protocol from "./Protocol.ts";
 
-// -----------------------------------------------------------------------------
-// Server objects — the Lean `PromiseObject`/`TaskObject` (records + registrations)
-// -----------------------------------------------------------------------------
-
 export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/PromiseObject")({
   id: Protocol.PromiseId,
   state: Protocol.PromiseState,
@@ -44,12 +27,11 @@ export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/Pro
   timeoutAt: Schema.DateTimeUtc,
   createdAt: Schema.DateTimeUtc,
   settledAt: Schema.Option(Schema.DateTimeUtc),
-  /** Ids of promises (tasks) awaiting this one. */
+
   callbacks: Schema.Array(Protocol.PromiseId),
-  /** Addresses listening for this promise's settlement. */
+
   listeners: Schema.Array(Protocol.TargetAddress),
 }) {
-  /** The schema fields as a plain object, for deriving updated copies. */
   get fields() {
     return {
       id: this.id,
@@ -73,7 +55,6 @@ export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/Pro
     return Option.fromNullishOr(this.tags.reserved["resonate:target"]);
   }
 
-  /** A promise is external iff it carries a target or is a timer (Lean `external`). */
   get external(): boolean {
     return Option.isSome(this.target) || this.isTimer;
   }
@@ -82,7 +63,6 @@ export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/Pro
     return this.isTimer ? "resolved" : "rejected_timedout";
   }
 
-  /** The Lean timeout projection — the logical view, no persistence. */
   projected(now: DateTime.Utc): PromiseObject {
     if (this.state !== "pending" || DateTime.toEpochMillis(this.timeoutAt) > DateTime.toEpochMillis(now)) {
       return this;
@@ -124,10 +104,9 @@ export class TaskObject extends Schema.Class<TaskObject>("NetworkLocal/TaskObjec
   version: Protocol.TaskVersion,
   pid: Schema.Option(Protocol.ProcessId),
   ttl: Schema.Option(Schema.Duration),
-  /** Awaited ids that settled while the task was pending/acquired/halted (R in the spec). */
+
   resumes: Schema.Array(Protocol.PromiseId),
 }) {
-  /** The schema fields as a plain object, for deriving updated copies. */
   get fields() {
     return {
       id: this.id,
@@ -143,7 +122,7 @@ export class TaskObject extends Schema.Class<TaskObject>("NetworkLocal/TaskObjec
     const common = {
       id: this.id,
       version: this.version,
-      // Lean `toRecord`: resumes is reported as a count.
+
       resumes: this.resumes.length,
     };
     return Match.value(this.state).pipe(
@@ -197,7 +176,6 @@ export class ScheduleObject extends Schema.Class<ScheduleObject>("NetworkLocal/S
   }
 }
 
-/** `0` = pending retry, `1` = lease expiration (Lean `TaskTimeout.kind`). */
 interface TaskTimeoutEntry {
   readonly kind: 0 | 1;
   readonly at: DateTime.Utc;
@@ -229,10 +207,6 @@ const initialState: ServerState = {
   scheduleTimeouts: HashMap.empty(),
   outbox: [],
 };
-
-// -----------------------------------------------------------------------------
-// Pure state helpers (the Lean StateM primitives)
-// -----------------------------------------------------------------------------
 
 interface Emitting {
   readonly state: ServerState;
@@ -289,13 +263,11 @@ const delScheduleTimeout = (state: ServerState, id: Protocol.ScheduleId): Server
   scheduleTimeouts: HashMap.remove(state.scheduleTimeouts, id),
 });
 
-/** Lean `OutboxEntry.key`: one pending execute per task, one unblock per (promise, address). */
 const outboxKey = (entry: OutboxEntry): string =>
   entry.message.kind === "execute"
     ? `execute:${entry.message.data.task.id}`
     : `unblock:${entry.message.data.promise.id}:${entry.address.address}`;
 
-/** Coalesce into the outbox and emit for immediate local delivery. */
 const setMessage = (
   { emitted, state }: Emitting,
   address: Protocol.TargetAddress,
@@ -340,10 +312,6 @@ const preload = (state: ServerState, id: Protocol.PromiseId): ReadonlyArray<Prot
     .map((candidate) => candidate.toRecord());
 };
 
-// -----------------------------------------------------------------------------
-// The resume cascade (spec/02-actions/00-resume.lean)
-// -----------------------------------------------------------------------------
-
 const enqueueResume = (
   { emitted, state }: Emitting,
   awaitedId: Protocol.PromiseId,
@@ -357,7 +325,6 @@ const enqueueResume = (
   }
   return Match.value(task.value).pipe(
     Match.when({ state: "suspended" }, (suspended) => {
-      // Version is bumped ONLY on acquire — the execute is a wake-up hint.
       const resumed = new TaskObject({
         ...suspended.fields,
         state: "pending",
@@ -396,11 +363,6 @@ const enqueueResume = (
   );
 };
 
-/**
- * The settlement cascade shared by `promise.settle` and `onPromiseTimeout`:
- * force-fulfill the companion task, scrub the settled id from every pending
- * promise's callbacks, notify listeners, resume callbacks.
- */
 const settlementCascade = (
   input: Emitting,
   settled: PromiseObject,
@@ -426,7 +388,6 @@ const settlementCascade = (
     state = delTaskTimeout(state, settled.id);
   }
 
-  // Settlement scrub: the settled promise can never be resumed again.
   state = {
     ...state,
     promises: HashMap.map(state.promises, (promise) =>
@@ -448,10 +409,6 @@ const settlementCascade = (
   }
   return next;
 };
-
-// -----------------------------------------------------------------------------
-// Promise handlers (spec/02-actions/P-01…P-05)
-// -----------------------------------------------------------------------------
 
 interface Transition<R extends Protocol.Response = Protocol.Response> {
   readonly state: ServerState;
@@ -522,7 +479,6 @@ const promiseCreate = (
 
   const existing = HashMap.get(state.promises, request.data.id);
   if (Option.isSome(existing)) {
-    // Idempotent re-create: stored record (projected), body completely ignored.
     return respond({ state, emitted: [] }, existing.value.projected(now));
   }
 
@@ -560,7 +516,6 @@ const promiseCreate = (
     next = setTask(next, task);
     const delay = tags.reserved["resonate:delay"];
     if (Predicate.isNotUndefined(delay) && millis(delay) > millis(now)) {
-      // Deferred dispatch: the retry timeout fires at the delay instant.
       next = setTaskTimeout(next, task.id, { kind: 0, at: delay });
       return respond({ state: next, emitted: [] }, promise);
     }
@@ -576,7 +531,6 @@ const promiseCreate = (
     return respond(dispatched, promise);
   }
 
-  // Born already settled — backdated createdAt/settledAt, no timeout, no dispatch.
   const promise = new PromiseObject({
     id,
     state: tags.isTimer ? "resolved" : "rejected_timedout",
@@ -639,11 +593,9 @@ const promiseSettle = (
   }
   const promise = stored.value;
   if (promise.state !== "pending") {
-    // Already settled — idempotent.
     return respond({ state, emitted: [] }, promise);
   }
   if (millis(promise.timeoutAt) <= millis(now)) {
-    // Projected-timeout race: the caller's requested state is ignored.
     return respond({ state, emitted: [] }, promise.projected(now));
   }
 
@@ -692,7 +644,6 @@ const promiseRegisterCallback = (
     emitted: [],
   });
 
-  // Native validate(): self-await is malformed.
   if (request.data.awaited === request.data.awaiter) {
     return fail(400, "Awaited and awaiter must be different");
   }
@@ -713,8 +664,7 @@ const promiseRegisterCallback = (
   if (millis(awaited.value.timeoutAt) <= millis(now)) {
     return respond(state, awaited.value.projected(now));
   }
-  // Registration happens only when BOTH sides are pending and fresh; an
-  // expired awaiter is silently skipped (still 200).
+
   const awaiterFresh = awaiter.value.state === "pending" && millis(awaiter.value.timeoutAt) > millis(now);
   if (!awaiterFresh) {
     return respond(state, awaited.value);
@@ -770,10 +720,6 @@ const promiseRegisterListener = (
       });
   return respond(setPromise(state, registered), awaited.value);
 };
-
-// -----------------------------------------------------------------------------
-// Task handlers (spec/02-actions/T-01…T-10)
-// -----------------------------------------------------------------------------
 
 const taskFresh = (state: ServerState, task: TaskObject, now: DateTime.Utc): Option.Option<PromiseObject> => {
   const promise = HashMap.get(state.promises, task.id);
@@ -1411,10 +1357,6 @@ const taskHeartbeat = (
   };
 };
 
-// -----------------------------------------------------------------------------
-// Schedule handlers (spec/02-actions/S-01…S-03) and catch-up
-// -----------------------------------------------------------------------------
-
 const FiveFieldCronExpression = Schema.String.check(
   Schema.makeFilter(
     (cron) => {
@@ -1593,16 +1535,6 @@ const catchUpSchedule = (
   return { state: next, emitted: output.emitted };
 };
 
-// -----------------------------------------------------------------------------
-// The tick — native debugTick's three-phase convergence
-// -----------------------------------------------------------------------------
-
-/**
- * Phase 1: persist the projection for every expired pending promise.
- * Phase 2: force-fulfill their companion tasks (suspended → fulfilled DIRECTLY,
- *          never suspended → pending → fulfilled) and scrub dead callbacks.
- * Phase 3: resume callbacks and notify listeners.
- */
 const tick = (
   state: ServerState,
   now: DateTime.Utc,
@@ -1626,7 +1558,6 @@ const tick = (
   const actions: Array<Protocol.DebugTickAction> = [];
   let next = state;
 
-  // Phase 1 — settle.
   const settled: Array<{
     promise: PromiseObject;
     callbacks: ReadonlyArray<Protocol.PromiseId>;
@@ -1656,7 +1587,6 @@ const tick = (
     });
   }
 
-  // Phase 2 — fulfill companion tasks and scrub.
   let output: Emitting = { state: next, emitted: [] };
   for (const { promise } of settled) {
     const task = HashMap.get(output.state.tasks, promise.id);
@@ -1690,7 +1620,6 @@ const tick = (
     };
   }
 
-  // Phase 3 — resume callbacks, notify listeners.
   for (const { callbacks, listeners, promise } of settled) {
     for (const awaiterId of callbacks) {
       output = enqueueResume(output, promise.id, awaiterId, now, retryTimeout);
@@ -1759,10 +1688,6 @@ const tick = (
 
   return { state: output.state, emitted: output.emitted, actions };
 };
-
-// -----------------------------------------------------------------------------
-// Request dispatch
-// -----------------------------------------------------------------------------
 
 const apply = (
   state: ServerState,
@@ -1891,16 +1816,12 @@ const apply = (
   );
 };
 
-// -----------------------------------------------------------------------------
-// The layer
-// -----------------------------------------------------------------------------
-
 export interface NetworkLocalOptions {
   readonly group?: string;
   readonly pid?: string;
-  /** Lean `ServerConfig.retryTimeout` — default 5s (native local server uses 30s). */
+
   readonly retryTimeout?: Duration.Duration;
-  /** Dev-mode convergence tick — default 1s; `TestClock.adjust` drives it in tests. */
+
   readonly tickInterval?: Duration.Duration;
 }
 
@@ -1929,7 +1850,6 @@ export const layer = (options?: NetworkLocalOptions): Layer.Layer<ResonateNetwor
         return response;
       });
 
-      // Dev-mode convergence: the periodic tick persists due timeouts.
       yield* Effect.gen(function* () {
         const now = yield* DateTime.now;
         const emitted = yield* Ref.modify(ref, (state) => {
@@ -1946,26 +1866,9 @@ export const layer = (options?: NetworkLocalOptions): Layer.Layer<ResonateNetwor
           return yield* decodeResponse(request)(wire);
         }),
         messages: Stream.fromQueue(queue),
-        match: (target) =>
-          Protocol.TargetAddress.make({
-            transport: "local",
-            cast: "any",
-            group: target,
-            id: Option.none(),
-          }),
-        unicast: Protocol.TargetAddress.make({
-          transport: "local",
-          cast: "uni",
-          group,
-          id: Option.some(pid),
-        }),
-        anycast: (target) =>
-          Protocol.TargetAddress.make({
-            transport: "local",
-            cast: "any",
-            group: target,
-            id: Option.some(pid),
-          }),
+        match: (target) => Protocol.TargetAddress.localAny(target),
+        unicast: Protocol.TargetAddress.localUni(group, pid),
+        anycast: (target) => Protocol.TargetAddress.localAny(target, Option.some(pid)),
       });
     }),
   );

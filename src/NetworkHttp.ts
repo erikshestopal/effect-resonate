@@ -1,9 +1,4 @@
-/**
- * HTTP POST + SSE poll transport.
- *
- * See `docs/DESIGN.md` §3.1 (Layer 1 — Transport: `ResonateNetwork`), `NetworkHttp.layer`.
- */
-import { Duration, Effect, Filter, Layer, Option, Predicate, Schedule, Schema, Stream } from "effect";
+import { Duration, Effect, Filter, Layer, Option, Schedule, Schema, Stream } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { TransportError } from "./Errors.ts";
 import { decodeResponse, encodeRequest, ResonateNetwork } from "./Network.ts";
@@ -18,30 +13,6 @@ export interface NetworkHttpOptions {
 
 const protocolStatuses = new Set([200, 300, 404, 409, 422, 501]);
 
-const connectionLost = (cause: unknown) => new TransportError({ reason: "ConnectionLost", cause });
-const malformedResponse = (cause: unknown) => new TransportError({ reason: "MalformedResponse", cause });
-
-const headers = (token: Option.Option<string>) =>
-  Option.match(token, {
-    onNone: () => ({ "Content-Type": "application/json" }),
-    onSome: (token) => ({ "Content-Type": "application/json", Authorization: `Bearer ${token}` }),
-  });
-
-const trimTrailingSlash = (value: string): string => (value.endsWith("/") ? value.slice(0, -1) : value);
-
-const pollUrl = (base: string, group: Protocol.WorkerGroup, pid: Protocol.ProcessId): string =>
-  `${trimTrailingSlash(base)}/poll/${encodeURIComponent(group)}/${encodeURIComponent(pid)}`;
-
-const decodeMessageJson = (input: string): Effect.Effect<Protocol.Message, TransportError> =>
-  Schema.decodeUnknownEffect(Schema.fromJsonString(Protocol.Message))(input).pipe(Effect.mapError(malformedResponse));
-
-const decodeSseLine = (line: string): Option.Option<string> => {
-  if (!line.startsWith("data:")) {
-    return Option.none();
-  }
-  return Option.some(line.slice("data:".length).trimStart());
-};
-
 export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork, never, HttpClient.HttpClient> =>
   Layer.effect(
     ResonateNetwork,
@@ -49,8 +20,12 @@ export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork,
       const client = yield* HttpClient.HttpClient;
       const group = Protocol.WorkerGroup.make(options.group ?? "default");
       const pid = Protocol.ProcessId.make(options.pid ?? "local");
+      const configuredPid = Option.as(Option.fromNullishOr(options.pid), pid);
       const token = Option.fromNullishOr(options.token);
-      const commonHeaders = headers(token);
+      const commonHeaders = Option.match(token, {
+        onNone: () => ({ "Content-Type": "application/json" }),
+        onSome: (token) => ({ "Content-Type": "application/json", Authorization: `Bearer ${token}` }),
+      });
 
       const send = Effect.fn("NetworkHttp.send")(function* <K extends Protocol.RequestKind>(
         request: Protocol.Request<K>,
@@ -58,39 +33,56 @@ export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork,
         const wire = yield* encodeRequest(request);
         const httpRequest = yield* HttpClientRequest.post(options.url, { headers: commonHeaders }).pipe(
           HttpClientRequest.bodyJson(wire),
-          Effect.mapError(connectionLost),
+          Effect.mapError((cause) => new TransportError({ reason: "ConnectionLost", cause })),
         );
-        const response = yield* client.execute(httpRequest).pipe(Effect.mapError(connectionLost));
+        const response = yield* client
+          .execute(httpRequest)
+          .pipe(Effect.mapError((cause) => new TransportError({ reason: "ConnectionLost", cause })));
         if (response.status === 401 || response.status === 403) {
           return yield* new TransportError({ reason: "Unauthorized", cause: response.status });
         }
         if (!protocolStatuses.has(response.status)) {
-          return yield* connectionLost(response.status);
+          return yield* new TransportError({ reason: "ConnectionLost", cause: response.status });
         }
-        const body = yield* response.json.pipe(Effect.mapError(malformedResponse));
+        const body = yield* response.json.pipe(
+          Effect.mapError((cause) => new TransportError({ reason: "MalformedResponse", cause })),
+        );
         return yield* decodeResponse(request)(body);
       });
 
       const connectMessages = Stream.unwrap(
-        client.get(pollUrl(options.url, group, pid), { headers: commonHeaders, accept: "text/event-stream" }).pipe(
-          Effect.mapError(connectionLost),
-          Effect.flatMap((response) =>
-            response.status === 401 || response.status === 403
-              ? Effect.fail(new TransportError({ reason: "Unauthorized", cause: response.status }))
-              : response.status !== 200
-                ? Effect.fail(connectionLost(response.status))
-                : Effect.succeed(response),
-          ),
-          Effect.map((response) =>
-            response.stream.pipe(
-              Stream.mapError(connectionLost),
-              Stream.decodeText(),
-              Stream.splitLines,
-              Stream.filterMap(Filter.fromPredicateOption(decodeSseLine)),
-              Stream.mapEffect(decodeMessageJson),
+        client
+          .get(
+            `${options.url.endsWith("/") ? options.url.slice(0, -1) : options.url}${Protocol.TargetAddress.pollUni(group, pid).pollPath}`,
+            { headers: commonHeaders, accept: "text/event-stream" },
+          )
+          .pipe(
+            Effect.mapError((cause) => new TransportError({ reason: "ConnectionLost", cause })),
+            Effect.flatMap((response) =>
+              response.status === 401 || response.status === 403
+                ? Effect.fail(new TransportError({ reason: "Unauthorized", cause: response.status }))
+                : response.status !== 200
+                  ? Effect.fail(new TransportError({ reason: "ConnectionLost", cause: response.status }))
+                  : Effect.succeed(response),
+            ),
+            Effect.map((response) =>
+              response.stream.pipe(
+                Stream.mapError((cause) => new TransportError({ reason: "ConnectionLost", cause })),
+                Stream.decodeText(),
+                Stream.splitLines,
+                Stream.filterMap(
+                  Filter.fromPredicateOption((line) =>
+                    line.startsWith("data:") ? Option.some(line.slice("data:".length).trimStart()) : Option.none(),
+                  ),
+                ),
+                Stream.mapEffect((input) =>
+                  Schema.decodeUnknownEffect(Schema.fromJsonString(Protocol.Message))(input).pipe(
+                    Effect.mapError((cause) => new TransportError({ reason: "MalformedResponse", cause })),
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
       );
 
       const reconnect: Schedule.Schedule<Duration.Duration, TransportError> = Schedule.exponential(
@@ -101,26 +93,9 @@ export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork,
       return ResonateNetwork.of({
         send,
         messages: connectMessages.pipe(Stream.retry(retryReconnect)),
-        match: (target) =>
-          Protocol.TargetAddress.make({
-            transport: "poll",
-            cast: "any",
-            group: target,
-            id: Option.none(),
-          }),
-        unicast: Protocol.TargetAddress.make({
-          transport: "poll",
-          cast: "uni",
-          group,
-          id: Option.some(pid),
-        }),
-        anycast: (target) =>
-          Protocol.TargetAddress.make({
-            transport: "poll",
-            cast: "any",
-            group: target,
-            id: Predicate.isUndefined(options.pid) ? Option.none() : Option.some(pid),
-          }),
+        match: (target) => Protocol.TargetAddress.pollAny(target),
+        unicast: Protocol.TargetAddress.pollUni(group, pid),
+        anycast: (target) => Protocol.TargetAddress.pollAny(target, configuredPid),
       });
     }),
   );

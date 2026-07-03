@@ -1,8 +1,3 @@
-/**
- * Schedules domain model + typed client ops.
- *
- * See `docs/DESIGN.md` §3.2 (Layer 2 — Protocol client) and §4.8 (Schedules).
- */
 import { Context, Crypto, Effect, Layer, SchemaParser } from "effect";
 import { InvalidTarget, ScheduleNotFound, type ResonateProtocolError, type TransportError } from "./Errors.ts";
 import { ResonateNetwork } from "./Network.ts";
@@ -19,18 +14,17 @@ const scheduleError = (id: Protocol.ScheduleId, status: number, message: unknown
   return new InvalidTarget({ message: String(message) });
 };
 
-export class Schedules extends Context.Service<
-  Schedules,
-  {
-    readonly get: (
-      id: Protocol.ScheduleId,
-    ) => Effect.Effect<Protocol.ScheduleRecord, ResonateProtocolError | TransportError>;
-    readonly create: (
-      data: typeof Protocol.ScheduleCreateRequest.Type.data,
-    ) => Effect.Effect<Protocol.ScheduleRecord, ResonateProtocolError | TransportError>;
-    readonly delete: (id: Protocol.ScheduleId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
-  }
->()("effect-resonate/Schedules") {
+export interface SchedulesService {
+  readonly get: (
+    id: Protocol.ScheduleId,
+  ) => Effect.Effect<Protocol.ScheduleRecord, ResonateProtocolError | TransportError>;
+  readonly create: (
+    data: typeof Protocol.ScheduleCreateRequest.Type.data,
+  ) => Effect.Effect<Protocol.ScheduleRecord, ResonateProtocolError | TransportError>;
+  readonly delete: (id: Protocol.ScheduleId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
+}
+
+export class Schedules extends Context.Service<Schedules, SchedulesService>()("effect-resonate/Schedules") {
   static readonly layer: Layer.Layer<Schedules, never, ResonateNetwork | Crypto.Crypto> = Layer.effect(
     Schedules,
     Effect.gen(function* () {
@@ -42,7 +36,7 @@ export class Schedules extends Context.Service<
         return Protocol.RequestHead.make({ corrId, version: Protocol.protocolVersion });
       });
 
-      const get = Effect.fn("Schedules.get")(function* (id: Protocol.ScheduleId) {
+      const get: SchedulesService["get"] = Effect.fn("Schedules.get")(function* (id) {
         const response = yield* network.send(Protocol.ScheduleGetRequest.make({ head: yield* head(), data: { id } }));
         if (isGetSuccess(response)) {
           return response.data.schedule;
@@ -50,7 +44,7 @@ export class Schedules extends Context.Service<
         return yield* Effect.fail(scheduleError(id, response.head.status, response.data));
       });
 
-      const create = Effect.fn("Schedules.create")(function* (data: typeof Protocol.ScheduleCreateRequest.Type.data) {
+      const create: SchedulesService["create"] = Effect.fn("Schedules.create")(function* (data) {
         const response = yield* network.send(Protocol.ScheduleCreateRequest.make({ head: yield* head(), data }));
         if (isCreateSuccess(response)) {
           return response.data.schedule;
@@ -58,7 +52,7 @@ export class Schedules extends Context.Service<
         return yield* Effect.fail(scheduleError(data.id, response.head.status, response.data));
       });
 
-      const deleteSchedule = Effect.fn("Schedules.delete")(function* (id: Protocol.ScheduleId) {
+      const deleteSchedule: SchedulesService["delete"] = Effect.fn("Schedules.delete")(function* (id) {
         const response = yield* network.send(
           Protocol.ScheduleDeleteRequest.make({ head: yield* head(), data: { id } }),
         );

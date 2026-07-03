@@ -1,0 +1,17 @@
+id: no-manual-tag-object
+language: TypeScript
+severity: error
+message: Construct tagged values with Schema classes or named constructors instead of manual object literals with _tag.
+files:
+  - src/**/*.ts
+  - test/**/*.ts
+rule:
+  all:
+    - kind: pair
+    - has:
+        field: key
+        regex: ^_tag$
+    - not:
+        has:
+          field: value
+          pattern: Schema.tag($$$ARGS)

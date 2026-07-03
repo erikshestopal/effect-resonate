@@ -1,8 +1,3 @@
-/**
- * The in-function durable-operation service (native SDK's `Context`).
- *
- * See `docs/DESIGN.md` §4.2 (`ResonateContext` — the native `Context`, as an Effect service).
- */
 import {
   Clock,
   Context,
@@ -15,18 +10,25 @@ import {
   Layer,
   Option,
   Predicate,
+  Result,
   Schema,
   SchemaParser,
 } from "effect";
 import { ResonateCodec } from "./Codec.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut } from "./Errors.ts";
 import * as Protocol from "./Protocol.ts";
-import { Registry } from "./Resonate.ts";
+import type { Registry } from "./Resonate.ts";
 import { Tasks } from "./Task.ts";
 
 export class DurablePanic extends Schema.TaggedErrorClass<DurablePanic>()("DurablePanic", {
   message: Schema.String,
 }) {}
+
+class SuspendedExecution extends Schema.TaggedErrorClass<SuspendedExecution>()("SuspendedExecution", {
+  awaited: Schema.Array(Protocol.PromiseId),
+}) {}
+
+const isSuspendedExecution = SchemaParser.is(SuspendedExecution);
 
 const InvocationParam = Schema.Struct({
   func: Schema.String,
@@ -72,12 +74,26 @@ interface RuntimeState {
   readonly branchId: Protocol.PromiseId;
   readonly cache: Map<Protocol.PromiseId, Protocol.PromiseRecord>;
   readonly children: Array<RunningChild>;
+  readonly awaiting: Map<Protocol.PromiseId, SuspendedExecution>;
   seq: number;
 }
 
-export type EngineOutcome =
-  | { readonly _tag: "Done"; readonly promise: Protocol.PromiseRecord }
-  | { readonly _tag: "Suspended"; readonly awaited: ReadonlyArray<Protocol.PromiseId> };
+export class EngineDone extends Schema.Class<EngineDone>("ExecutionEngine/Done")({
+  _tag: Schema.tag("Done"),
+  promise: Protocol.PromiseRecord,
+}) {}
+
+export class EngineSuspended extends Schema.Class<EngineSuspended>("ExecutionEngine/Suspended")({
+  _tag: Schema.tag("Suspended"),
+  awaited: Schema.Array(Protocol.PromiseId),
+}) {}
+
+class CompletedExecution extends Schema.Class<CompletedExecution>("ExecutionEngine/Completed")({
+  _tag: Schema.tag("Completed"),
+  value: Schema.Unknown,
+}) {}
+
+export type EngineOutcome = EngineDone | EngineSuspended;
 
 export interface ExecuteOptions {
   readonly task: Protocol.TaskAcquired;
@@ -96,38 +112,47 @@ const childId = (parent: Protocol.PromiseId, seq: number): Protocol.PromiseId =>
   Protocol.PromiseId.make(`${parent}.${seq}`);
 
 const requestHead = (corrId: string): Protocol.RequestHead =>
-  Protocol.RequestHead.make({ corrId: Protocol.CorrelationId.make(corrId), version: Protocol.protocolVersion });
+  Protocol.RequestHead.make({
+    corrId: Protocol.CorrelationId.make(corrId),
+    version: Protocol.protocolVersion,
+  });
 
-const doneOutcome = (promise: Protocol.PromiseRecord): EngineOutcome => ({ _tag: "Done", promise });
+const doneOutcome = (promise: Protocol.PromiseRecord): EngineOutcome => new EngineDone({ promise });
+
+const suspendedOutcome = (awaited: ReadonlyArray<Protocol.PromiseId>): EngineOutcome =>
+  new EngineSuspended({ awaited });
+
+const isExternalPromise = (promise: Protocol.PromiseRecord): boolean =>
+  Predicate.isNotUndefined(promise.tags.reserved["resonate:target"]) ||
+  Predicate.isNotUndefined(promise.tags.reserved["resonate:timer"]);
 
 const isPromiseCreateSuccess = SchemaParser.is(Protocol.PromiseCreateResponse.members[0]);
 const isPromiseSettleSuccess = SchemaParser.is(Protocol.PromiseSettleResponse.members[0]);
 
-export class ResonateContext extends Context.Service<
-  ResonateContext,
-  {
-    readonly info: ContextInfo;
-    readonly run: (
-      effect: Effect.Effect<unknown, unknown>,
-      options?: ContextOptions,
-    ) => Effect.Effect<unknown, unknown>;
-    readonly beginRun: (
-      effect: Effect.Effect<unknown, unknown>,
-      options?: ContextOptions,
-    ) => Effect.Effect<LocalDurableHandle, unknown>;
-    readonly all: <const Effects extends ReadonlyArray<Effect.Effect<unknown, unknown, unknown>>>(
-      effects: Effects,
-    ) => Effect.Effect<ReadonlyArray<unknown>, unknown, unknown>;
-    readonly panic: (message: string) => Effect.Effect<never, DurablePanic>;
-  }
->()("effect-resonate/Context") {}
+export interface ResonateContextService {
+  readonly info: ContextInfo;
+  readonly run: (effect: Effect.Effect<unknown, unknown>, options?: ContextOptions) => Effect.Effect<unknown, unknown>;
+  readonly beginRun: (
+    effect: Effect.Effect<unknown, unknown>,
+    options?: ContextOptions,
+  ) => Effect.Effect<LocalDurableHandle, unknown>;
+  readonly all: <const Effects extends ReadonlyArray<Effect.Effect<unknown, unknown, unknown>>>(
+    effects: Effects,
+  ) => Effect.Effect<ReadonlyArray<unknown>, unknown, unknown>;
+  readonly panic: (message: string) => Effect.Effect<never, DurablePanic>;
+}
 
-export class ExecutionEngine extends Context.Service<
-  ExecutionEngine,
-  {
-    readonly execute: (options: ExecuteOptions) => Effect.Effect<EngineOutcome, unknown>;
-  }
->()("effect-resonate/ExecutionEngine") {
+export class ResonateContext extends Context.Service<ResonateContext, ResonateContextService>()(
+  "effect-resonate/Context",
+) {}
+
+export interface ExecutionEngineService {
+  readonly execute: (options: ExecuteOptions) => Effect.Effect<EngineOutcome, unknown>;
+}
+
+export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionEngineService>()(
+  "effect-resonate/ExecutionEngine",
+) {
   static readonly layer: Layer.Layer<ExecutionEngine, never, Tasks | ResonateCodec> = Layer.effect(
     ExecutionEngine,
     Effect.gen(function* () {
@@ -260,7 +285,18 @@ export class ExecutionEngine extends Context.Service<
         deferred: Deferred.Deferred<unknown, unknown>,
       ): LocalDurableHandle => ({
         id: promise.id,
-        await: Deferred.await(deferred),
+        await:
+          isExternalPromise(promise) && promise.state === "pending"
+            ? Effect.suspend(() => {
+                const parked = state.awaiting.get(promise.id);
+                if (Predicate.isNotUndefined(parked)) {
+                  return Effect.fail(parked);
+                }
+                const suspended = new SuspendedExecution({ awaited: [promise.id] });
+                state.awaiting.set(promise.id, suspended);
+                return Effect.fail(suspended);
+              })
+            : Deferred.await(deferred),
         poll: Deferred.poll(deferred).pipe(
           Effect.flatMap(
             Option.match({
@@ -281,7 +317,7 @@ export class ExecutionEngine extends Context.Service<
       });
 
       const layerFor = (state: RuntimeState): Layer.Layer<ResonateContext, never, never> => {
-        const beginRun = Effect.fn("ResonateContext.beginRun")(function* (
+        const beginRun: ResonateContextService["beginRun"] = Effect.fn("ResonateContext.beginRun")(function* (
           effect: Effect.Effect<unknown, unknown>,
           options?: ContextOptions,
         ): Effect.fn.Return<LocalDurableHandle, unknown> {
@@ -290,6 +326,9 @@ export class ExecutionEngine extends Context.Service<
           if (promise.state !== "pending") {
             const settled = yield* decodeSettled(promise).pipe(Effect.exit);
             yield* Deferred.done(deferred, settled);
+            return makeHandle(state, promise, deferred);
+          }
+          if (isExternalPromise(promise)) {
             return makeHandle(state, promise, deferred);
           }
           const fiber = yield* effect.pipe(
@@ -307,10 +346,7 @@ export class ExecutionEngine extends Context.Service<
           return makeHandle(state, promise, deferred);
         });
 
-        const run = Effect.fn("ResonateContext.run")(function* (
-          effect: Effect.Effect<unknown, unknown>,
-          options?: ContextOptions,
-        ): Effect.fn.Return<unknown, unknown> {
+        const run: ResonateContextService["run"] = Effect.fn("ResonateContext.run")(function* (effect, options) {
           const handle = yield* beginRun(effect, options);
           return yield* handle.await;
         });
@@ -329,15 +365,33 @@ export class ExecutionEngine extends Context.Service<
             },
             run,
             beginRun,
-            all: (effects) => Effect.forEach(effects, (effect) => effect),
+            all: (effects) =>
+              Effect.gen(function* () {
+                const exits = yield* Effect.forEach(effects, (effect) => effect.pipe(Effect.result));
+                const values: Array<unknown> = [];
+                const awaited: Array<Protocol.PromiseId> = [];
+                for (const exit of exits) {
+                  if (Result.isSuccess(exit)) {
+                    values.push(exit.success);
+                    continue;
+                  }
+                  if (isSuspendedExecution(exit.failure)) {
+                    awaited.push(...exit.failure.awaited);
+                    continue;
+                  }
+                  return yield* Effect.fail(exit.failure);
+                }
+                if (awaited.length > 0) {
+                  return yield* new SuspendedExecution({ awaited });
+                }
+                return values;
+              }),
             panic: (message) => new DurablePanic({ message }),
           }),
         );
       };
 
-      const execute = Effect.fn("ExecutionEngine.execute")(function* (
-        options: ExecuteOptions,
-      ): Effect.fn.Return<EngineOutcome, unknown> {
+      const execute: ExecutionEngineService["execute"] = Effect.fn("ExecutionEngine.execute")(function* (options) {
         const state: RuntimeState = {
           root: options.promise.id,
           version: options.task.version,
@@ -348,6 +402,7 @@ export class ExecutionEngine extends Context.Service<
           branchId: options.promise.tags.reserved["resonate:branch"] ?? options.promise.id,
           cache: new Map(),
           children: [],
+          awaiting: new Map(),
           seq: 0,
         };
         addPreload(state, options.preload ?? []);
@@ -371,8 +426,20 @@ export class ExecutionEngine extends Context.Service<
         if (!Effect.isEffect(result)) {
           return yield* Effect.die(`Function '${invocation.func}' did not return an Effect`);
         }
-        const exit = yield* result.pipe(Effect.provide(layerFor(state)), Effect.exit);
+        const exit = yield* result.pipe(
+          Effect.provide(layerFor(state)),
+          Effect.map((value) => new CompletedExecution({ value })),
+          Effect.catch((error) => (isSuspendedExecution(error) ? Effect.succeed(error) : Effect.fail(error))),
+          Effect.exit,
+        );
         yield* drainChildren(state);
+        if (Exit.isSuccess(exit)) {
+          if (Predicate.isTagged(exit.value, "SuspendedExecution")) {
+            return suspendedOutcome([...new Set(exit.value.awaited)]);
+          }
+          const promise = yield* fulfillRoot(state, Exit.succeed(exit.value.value));
+          return doneOutcome(promise);
+        }
         const promise = yield* fulfillRoot(state, exit);
         return doneOutcome(promise);
       });

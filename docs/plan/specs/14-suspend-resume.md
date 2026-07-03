@@ -63,3 +63,17 @@ awaiter: taskId) per awaited id] }` — ONE atomic round trip for ALL awaited id
 
 - `vp run check` green; CONFORMANCE.md T-06, resume cascade (worker side),
   never-block + 300-fast-path rows → done.
+
+## Notes
+
+- Implemented in `src/ResonateContext.ts` and `src/Worker.ts`: pending external/timer
+  promise awaits raise a local `SuspendedExecution` signal instead of blocking;
+  the engine converts that into `EngineOutcome.Suspended`, and the worker emits one
+  atomic `task.suspend` with callback actions for all awaited ids.
+- `task.suspend` `300 + preload` is handled in the worker by looping back into
+  `engine.execute` with the refused preload, so the task never drops its lease on
+  the fast path.
+- `test/Worker.test.ts` covers pending external await → suspended task/callback →
+  external settlement → execute resume → replay completion. Future specs 15–17 will
+  reuse the same pending external/timer await path for sleep, remote invocation, and
+  declared external promises.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
-import { Effect, Exit, Option, Schema, SchemaParser, Stream } from "effect";
+import { Effect, Exit, Option, Predicate, Schema, SchemaParser, Stream } from "effect";
 import { TransportError } from "../src/Errors.ts";
 import { checkEnvelope, makeRequestHead, ResonateNetwork } from "../src/Network.ts";
 import * as Protocol from "../src/Protocol.ts";
@@ -41,7 +41,7 @@ describe("envelope helpers", () => {
       const exit = yield* Effect.exit(checkEnvelope(request)(response));
       expect(Exit.isFailure(exit)).toBe(true);
       const error = yield* Effect.flip(checkEnvelope(request)(response));
-      expect(error).toBeInstanceOf(TransportError);
+      expect(Predicate.isTagged(error, "TransportError")).toBe(true);
       expect(error.reason).toBe("CorrelationMismatch");
     }).pipe(Effect.provide(BunCrypto.layer)),
   );

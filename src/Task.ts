@@ -1,8 +1,3 @@
-/**
- * Task domain model + typed client ops.
- *
- * See `docs/DESIGN.md` §3.2 (Layer 2 — Protocol client).
- */
 import { Context, Crypto, Effect, Layer, Schema, SchemaParser } from "effect";
 import {
   InvalidTarget,
@@ -69,35 +64,34 @@ const taskError = (
   return new InvalidTarget({ message: String(message) });
 };
 
-export class Tasks extends Context.Service<
-  Tasks,
-  {
-    readonly get: (id: Protocol.TaskId) => Effect.Effect<Protocol.TaskRecord, ResonateProtocolError | TransportError>;
-    readonly create: (
-      data: typeof Protocol.TaskCreateRequest.Type.data,
-    ) => Effect.Effect<TaskCreateResult, ResonateProtocolError | TransportError>;
-    readonly acquire: (
-      data: typeof Protocol.TaskAcquireRequest.Type.data,
-    ) => Effect.Effect<TaskClaimResult, ResonateProtocolError | TransportError>;
-    readonly release: (
-      data: typeof Protocol.TaskReleaseRequest.Type.data,
-    ) => Effect.Effect<void, ResonateProtocolError | TransportError>;
-    readonly suspend: (
-      data: typeof Protocol.TaskSuspendRequest.Type.data,
-    ) => Effect.Effect<SuspendResult, ResonateProtocolError | TransportError>;
-    readonly halt: (id: Protocol.TaskId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
-    readonly continue: (id: Protocol.TaskId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
-    readonly fulfill: (
-      data: typeof Protocol.TaskFulfillRequest.Type.data,
-    ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
-    readonly fence: (
-      data: typeof Protocol.TaskFenceRequest.Type.data,
-    ) => Effect.Effect<FenceResult, ResonateProtocolError | TransportError>;
-    readonly heartbeat: (
-      data: typeof Protocol.TaskHeartbeatRequest.Type.data,
-    ) => Effect.Effect<void, ResonateProtocolError | TransportError>;
-  }
->()("effect-resonate/Tasks") {
+export interface TasksService {
+  readonly get: (id: Protocol.TaskId) => Effect.Effect<Protocol.TaskRecord, ResonateProtocolError | TransportError>;
+  readonly create: (
+    data: typeof Protocol.TaskCreateRequest.Type.data,
+  ) => Effect.Effect<TaskCreateResult, ResonateProtocolError | TransportError>;
+  readonly acquire: (
+    data: typeof Protocol.TaskAcquireRequest.Type.data,
+  ) => Effect.Effect<TaskClaimResult, ResonateProtocolError | TransportError>;
+  readonly release: (
+    data: typeof Protocol.TaskReleaseRequest.Type.data,
+  ) => Effect.Effect<void, ResonateProtocolError | TransportError>;
+  readonly suspend: (
+    data: typeof Protocol.TaskSuspendRequest.Type.data,
+  ) => Effect.Effect<SuspendResult, ResonateProtocolError | TransportError>;
+  readonly halt: (id: Protocol.TaskId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
+  readonly continue: (id: Protocol.TaskId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
+  readonly fulfill: (
+    data: typeof Protocol.TaskFulfillRequest.Type.data,
+  ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
+  readonly fence: (
+    data: typeof Protocol.TaskFenceRequest.Type.data,
+  ) => Effect.Effect<FenceResult, ResonateProtocolError | TransportError>;
+  readonly heartbeat: (
+    data: typeof Protocol.TaskHeartbeatRequest.Type.data,
+  ) => Effect.Effect<void, ResonateProtocolError | TransportError>;
+}
+
+export class Tasks extends Context.Service<Tasks, TasksService>()("effect-resonate/Tasks") {
   static readonly layer: Layer.Layer<Tasks, never, ResonateNetwork | Crypto.Crypto> = Layer.effect(
     Tasks,
     Effect.gen(function* () {
@@ -110,7 +104,7 @@ export class Tasks extends Context.Service<
       });
       const zero = Protocol.TaskVersion.make(0);
 
-      const get = Effect.fn("Tasks.get")(function* (id: Protocol.TaskId) {
+      const get: TasksService["get"] = Effect.fn("Tasks.get")(function* (id) {
         const response = yield* network.send(Protocol.TaskGetRequest.make({ head: yield* head(), data: { id } }));
         if (isGetSuccess(response)) {
           return response.data.task;
@@ -118,7 +112,7 @@ export class Tasks extends Context.Service<
         return yield* Effect.fail(taskError(id, zero, response.head.status, response.data));
       });
 
-      const create = Effect.fn("Tasks.create")(function* (data: typeof Protocol.TaskCreateRequest.Type.data) {
+      const create: TasksService["create"] = Effect.fn("Tasks.create")(function* (data) {
         const response = yield* network.send(Protocol.TaskCreateRequest.make({ head: yield* head(), data }));
         if (isCreateSuccess(response)) {
           return { promise: response.data.promise, task: response.data.task, preload: response.data.preload };
@@ -126,7 +120,7 @@ export class Tasks extends Context.Service<
         return yield* Effect.fail(taskError(data.action.data.id, zero, response.head.status, response.data));
       });
 
-      const acquire = Effect.fn("Tasks.acquire")(function* (data: typeof Protocol.TaskAcquireRequest.Type.data) {
+      const acquire: TasksService["acquire"] = Effect.fn("Tasks.acquire")(function* (data) {
         const response = yield* network.send(Protocol.TaskAcquireRequest.make({ head: yield* head(), data }));
         if (isAcquireSuccess(response)) {
           return { task: response.data.task, promise: response.data.promise, preload: response.data.preload };
@@ -134,7 +128,7 @@ export class Tasks extends Context.Service<
         return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
       });
 
-      const release = Effect.fn("Tasks.release")(function* (data: typeof Protocol.TaskReleaseRequest.Type.data) {
+      const release: TasksService["release"] = Effect.fn("Tasks.release")(function* (data) {
         const response = yield* network.send(Protocol.TaskReleaseRequest.make({ head: yield* head(), data }));
         if (isReleaseSuccess(response)) {
           return;
@@ -142,7 +136,7 @@ export class Tasks extends Context.Service<
         return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
       });
 
-      const suspend = Effect.fn("Tasks.suspend")(function* (data: typeof Protocol.TaskSuspendRequest.Type.data) {
+      const suspend: TasksService["suspend"] = Effect.fn("Tasks.suspend")(function* (data) {
         const response = yield* network.send(Protocol.TaskSuspendRequest.make({ head: yield* head(), data }));
         if (isSuspendAccepted(response)) {
           return SuspendAccepted.make({});
@@ -153,7 +147,7 @@ export class Tasks extends Context.Service<
         return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
       });
 
-      const halt = Effect.fn("Tasks.halt")(function* (id: Protocol.TaskId) {
+      const halt: TasksService["halt"] = Effect.fn("Tasks.halt")(function* (id) {
         const response = yield* network.send(Protocol.TaskHaltRequest.make({ head: yield* head(), data: { id } }));
         if (isHaltSuccess(response)) {
           return;
@@ -161,7 +155,7 @@ export class Tasks extends Context.Service<
         return yield* Effect.fail(taskError(id, zero, response.head.status, response.data));
       });
 
-      const continueTask = Effect.fn("Tasks.continue")(function* (id: Protocol.TaskId) {
+      const continueTask: TasksService["continue"] = Effect.fn("Tasks.continue")(function* (id) {
         const response = yield* network.send(Protocol.TaskContinueRequest.make({ head: yield* head(), data: { id } }));
         if (isContinueSuccess(response)) {
           return;
@@ -169,7 +163,7 @@ export class Tasks extends Context.Service<
         return yield* Effect.fail(taskError(id, zero, response.head.status, response.data));
       });
 
-      const fulfill = Effect.fn("Tasks.fulfill")(function* (data: typeof Protocol.TaskFulfillRequest.Type.data) {
+      const fulfill: TasksService["fulfill"] = Effect.fn("Tasks.fulfill")(function* (data) {
         const response = yield* network.send(Protocol.TaskFulfillRequest.make({ head: yield* head(), data }));
         if (isFulfillSuccess(response)) {
           return response.data.promise;
@@ -177,7 +171,7 @@ export class Tasks extends Context.Service<
         return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
       });
 
-      const fence = Effect.fn("Tasks.fence")(function* (data: typeof Protocol.TaskFenceRequest.Type.data) {
+      const fence: TasksService["fence"] = Effect.fn("Tasks.fence")(function* (data) {
         const response = yield* network.send(Protocol.TaskFenceRequest.make({ head: yield* head(), data }));
         if (isFenceSuccess(response)) {
           return { action: response.data.action, preload: response.data.preload };
@@ -185,7 +179,7 @@ export class Tasks extends Context.Service<
         return yield* Effect.fail(taskError(data.id, data.version, response.head.status, response.data));
       });
 
-      const heartbeat = Effect.fn("Tasks.heartbeat")(function* (data: typeof Protocol.TaskHeartbeatRequest.Type.data) {
+      const heartbeat: TasksService["heartbeat"] = Effect.fn("Tasks.heartbeat")(function* (data) {
         const response = yield* network.send(Protocol.TaskHeartbeatRequest.make({ head: yield* head(), data }));
         if (isHeartbeatSuccess(response)) {
           return;

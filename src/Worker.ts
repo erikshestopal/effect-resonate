@@ -1,15 +1,10 @@
-/**
- * Worker runtime layer (task loop, heartbeat, replay driver).
- *
- * See `docs/DESIGN.md` §3.3 (Layer 3 — Runtime).
- */
-import { Crypto, Duration, Effect, Layer, Predicate, Ref, Stream } from "effect";
+import { Crypto, Duration, Effect, Exit, Layer, Predicate, Ref, SchemaParser, Stream } from "effect";
 import { TaskFenced } from "./Errors.ts";
 import { ResonateNetwork } from "./Network.ts";
 import * as Protocol from "./Protocol.ts";
 import { type AnyFunction, type FunctionGroup } from "./Resonate.ts";
 import { ExecutionEngine } from "./ResonateContext.ts";
-import { Tasks } from "./Task.ts";
+import { SuspendAccepted, Tasks } from "./Task.ts";
 
 export interface WorkerConfig {
   readonly group: Protocol.WorkerGroup;
@@ -57,6 +52,47 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
         yield* tasks.heartbeat({ pid, tasks: [...current.values()] }).pipe(Effect.catchCause(() => Effect.void));
       }).pipe(Effect.delay(heartbeatEvery), Effect.forever);
 
+      const suspendActions = (task: Protocol.TaskAcquired, awaited: ReadonlyArray<Protocol.PromiseId>) =>
+        awaited.map((id) =>
+          Protocol.PromiseRegisterCallbackRequest.make({
+            head: Protocol.RequestHead.make({
+              corrId: Protocol.CorrelationId.make(`${task.id}:${id}:callback`),
+              version: Protocol.protocolVersion,
+            }),
+            data: { awaited: id, awaiter: task.id },
+          }),
+        );
+
+      const executeUntilBlocked = Effect.fn("Worker.executeUntilBlocked")(function* (
+        task: Protocol.TaskAcquired,
+        promise: Protocol.PromiseRecord,
+        registry: import("./ResonateContext.ts").ExecuteOptions["registry"],
+        preload: ReadonlyArray<Protocol.PromiseRecord>,
+      ) {
+        const currentPreload = yield* Ref.make(preload);
+        yield* Effect.gen(function* () {
+          const outcome = yield* engine.execute({
+            task,
+            promise,
+            registry,
+            preload: yield* Ref.get(currentPreload),
+          });
+          if (Predicate.isTagged(outcome, "Done")) {
+            return false;
+          }
+          const result = yield* tasks.suspend({
+            id: task.id,
+            version: task.version,
+            actions: suspendActions(task, outcome.awaited),
+          });
+          if (SchemaParser.is(SuspendAccepted)(result)) {
+            return false;
+          }
+          yield* Ref.set(currentPreload, result.preload);
+          return true;
+        }).pipe(Effect.repeat({ while: Predicate.isTruthy }));
+      });
+
       const handleExecute = Effect.fn("Worker.handleExecute")(function* (message: Protocol.Message) {
         if (message.kind !== "execute") {
           return;
@@ -71,11 +107,11 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
           return;
         }
         yield* addHeld({ id: acquired.task.id, version: acquired.task.version });
-        const exit = yield* engine
-          .execute({ task: acquired.task, promise: acquired.promise, registry, preload: acquired.preload })
-          .pipe(Effect.exit);
+        const exit = yield* executeUntilBlocked(acquired.task, acquired.promise, registry, acquired.preload).pipe(
+          Effect.exit,
+        );
         yield* removeHeld(acquired.task.id);
-        if (exit._tag === "Failure") {
+        if (Exit.isFailure(exit)) {
           yield* tasks.release({ id: acquired.task.id, version: acquired.task.version }).pipe(
             Effect.catchTags({
               TaskFenced: (_error: TaskFenced) => Effect.void,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Predicate } from "effect";
 import { ResonateCodec, ResonateEncryptor, withSchemaHeader } from "../src/Codec.ts";
 import type * as Protocol from "../src/Protocol.ts";
 
@@ -30,8 +30,6 @@ const fixtureAggregate = (): AggregateError => {
   return aggregate;
 };
 
-// Captured verbatim from `repos/resonate-sdk-ts/src/codec.ts` (see spec 02):
-// each entry is the native `new Codec().encode(value)` output for the input built above.
 const nativeFixtures: ReadonlyArray<{ name: string; value: () => unknown; encoded: Protocol.Value }> = [
   { name: "number", value: () => 42, encoded: { headers: {}, data: "NDI=" } },
   { name: "string", value: () => "hello", encoded: { headers: {}, data: "ImhlbGxvIg==" } },
@@ -95,8 +93,8 @@ describe("rejection round-trips", () => {
   it.effect("an encoded Error decodes to an Error with message/name/stack preserved", () =>
     Effect.gen(function* () {
       const decoded = yield* encodeValue(fixtureError()).pipe(Effect.flatMap(decodeValue));
-      expect(decoded).toBeInstanceOf(Error);
-      if (!(decoded instanceof Error)) {
+      expect(Predicate.isError(decoded)).toBe(true);
+      if (!Predicate.isError(decoded)) {
         return;
       }
       expect(decoded.message).toBe("boom");
@@ -108,13 +106,16 @@ describe("rejection round-trips", () => {
   it.effect("an encoded AggregateError decodes with reconstructed nested errors", () =>
     Effect.gen(function* () {
       const decoded = yield* encodeValue(fixtureAggregate()).pipe(Effect.flatMap(decodeValue));
-      expect(decoded).toBeInstanceOf(AggregateError);
-      if (!(decoded instanceof AggregateError)) {
+      if (!Predicate.isError(decoded) || !Predicate.hasProperty(decoded, "errors") || !Array.isArray(decoded.errors)) {
         return;
       }
+      expect(decoded.name).toBe("AggregateError");
       expect(decoded.message).toBe("many");
       expect(decoded.errors).toHaveLength(1);
-      expect(decoded.errors[0]).toBeInstanceOf(Error);
+      expect(Predicate.isError(decoded.errors[0])).toBe(true);
+      if (!Predicate.isError(decoded.errors[0])) {
+        return;
+      }
       expect(decoded.errors[0].message).toBe("inner");
     }).pipe(Effect.provide(layers)),
   );
@@ -145,7 +146,6 @@ describe("round-trip property (JSON-representable values)", () => {
 });
 
 describe("encryptor seam", () => {
-  // A toy byte-level transform: prefixes the payload, proving both directions run.
   const layerReversing = Layer.succeed(
     ResonateEncryptor,
     ResonateEncryptor.of({

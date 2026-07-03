@@ -3,7 +3,8 @@ language: TypeScript
 severity: error
 message: Use Predicate.isTagged() for tag guards or Match from effect for branching instead of direct _tag equality checks.
 files:
-  - src/internal/**/*.ts
+  - src/**/*.ts
+  - test/**/*.ts
 rule:
   any:
     - pattern: $VALUE._tag === $TAG

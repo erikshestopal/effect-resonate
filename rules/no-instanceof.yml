@@ -1,0 +1,11 @@
+id: no-instanceof
+language: TypeScript
+severity: error
+message: Use Effect predicates, SchemaParser.is(...), or a domain predicate instead of instanceof checks.
+files:
+  - src/**/*.ts
+  - test/**/*.ts
+rule:
+  any:
+    - pattern: $VALUE instanceof $CLASS
+    - pattern: expect($VALUE).toBeInstanceOf($CLASS)

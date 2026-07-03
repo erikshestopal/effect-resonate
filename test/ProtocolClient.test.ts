@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
-import { Duration, Effect, Fiber, Layer, Schema, SchemaParser } from "effect";
+import { Duration, Effect, Fiber, Layer, Predicate, Schema, SchemaParser } from "effect";
 import { TestClock } from "effect/testing";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import { PromiseNotFound, ScheduleNotFound, TaskFenced } from "../src/Errors.ts";
@@ -55,7 +55,7 @@ describe("DurablePromises", () => {
       const promises = yield* DurablePromises;
 
       const missing = yield* Effect.flip(promises.get(Protocol.PromiseId.make("missing")));
-      expect(missing).toBeInstanceOf(PromiseNotFound);
+      expect(Predicate.isTagged(missing, "PromiseNotFound")).toBe(true);
 
       const created = yield* promises.create(promiseCreateData("p1"));
       expect(created.id).toBe("p1");
@@ -119,7 +119,7 @@ describe("Tasks", () => {
           }),
         }),
       );
-      expect(fenced).toBeInstanceOf(TaskFenced);
+      expect(Predicate.isTagged(fenced, "TaskFenced")).toBe(true);
 
       yield* promises.create(promiseCreateData("awaited"));
       yield* promises.settle(promiseSettleData("awaited"));
@@ -133,7 +133,7 @@ describe("Tasks", () => {
           }),
         ],
       });
-      expect(refused._tag).toBe("SuspendRefused");
+      expect(Predicate.isTagged(refused, "SuspendRefused")).toBe(true);
       yield* snap();
 
       const currentVersion = Protocol.TaskVersion.make(2);
@@ -166,7 +166,7 @@ describe("Schedules", () => {
       const schedules = yield* Schedules;
 
       const missing = yield* Effect.flip(schedules.get(Protocol.ScheduleId.make("missing")));
-      expect(missing).toBeInstanceOf(ScheduleNotFound);
+      expect(Predicate.isTagged(missing, "ScheduleNotFound")).toBe(true);
 
       const created = yield* schedules.create({
         id: Protocol.ScheduleId.make("nightly"),

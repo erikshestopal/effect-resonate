@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
-import { Duration, Effect, Layer, Option, Schema, SchemaParser } from "effect";
+import { Duration, Effect, Exit, Layer, Option, Predicate, Schema, SchemaParser } from "effect";
 import { ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import { DurablePromiseCanceled } from "../src/Errors.ts";
@@ -98,9 +98,9 @@ describe("ResonateClient", () => {
       yield* handle.cancel;
 
       const exit = yield* handle.await.pipe(Effect.exit);
-      expect(exit._tag).toBe("Failure");
+      expect(Exit.isFailure(exit)).toBe(true);
       const error = yield* Effect.flip(handle.await);
-      expect(error).toBeInstanceOf(DurablePromiseCanceled);
+      expect(Predicate.isTagged(error, "DurablePromiseCanceled")).toBe(true);
     }).pipe(Effect.provide(layer)),
   );
 

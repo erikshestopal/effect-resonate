@@ -20,7 +20,11 @@ const Blocking = Resonate.function("BlockingWorkflow", {
   payload: Schema.Number,
 });
 
-const group = Resonate.group(Workflow, Blocking);
+const Suspend = Resonate.function("SuspendWorkflow", {
+  payload: Schema.Number,
+});
+
+const group = Resonate.group(Workflow, Blocking, Suspend);
 const isDebugSnapSuccess = SchemaParser.is(Protocol.DebugSnapResponse.members[0]);
 
 const baseLayer = Layer.mergeAll(
@@ -50,6 +54,15 @@ const handlerLayer = group.toLayer(
         return Number(stepped) + 1;
       }),
     BlockingWorkflow: () => Effect.never,
+    SuspendWorkflow: () =>
+      Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
+        const ctx = yield* ResonateContext;
+        const child = yield* ctx.beginRun(Effect.die("external promise should not execute locally"), {
+          id: Protocol.PromiseId.make("worker-suspend-1.0"),
+        });
+        yield* child.await;
+        return "done";
+      }),
   }),
 );
 const workerLayer = Worker.layer(group, {
@@ -81,6 +94,39 @@ const tick = Effect.fn("WorkerTest.tick")(function* (millis: number) {
   );
 });
 
+const timeoutAt = Schema.decodeUnknownSync(Protocol.Timestamp)(86_400_000);
+
+const workerTarget = Schema.decodeUnknownSync(Protocol.TargetAddressFromString)("poll://any@workers");
+const externalTarget = Schema.decodeUnknownSync(Protocol.TargetAddressFromString)("poll://any@external");
+
+const rootTags = (id: Protocol.PromiseId): Protocol.Tags =>
+  Protocol.Tags.make({
+    reserved: {
+      "resonate:target": workerTarget,
+      "resonate:origin": id,
+      "resonate:prefix": id,
+      "resonate:branch": id,
+      "resonate:parent": id,
+      "resonate:scope": Schema.Literal("global").make("global"),
+    },
+    unrecognized: {},
+    user: {},
+  });
+
+const externalTags = (root: Protocol.PromiseId): Protocol.Tags =>
+  Protocol.Tags.make({
+    reserved: {
+      "resonate:target": externalTarget,
+      "resonate:origin": root,
+      "resonate:prefix": root,
+      "resonate:branch": root,
+      "resonate:parent": root,
+      "resonate:scope": Schema.Literal("global").make("global"),
+    },
+    unrecognized: {},
+    user: {},
+  });
+
 describe("Worker", () => {
   it.effect("acquires execute messages and fulfills client RPCs", () =>
     Effect.gen(function* () {
@@ -107,6 +153,47 @@ describe("Worker", () => {
       const state = yield* snap();
       const task = state.tasks.find((task) => task.id === handle.id);
       expect(task?.state).toBe("acquired");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("suspends on a pending external await and resumes by replay after settlement", () =>
+    Effect.gen(function* () {
+      const promises = yield* DurablePromises;
+      const codec = yield* ResonateCodec;
+      const root = Protocol.PromiseId.make("worker-suspend-1");
+      const child = Protocol.PromiseId.make("worker-suspend-1.0");
+
+      yield* promises.create({
+        id: child,
+        timeoutAt,
+        param: Protocol.emptyValue,
+        tags: externalTags(root),
+      });
+      yield* promises.create({
+        id: root,
+        timeoutAt,
+        param: yield* codec.encode({ func: Suspend.name, args: [0], version: Suspend.version }),
+        tags: rootTags(root),
+      });
+
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+
+      const suspended = yield* snap();
+      expect(suspended.tasks.find((task) => task.id === root)?.state).toBe("suspended");
+      expect(suspended.callbacks).toEqual([{ awaiter: root, awaited: child }]);
+
+      yield* promises.settle({
+        id: child,
+        state: Schema.Literal("resolved").make("resolved"),
+        value: yield* codec.encode("ready"),
+      });
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+
+      const resumed = yield* promises.get(root);
+      expect(resumed.state).toBe("resolved");
+      expect(yield* codec.decode(resumed.value)).toBe("done");
     }).pipe(Effect.provide(layer)),
   );
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
-import { Duration, Effect, Layer, Schema, SchemaParser } from "effect";
+import { Duration, Effect, Layer, Predicate, Schema, SchemaParser } from "effect";
 import { ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import { makeRequestHead, ResonateNetwork } from "../src/Network.ts";
@@ -81,7 +81,7 @@ describe("ExecutionEngine", () => {
       const handle = yield* client.beginRun(Workflow, Protocol.ExecutionId.make("engine-root-1"), [1]);
       const root = yield* acquiredRoot(handle.id);
       const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
-      expect(outcome._tag).toBe("Done");
+      expect(Predicate.isTagged(outcome, "Done")).toBe(true);
 
       const state = yield* snap();
       const child = state.promises.find((promise) => promise.id === "engine-root-1.0");

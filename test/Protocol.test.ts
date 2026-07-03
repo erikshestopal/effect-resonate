@@ -12,7 +12,6 @@ const roundTrip = (schema: Schema.Codec<unknown, unknown>, fixture: unknown): vo
 
 const head = { corrId: "corr-1", version: "2026-04-01" };
 
-// Wire fixtures shaped verbatim after `repos/resonate-sdk-ts/src/network/types.ts`.
 const pendingPromise = {
   id: "foo.1",
   state: "pending",
@@ -81,7 +80,7 @@ describe("union discrimination — strict on construct, lenient on decode", () =
     expect(lenient.state).toBe("acquired");
     expect(() => Protocol.TaskRecord.make(lenient)).toThrow();
     expect(() => decode(Protocol.TaskRecord, { id: "t", state: "acquired", version: 1, resumes: 0 })).toThrow();
-    // A well-formed acquired record satisfies the strict schema.
+
     expect(() => Protocol.TaskRecord.make(decode(Protocol.TaskRecordFromWire, acquiredTask))).not.toThrow();
   });
 
@@ -104,12 +103,7 @@ describe("tags", () => {
   });
 
   it("rejects a resonate:-prefixed user key at construct", () => {
-    // The rule lives in the type (DESIGN §3.2): a resonate:-prefixed key is not
-    // a valid UserTagKey, so it cannot be constructed…
     expect(() => Protocol.UserTagKey.make("resonate:evil")).toThrow();
-    // @ts-expect-error — resonate:-prefixed literals are excluded from `user` at the type level
-    Protocol.Tags.make({ reserved: {}, unrecognized: {}, user: { "resonate:evil": "x" } });
-    // …and wire decode routes such keys to `unrecognized`, never `user`.
     const tags = decode(Protocol.TagsFromWire, { "resonate:evil": "x" });
     expect(tags.user).toEqual({});
     expect(tags.unrecognized).toEqual({ "resonate:evil": "x" });
@@ -302,7 +296,7 @@ describe("requests — wire shapes per native network/types.ts", () => {
 
   it.each(fixtures)("round-trips $kind", ({ fixture, kind }) => {
     roundTrip(Protocol.RequestSchemas[kind], fixture);
-    // Every request also decodes through the request union.
+
     roundTrip(Protocol.RequestFromWire, fixture);
   });
 });

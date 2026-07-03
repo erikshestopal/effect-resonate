@@ -63,10 +63,20 @@ indirection. Write each schema out literally, inline. Shared _values_ (a named
 `SuccessHead`/`ErrorHead` struct reused by reference) are fine; shared
 _functions_ that build schemas are not.
 
+Avoid tiny one-use helpers for simple expression logic. Inline the expression or
+move construction onto the domain model when it represents a named concept, like
+`TargetAddress.pollAny(...)` instead of ad hoc `{ transport, cast, group, id }`
+objects.
+
+Do not model ordinary data containers as classes with private constructors and
+static factories. Follow Effect module style: export an interface for the value
+and a same-named module/object with constructors and operations.
+
 ## 7. Repo lint conventions to know up front
 
 - `switch` statements are banned — use `Match` (`Match.value(...).pipe(Match.discriminatorsExhaustive("kind")({...}))` for wide discriminated unions, `Match.when/whenOr` + `Match.exhaustive` otherwise).
 - Direct `undefined` equality is banned — `Predicate.isUndefined`/`isNotUndefined`.
+- `instanceof` checks are banned — use Effect predicates like `Predicate.isError`, `Predicate.isTagged`, `Exit.isFailure`, or schema-backed predicates via `SchemaParser.is(...)`.
 - `new Error(...)` is banned outside typed-error construction — `Schema.TaggedErrorClass`; suppress with `// ast-grep-ignore: no-new-error` only for native-wire Error reconstruction.
 - WARNINGS are failures too. `vp run check` printing "Checks passed" with
   lint/type warnings does not count as green — fix every warning (e.g.

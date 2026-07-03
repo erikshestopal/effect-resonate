@@ -1,22 +1,5 @@
-/**
- * Wire schemas: envelope, requests, responses, messages.
- *
- * See `docs/DESIGN.md` §2 (Protocol Model) and §3.2 (Layer 2 — Protocol client).
- * Wire shapes mirror `repos/resonate-sdk-ts/src/network/types.ts` exactly; field
- * names and enums follow `repos/resonate-specification/spec/01-objects/types.lean`.
- *
- * Strict on construct, lenient on decode: everything this SDK emits satisfies the
- * tight `PromiseRecord`/`TaskRecord`/`Tags` schemas; wire decode paths use the
- * `*FromWire` schemas, which never reject a record the server itself accepts
- * (unrecognized reserved-tag values are preserved raw, structural invariants are
- * checked only on the strict schemas).
- */
 import type { Duration } from "effect";
 import { DateTime, Option, Predicate, Schema, SchemaParser, SchemaTransformation } from "effect";
-
-// -----------------------------------------------------------------------------
-// Branded ids
-// -----------------------------------------------------------------------------
 
 export const PromiseId = Schema.NonEmptyString.pipe(Schema.brand("PromiseId"));
 export type PromiseId = typeof PromiseId.Type;
@@ -36,15 +19,12 @@ export type ProcessId = typeof ProcessId.Type;
 export const CorrelationId = Schema.NonEmptyString.pipe(Schema.brand("CorrelationId"));
 export type CorrelationId = typeof CorrelationId.Type;
 
-/** Per spec: a task shares its promise's id. */
 export const TaskId = PromiseId;
 export type TaskId = PromiseId;
 
-/** Task fencing token — bumped only on acquire; non-negative on the wire. */
 export const TaskVersion = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)).pipe(Schema.brand("TaskVersion"));
 export type TaskVersion = typeof TaskVersion.Type;
 
-/** Function registry version — strictly positive; the wire magic `0` means "latest". */
 export const FunctionVersion = Schema.Int.check(Schema.isGreaterThan(0)).pipe(Schema.brand("FunctionVersion"));
 export type FunctionVersion = typeof FunctionVersion.Type;
 
@@ -54,7 +34,6 @@ export type FunctionVersionOrLatest = typeof FunctionVersionOrLatest.Type;
 const Latest = Schema.Literal("latest");
 const WireLatest = Schema.Literal(0);
 
-/** Wire form of {@link FunctionVersionOrLatest}: `0` ⇄ `"latest"`. */
 export const FunctionVersionFromWire = Schema.Union([
   WireLatest.pipe(
     Schema.decodeTo(
@@ -68,10 +47,6 @@ export const FunctionVersionFromWire = Schema.Union([
   FunctionVersion,
 ]);
 
-// -----------------------------------------------------------------------------
-// Protocol constants
-// -----------------------------------------------------------------------------
-
 export const ProtocolVersion = Schema.Literal("2026-04-01");
 export type ProtocolVersion = typeof ProtocolVersion.Type;
 export const protocolVersion = ProtocolVersion.make("2026-04-01");
@@ -82,24 +57,13 @@ export type Status = typeof Status.Type;
 const ErrorStatus = Schema.Literals([400, 401, 403, 404, 409, 422, 429, 500, 501]);
 export type ErrorStatus = typeof ErrorStatus.Type;
 
-// -----------------------------------------------------------------------------
-// Timestamps and durations
-// -----------------------------------------------------------------------------
-
-/** Absolute instants are `DateTime.Utc` domain-side, epoch-ms on the wire. */
 export const Timestamp = Schema.DateTimeUtcFromMillis;
 export type Timestamp = DateTime.Utc;
 
-/** Lease ttls are `Duration` domain-side, ms on the wire. */
 export const Ttl = Schema.DurationFromMillis;
 export type Ttl = Duration.Duration;
 
-/** Epoch-ms carried as a string (the `resonate:delay` tag). */
 export const TimestampFromString = Schema.FiniteFromString.pipe(Schema.decodeTo(Schema.DateTimeUtcFromMillis));
-
-// -----------------------------------------------------------------------------
-// Value — the opaque payload envelope
-// -----------------------------------------------------------------------------
 
 export const Value = Schema.Struct({
   headers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
@@ -109,23 +73,43 @@ export type Value = typeof Value.Type;
 
 export const emptyValue: Value = {};
 
-// -----------------------------------------------------------------------------
-// Target addresses — `poll://{cast}@{group}[/{id}]`
-// -----------------------------------------------------------------------------
-
 export class TargetAddress extends Schema.Class<TargetAddress>("TargetAddress")({
   transport: Schema.Literals(["poll", "local"]),
-  /** Unicast vs anycast — invisible in a raw string. */
+
   cast: Schema.Literals(["uni", "any"]),
   group: WorkerGroup,
   id: Schema.OptionFromOptionalKey(ProcessId),
 }) {
+  static pollAny(group: WorkerGroup, id = Option.none<ProcessId>()): TargetAddress {
+    return TargetAddress.make({ transport: "poll", cast: "any", group, id });
+  }
+
+  static pollUni(group: WorkerGroup, id: ProcessId): TargetAddress {
+    return TargetAddress.make({ transport: "poll", cast: "uni", group, id: Option.some(id) });
+  }
+
+  static localAny(group: WorkerGroup, id = Option.none<ProcessId>()): TargetAddress {
+    return TargetAddress.make({ transport: "local", cast: "any", group, id });
+  }
+
+  static localUni(group: WorkerGroup, id: ProcessId): TargetAddress {
+    return TargetAddress.make({ transport: "local", cast: "uni", group, id: Option.some(id) });
+  }
+
   get address(): string {
     const suffix = Option.match(this.id, {
       onNone: () => "",
       onSome: (id) => `/${id}`,
     });
     return `${this.transport}://${this.cast}@${this.group}${suffix}`;
+  }
+
+  get pollPath(): string {
+    const suffix = Option.match(this.id, {
+      onNone: () => "",
+      onSome: (id) => `/${encodeURIComponent(id)}`,
+    });
+    return `/poll/${encodeURIComponent(this.group)}${suffix}`;
   }
 }
 
@@ -183,7 +167,6 @@ export const TargetAddressFromString = Schema.Union([AddressWithIdFromString, Ad
   Schema.decodeTo(TargetAddress),
 );
 
-/** The address grammar as a template-literal string schema, for guarding raw strings. */
 export const TargetAddressString = Schema.Union([
   Schema.TemplateLiteral([AddressTransport, "://", AddressCast, "@", AddressGroup, "/", Schema.NonEmptyString]),
   Schema.TemplateLiteral([AddressTransport, "://", AddressCast, "@", AddressGroup]),
@@ -191,11 +174,6 @@ export const TargetAddressString = Schema.Union([
 
 export const isTargetAddressString = SchemaParser.is(TargetAddressString);
 
-// -----------------------------------------------------------------------------
-// Tags — typed reserved vocabulary + user tags, flat record on the wire
-// -----------------------------------------------------------------------------
-
-/** User tag keys are provably outside the `resonate:` namespace. */
 export const UserTagKey = Schema.String.check(
   Schema.makeFilter((key: string) => !key.startsWith("resonate:"), {
     title: `a tag key outside the "resonate:" namespace`,
@@ -214,18 +192,14 @@ export const ReservedTags = Schema.Struct({
   "resonate:parent": Schema.optionalKey(PromiseId),
   "resonate:branch": Schema.optionalKey(PromiseId),
   "resonate:prefix": Schema.optionalKey(PromiseId),
-  // Native parses this with `.toNat!` (crashes on junk); we decode.
+
   "resonate:delay": Schema.optionalKey(TimestampFromString),
 });
 export type ReservedTags = typeof ReservedTags.Type;
 
 export class Tags extends Schema.Class<Tags>("Tags")({
   reserved: ReservedTags,
-  /**
-   * Lenient-decode escape hatch: `resonate:`-prefixed entries whose key is
-   * unknown or whose value does not inhabit the reserved key's typed domain are
-   * preserved raw here (never failing the record), and re-emitted verbatim.
-   */
+
   unrecognized: Schema.Record(Schema.String, Schema.String),
   user: Schema.Record(UserTagKey, Schema.String),
 }) {
@@ -249,8 +223,7 @@ export const TagsFromWire = Schema.Record(Schema.String, Schema.String).pipe(
         const branch = flat["resonate:branch"];
         const prefix = flat["resonate:prefix"];
         const delay = flat["resonate:delay"];
-        // Reserved keys keep only values inhabiting their typed domain; the
-        // narrowing conditions mirror the ReservedTags field schemas.
+
         const reserved = {
           ...(timer === "true" ? { "resonate:timer": TimerTagValue.make(timer) } : {}),
           ...(scope === "local" || scope === "global" ? { "resonate:scope": ScopeTagValue.make(scope) } : {}),
@@ -280,10 +253,6 @@ export const TagsFromWire = Schema.Record(Schema.String, Schema.String).pipe(
   ),
 );
 
-// -----------------------------------------------------------------------------
-// Promise records — state-discriminated
-// -----------------------------------------------------------------------------
-
 export const PromiseSettledState = Schema.Literals(["resolved", "rejected", "rejected_canceled", "rejected_timedout"]);
 export type PromiseSettledState = typeof PromiseSettledState.Type;
 
@@ -304,8 +273,7 @@ export class PromiseSettled extends Schema.Class<PromiseSettled>("PromiseSettled
   tags: TagsFromWire,
   timeoutAt: Timestamp,
   createdAt: Timestamp,
-  // Required by the strict PromiseRecord schema; Option here so wire decode
-  // stays lenient if a server ever omits it.
+
   settledAt: Schema.OptionFromOptionalKey(Timestamp),
 }) {}
 
@@ -318,12 +286,6 @@ export class PromisePending extends Schema.Class<PromisePending>("PromisePending
   timeoutAt: Timestamp,
   createdAt: Timestamp,
 }) {
-  /**
-   * The spec's timeout projection: a pending promise past its `timeoutAt` reads
-   * as settled (`resolved` if tagged `resonate:timer`, else `rejected_timedout`,
-   * `settledAt = timeoutAt`) on every read/mutate path, even before the server's
-   * timeout transition persists it. See `spec/02-actions/P-01-promise.get.lean`.
-   */
   projected(now: DateTime.Utc): PromisePending | PromiseSettled {
     if (DateTime.toEpochMillis(this.timeoutAt) > DateTime.toEpochMillis(now)) {
       return this;
@@ -341,10 +303,8 @@ export class PromisePending extends Schema.Class<PromisePending>("PromisePending
   }
 }
 
-/** Lenient wire decode — never rejects a record the server accepts. */
 export const PromiseRecordFromWire = Schema.Union([PromisePending, PromiseSettled]);
 
-/** Strict domain schema — settled promises must carry `settledAt`. */
 export const PromiseRecord = PromiseRecordFromWire.check(
   Schema.makeFilter(
     (record: PromisePending | PromiseSettled) => record.state === "pending" || Option.isSome(record.settledAt),
@@ -355,14 +315,9 @@ export const PromiseRecord = PromiseRecordFromWire.check(
 );
 export type PromiseRecord = typeof PromiseRecord.Type;
 
-// -----------------------------------------------------------------------------
-// Task records — state-discriminated
-// -----------------------------------------------------------------------------
-
 export const TaskState = Schema.Literals(["pending", "acquired", "suspended", "halted", "fulfilled"]);
 export type TaskState = typeof TaskState.Type;
 
-/** Native servers variously report a resume count, list, or flag. */
 const TaskResumes = Schema.Union([Schema.Number, Schema.Array(Schema.String), Schema.Boolean]);
 
 export class TaskPending extends Schema.Class<TaskPending>("TaskPending")({
@@ -377,8 +332,7 @@ export class TaskAcquired extends Schema.Class<TaskAcquired>("TaskAcquired")({
   id: TaskId,
   version: TaskVersion,
   resumes: TaskResumes,
-  // Required by the strict TaskRecord schema (every acquired task holds a
-  // lease); Options here so wire decode stays lenient.
+
   pid: Schema.OptionFromOptionalKey(ProcessId),
   ttl: Schema.OptionFromOptionalKey(Ttl),
 }) {}
@@ -404,10 +358,8 @@ export class TaskFulfilled extends Schema.Class<TaskFulfilled>("TaskFulfilled")(
   resumes: TaskResumes,
 }) {}
 
-/** Lenient wire decode — never rejects a record the server accepts. */
 export const TaskRecordFromWire = Schema.Union([TaskPending, TaskAcquired, TaskSuspended, TaskHalted, TaskFulfilled]);
 
-/** Strict domain schema — acquired tasks must hold a lease (`pid` + `ttl`). */
 export const TaskRecord = TaskRecordFromWire.check(
   Schema.makeFilter(
     (record: typeof TaskRecordFromWire.Type) =>
@@ -417,16 +369,12 @@ export const TaskRecord = TaskRecordFromWire.check(
 );
 export type TaskRecord = typeof TaskRecord.Type;
 
-// -----------------------------------------------------------------------------
-// Schedule records
-// -----------------------------------------------------------------------------
-
 export class ScheduleRecord extends Schema.Class<ScheduleRecord>("ScheduleRecord")({
   id: ScheduleId,
   cron: Schema.String,
-  /** Promise-id template, e.g. `{{.id}}.{{.timestamp}}` — not a concrete PromiseId. */
+
   promiseId: Schema.NonEmptyString,
-  /** Per-tick promise timeout, relative to the tick. */
+
   promiseTimeout: Ttl,
   promiseParam: Value,
   promiseTags: TagsFromWire,
@@ -434,10 +382,6 @@ export class ScheduleRecord extends Schema.Class<ScheduleRecord>("ScheduleRecord
   nextRunAt: Timestamp,
   lastRunAt: Schema.OptionFromOptionalKey(Timestamp),
 }) {}
-
-// -----------------------------------------------------------------------------
-// Push messages — execute / unblock
-// -----------------------------------------------------------------------------
 
 const MessageHead = Schema.Struct({
   serverUrl: Schema.optionalKey(Schema.String),
@@ -462,10 +406,6 @@ export type UnblockMessage = typeof UnblockMessage.Type;
 export const Message = Schema.Union([ExecuteMessage, UnblockMessage]);
 export type Message = typeof Message.Type;
 
-// -----------------------------------------------------------------------------
-// Envelope heads
-// -----------------------------------------------------------------------------
-
 export const RequestHead = Schema.Struct({
   corrId: CorrelationId,
   version: ProtocolVersion,
@@ -477,15 +417,9 @@ export type RequestHead = typeof RequestHead.Type;
 
 const SuccessHead = Schema.Struct({ corrId: CorrelationId, status: Schema.Literal(200), version: Schema.String });
 
-/** `task.suspend`'s `300` fast path. */
 const RedirectHead = Schema.Struct({ corrId: CorrelationId, status: Schema.Literal(300), version: Schema.String });
 
-/** Non-2xx protocol statuses carry a string message as `data`. */
 const ErrorHead = Schema.Struct({ corrId: CorrelationId, status: ErrorStatus, version: Schema.String });
-
-// -----------------------------------------------------------------------------
-// Requests
-// -----------------------------------------------------------------------------
 
 export const PromiseGetRequest = Schema.Struct({
   kind: Schema.tag("promise.get"),
@@ -762,10 +696,6 @@ export const RequestFromWire = Schema.Union([
   DebugStopRequest,
 ]);
 
-// -----------------------------------------------------------------------------
-// Responses
-// -----------------------------------------------------------------------------
-
 const PromiseData = Schema.Struct({ promise: PromiseRecordFromWire });
 const Preload = Schema.Array(PromiseRecordFromWire);
 
@@ -905,7 +835,6 @@ export const TaskReleaseResponse = Schema.Union([
   }),
 ]);
 
-/** `task.suspend` has a `300` fast path carrying already-settled awaited promises. */
 export const TaskSuspendResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.tag("task.suspend"),

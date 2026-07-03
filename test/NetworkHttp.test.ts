@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
-import { Duration, Effect, Exit, Fiber, Layer, Option, Ref, Schema, SchemaParser, Stream } from "effect";
+import { Duration, Effect, Exit, Fiber, Layer, Option, Predicate, Ref, Schema, SchemaParser, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import { TransportError } from "../src/Errors.ts";
@@ -126,7 +126,7 @@ describe("NetworkHttp.send", () => {
       const network = yield* ResonateNetwork.pipe(Effect.provide(networkLayer(yield* serverUrl, { token: "secret" })));
       const head = yield* makeRequestHead;
       const error = yield* Effect.flip(network.send(promiseGet(head)));
-      expect(error).toBeInstanceOf(TransportError);
+      expect(Predicate.isTagged(error, "TransportError")).toBe(true);
       expect(error.reason).toBe("Unauthorized");
     }).pipe(Effect.provide(serverLayer)),
   );

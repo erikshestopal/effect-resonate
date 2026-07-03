@@ -1,9 +1,4 @@
-/**
- * Namespace entry: function, group, layers, client access.
- *
- * See `docs/DESIGN.md` §3.4 (Layer 4 — Function API) and §4 (Public API by Example).
- */
-import { Clock, Context, Duration, Effect, Exit, Layer, Option, Predicate, Schema } from "effect";
+import { Clock, Context, Duration, Effect, Exit, Layer, Option, Pipeable, Predicate, Schema } from "effect";
 import type * as HttpClient from "effect/unstable/http/HttpClient";
 import { DurablePromises } from "./DurablePromise.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, type EncodingError } from "./Errors.ts";
@@ -51,28 +46,20 @@ export interface RegistryItem<F extends AnyFunction = AnyFunction> {
   readonly handler: HandlerFunction<F>;
 }
 
-export class Registry {
-  private readonly items: ReadonlyArray<RegistryItem>;
+const RegistryTypeId = "effect-resonate/Registry";
+const FunctionGroupTypeId = "effect-resonate/FunctionGroup";
 
-  private constructor(items: ReadonlyArray<RegistryItem>) {
-    this.items = items;
-  }
+export interface Registry {
+  new (_: never): {};
+  readonly [RegistryTypeId]: typeof RegistryTypeId;
+  readonly items: ReadonlyArray<RegistryItem>;
+  readonly pipe: typeof Pipeable.Prototype.pipe;
+  readonly get: (name: string, version?: Protocol.FunctionVersionOrLatest) => Option.Option<RegistryItem>;
+}
 
-  static make(items: ReadonlyArray<RegistryItem>): Effect.Effect<Registry> {
-    const seen = new Set<string>();
-    for (const item of items) {
-      const key = `${item.definition.name}:${item.definition.version}`;
-      if (seen.has(key)) {
-        return Effect.die(
-          `Function '${item.definition.name}' (version ${item.definition.version}) is already registered`,
-        );
-      }
-      seen.add(key);
-    }
-    return Effect.succeed(new Registry(items));
-  }
-
-  get(name: string, version: Protocol.FunctionVersionOrLatest = "latest"): Option.Option<RegistryItem> {
+const RegistryProto = {
+  ...Pipeable.Prototype,
+  get(this: Registry, name: string, version: Protocol.FunctionVersionOrLatest = "latest") {
     const named = this.items.filter((item) => item.definition.name === name);
     if (named.length === 0) {
       return Option.none();
@@ -80,33 +67,92 @@ export class Registry {
     if (version !== "latest") {
       return Option.fromNullishOr(named.find((item) => item.definition.version === version));
     }
-    const latest = named.reduce((left, right) => (left.definition.version > right.definition.version ? left : right));
-    return Option.some(latest);
+    return Option.some(
+      named.reduce((left, right) => (left.definition.version > right.definition.version ? left : right)),
+    );
+  },
+};
+
+const makeRegistryProto = (items: ReadonlyArray<RegistryItem>): Registry =>
+  Object.assign(function () {}, RegistryProto, {
+    [RegistryTypeId]: RegistryTypeId,
+    items,
+  }) as unknown as Registry;
+
+const makeRegistry = (items: ReadonlyArray<RegistryItem>): Effect.Effect<Registry> => {
+  const seen = new Set<string>();
+  for (const item of items) {
+    const key = `${item.definition.name}:${item.definition.version}`;
+    if (seen.has(key)) {
+      return Effect.die(
+        `Function '${item.definition.name}' (version ${item.definition.version}) is already registered`,
+      );
+    }
+    seen.add(key);
   }
+  return Effect.succeed(makeRegistryProto(items));
+};
+
+export interface FunctionGroup<Fns extends ReadonlyArray<AnyFunction>> {
+  new (_: never): {};
+  readonly [FunctionGroupTypeId]: typeof FunctionGroupTypeId;
+  readonly fns: Fns;
+  readonly pipe: typeof Pipeable.Prototype.pipe;
+  readonly of: <const Handlers extends HandlersFrom<Fns[number]>>(handlers: Handlers) => Handlers;
+  readonly toLayer: <const Handlers extends HandlersFrom<Fns[number]>, E = never, R = never>(
+    build: Handlers | Effect.Effect<Handlers, E, R>,
+  ) => Layer.Layer<Handler<Fns[number]>, E, R>;
+  readonly toLayerHandler: <const Name extends Fns[number]["name"], E = never, R = never>(
+    name: Name,
+    build:
+      | HandlerFunction<Extract<Fns[number], { readonly name: Name }>>
+      | Effect.Effect<HandlerFunction<Extract<Fns[number], { readonly name: Name }>>, E, R>,
+  ) => Layer.Layer<Handler<Extract<Fns[number], { readonly name: Name }>>, E, R>;
+  readonly registry: () => Effect.Effect<Registry, never, Handler<Fns[number]>>;
 }
 
-export class FunctionGroup<Fns extends ReadonlyArray<AnyFunction>> {
-  readonly fns: Fns;
-
-  constructor(fns: Fns) {
-    this.fns = fns;
+const functionGroupToContext = <
+  Fns extends ReadonlyArray<AnyFunction>,
+  const Handlers extends HandlersFrom<Fns[number]>,
+>(
+  self: FunctionGroup<Fns>,
+  handlers: Handlers,
+): Effect.Effect<Context.Context<Handler<Fns[number]>>> => {
+  let context = Context.empty() as Context.Context<Handler<Fns[number]>>;
+  const items: Array<RegistryItem> = [];
+  for (const definition of self.fns) {
+    const handler = handlers[definition.name as keyof Handlers] as HandlerFunction<typeof definition>;
+    items.push({ definition, handler });
+    context = Context.add(context, Handler(definition), handler);
   }
+  return Effect.as(makeRegistry(items), context);
+};
 
-  of<const Handlers extends HandlersFrom<Fns[number]>>(handlers: Handlers): Handlers {
-    return handlers;
-  }
-
-  toLayer<const Handlers extends HandlersFrom<Fns[number]>, E = never, R = never>(
+const FunctionGroupProto = {
+  ...Pipeable.Prototype,
+  of: <const Handlers extends HandlersFrom<AnyFunction>>(handlers: Handlers): Handlers => handlers,
+  toLayer<
+    const Fns extends ReadonlyArray<AnyFunction>,
+    const Handlers extends HandlersFrom<Fns[number]>,
+    E = never,
+    R = never,
+  >(
+    this: FunctionGroup<Fns>,
     build: Handlers | Effect.Effect<Handlers, E, R>,
   ): Layer.Layer<Handler<Fns[number]>, E, R> {
     return Layer.effectContext(
       (Effect.isEffect(build) ? build : Effect.succeed(build)).pipe(
-        Effect.flatMap((handlers) => this.toContext(handlers)),
+        Effect.flatMap((handlers) => functionGroupToContext(this, handlers)),
       ),
     );
-  }
-
-  toLayerHandler<const Name extends Fns[number]["name"], E = never, R = never>(
+  },
+  toLayerHandler<
+    const Fns extends ReadonlyArray<AnyFunction>,
+    const Name extends Fns[number]["name"],
+    E = never,
+    R = never,
+  >(
+    this: FunctionGroup<Fns>,
     name: Name,
     build:
       | HandlerFunction<Extract<Fns[number], { readonly name: Name }>>
@@ -117,9 +163,11 @@ export class FunctionGroup<Fns extends ReadonlyArray<AnyFunction>> {
       return Layer.effectContext(Effect.die(`Function '${name}' is not part of this group`));
     }
     return Layer.effect(Handler(definition), Effect.isEffect(build) ? build : Effect.succeed(build));
-  }
+  },
 
-  registry(): Effect.Effect<Registry, never, Handler<Fns[number]>> {
+  registry<Fns extends ReadonlyArray<AnyFunction>>(
+    this: FunctionGroup<Fns>,
+  ): Effect.Effect<Registry, never, Handler<Fns[number]>> {
     const fns = this.fns;
     return Effect.gen(function* () {
       const items: Array<RegistryItem> = [];
@@ -127,23 +175,16 @@ export class FunctionGroup<Fns extends ReadonlyArray<AnyFunction>> {
         const handler = yield* Handler(definition);
         items.push({ definition, handler });
       }
-      return yield* Registry.make(items);
+      return yield* makeRegistry(items);
     });
-  }
+  },
+};
 
-  private toContext<const Handlers extends HandlersFrom<Fns[number]>>(
-    handlers: Handlers,
-  ): Effect.Effect<Context.Context<Handler<Fns[number]>>> {
-    let context = Context.empty() as Context.Context<Handler<Fns[number]>>;
-    const items: Array<RegistryItem> = [];
-    for (const definition of this.fns) {
-      const handler = handlers[definition.name as keyof Handlers] as HandlerFunction<typeof definition>;
-      items.push({ definition, handler });
-      context = Context.add(context, Handler(definition), handler);
-    }
-    return Effect.as(Registry.make(items), context);
-  }
-}
+const makeFunctionGroupProto = <Fns extends ReadonlyArray<AnyFunction>>(fns: Fns): FunctionGroup<Fns> =>
+  Object.assign(function () {}, FunctionGroupProto, {
+    [FunctionGroupTypeId]: FunctionGroupTypeId,
+    fns,
+  }) as unknown as FunctionGroup<Fns>;
 
 export const defineFunction = <const Name extends string, Payload extends Schema.Codec<unknown, unknown, never, never>>(
   name: Name,
@@ -157,7 +198,7 @@ export const defineFunction = <const Name extends string, Payload extends Schema
 export { defineFunction as function };
 
 export const group = <const Fns extends ReadonlyArray<AnyFunction>>(...fns: Fns): FunctionGroup<Fns> =>
-  new FunctionGroup(fns);
+  makeFunctionGroupProto(fns);
 
 const InvocationParam = Schema.Struct({
   func: Schema.String,
@@ -228,17 +269,16 @@ const prefixedId = (id: Protocol.ExecutionId, prefix: Option.Option<string>): Pr
     }),
   );
 
-export class ResonateClient extends Context.Service<
-  ResonateClient,
-  {
-    readonly beginRun: InvocationMethods;
-    readonly run: AwaitInvocationMethods;
-    readonly beginRpc: InvocationMethods;
-    readonly rpc: AwaitInvocationMethods;
-    readonly get: <F extends AnyFunction>(fn: F, id: Protocol.ExecutionId) => Effect.Effect<DurableHandle>;
-    readonly cancel: (id: Protocol.PromiseId) => Effect.Effect<void, unknown>;
-  }
->()("effect-resonate/Client") {
+export interface ResonateClientService {
+  readonly beginRun: InvocationMethods;
+  readonly run: AwaitInvocationMethods;
+  readonly beginRpc: InvocationMethods;
+  readonly rpc: AwaitInvocationMethods;
+  readonly get: <F extends AnyFunction>(fn: F, id: Protocol.ExecutionId) => Effect.Effect<DurableHandle>;
+  readonly cancel: (id: Protocol.PromiseId) => Effect.Effect<void, unknown>;
+}
+
+export class ResonateClient extends Context.Service<ResonateClient, ResonateClientService>()("effect-resonate/Client") {
   static layer(
     options?: ResonateClientOptions,
   ): Layer.Layer<ResonateClient, never, DurablePromises | Tasks | ResonateCodec | ResonateNetwork> {
@@ -352,7 +392,7 @@ export class ResonateClient extends Context.Service<
           return Schema.decodeUnknownSync(Protocol.Timestamp)(now + Duration.toMillis(timeout));
         });
 
-        const beginRpc = Effect.fn("ResonateClient.beginRpc")(function* (
+        const beginRpcImpl = Effect.fn("ResonateClient.beginRpc")(function* (
           targetFunction: AnyFunction | string,
           executionId: Protocol.ExecutionId,
           args: ReadonlyArray<unknown>,
@@ -369,8 +409,9 @@ export class ResonateClient extends Context.Service<
           });
           return handle(id);
         });
+        const beginRpc: ResonateClientService["beginRpc"] = beginRpcImpl;
 
-        const beginRun = Effect.fn("ResonateClient.beginRun")(function* (
+        const beginRunImpl = Effect.fn("ResonateClient.beginRun")(function* (
           targetFunction: AnyFunction | string,
           executionId: Protocol.ExecutionId,
           args: ReadonlyArray<unknown>,
@@ -396,37 +437,36 @@ export class ResonateClient extends Context.Service<
           });
           return handle(id);
         });
+        const beginRun: ResonateClientService["beginRun"] = beginRunImpl;
 
-        const get = Effect.fn("ResonateClient.get")(function* <F extends AnyFunction>(
+        const get: ResonateClientService["get"] = Effect.fn("ResonateClient.get")(function* <F extends AnyFunction>(
           _fn: F,
           executionId: Protocol.ExecutionId,
         ): Effect.fn.Return<DurableHandle> {
           return handle(prefixedId(executionId, idPrefix));
         });
 
-        const cancel = Effect.fn("ResonateClient.cancel")(function* (
-          id: Protocol.PromiseId,
-        ): Effect.fn.Return<void, unknown> {
+        const cancel: ResonateClientService["cancel"] = Effect.fn("ResonateClient.cancel")(function* (id) {
           yield* promises.settle({ id, state: canceledState, value: Protocol.emptyValue });
         });
 
-        const run = Effect.fn("ResonateClient.run")(function* (
+        const run: ResonateClientService["run"] = Effect.fn("ResonateClient.run")(function* (
           targetFunction: AnyFunction | string,
           executionId: Protocol.ExecutionId,
           args: ReadonlyArray<unknown>,
           callOptions?: InvocationOptions,
         ): Effect.fn.Return<unknown, unknown> {
-          const current = yield* beginRun(targetFunction, executionId, args, callOptions);
+          const current = yield* beginRunImpl(targetFunction, executionId, args, callOptions);
           return yield* current.await;
         });
 
-        const rpc = Effect.fn("ResonateClient.rpc")(function* (
+        const rpc: ResonateClientService["rpc"] = Effect.fn("ResonateClient.rpc")(function* (
           targetFunction: AnyFunction | string,
           executionId: Protocol.ExecutionId,
           args: ReadonlyArray<unknown>,
           callOptions?: InvocationOptions,
         ): Effect.fn.Return<unknown, unknown> {
-          const current = yield* beginRpc(targetFunction, executionId, args, callOptions);
+          const current = yield* beginRpcImpl(targetFunction, executionId, args, callOptions);
           return yield* current.await;
         });
 

@@ -1,8 +1,3 @@
-/**
- * Promise domain model + typed client ops.
- *
- * See `docs/DESIGN.md` §3.2 (Layer 2 — Protocol client).
- */
 import { Context, Crypto, Duration, Effect, Filter, Layer, Option, Schedule, SchemaParser, Stream } from "effect";
 import {
   InvalidTarget,
@@ -30,29 +25,30 @@ const promiseError = (id: Protocol.PromiseId, status: number, message: unknown):
   return new InvalidTarget({ message: String(message) });
 };
 
-export class DurablePromises extends Context.Service<
-  DurablePromises,
-  {
-    readonly get: (
-      id: Protocol.PromiseId,
-    ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
-    readonly create: (
-      data: typeof Protocol.PromiseCreateRequest.Type.data,
-    ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
-    readonly settle: (
-      data: typeof Protocol.PromiseSettleRequest.Type.data,
-    ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
-    readonly registerCallback: (
-      data: typeof Protocol.PromiseRegisterCallbackRequest.Type.data,
-    ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
-    readonly registerListener: (
-      data: typeof Protocol.PromiseRegisterListenerRequest.Type.data,
-    ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
-    readonly awaitSettled: (
-      id: Protocol.PromiseId,
-    ) => Effect.Effect<Protocol.PromiseSettled, ResonateProtocolError | TransportError>;
-  }
->()("effect-resonate/DurablePromises") {
+export interface DurablePromisesService {
+  readonly get: (
+    id: Protocol.PromiseId,
+  ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
+  readonly create: (
+    data: typeof Protocol.PromiseCreateRequest.Type.data,
+  ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
+  readonly settle: (
+    data: typeof Protocol.PromiseSettleRequest.Type.data,
+  ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
+  readonly registerCallback: (
+    data: typeof Protocol.PromiseRegisterCallbackRequest.Type.data,
+  ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
+  readonly registerListener: (
+    data: typeof Protocol.PromiseRegisterListenerRequest.Type.data,
+  ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
+  readonly awaitSettled: (
+    id: Protocol.PromiseId,
+  ) => Effect.Effect<Protocol.PromiseSettled, ResonateProtocolError | TransportError>;
+}
+
+export class DurablePromises extends Context.Service<DurablePromises, DurablePromisesService>()(
+  "effect-resonate/DurablePromises",
+) {
   static readonly layer: Layer.Layer<DurablePromises, never, ResonateNetwork | Crypto.Crypto> = Layer.effect(
     DurablePromises,
     Effect.gen(function* () {
@@ -64,7 +60,7 @@ export class DurablePromises extends Context.Service<
         return Protocol.RequestHead.make({ corrId, version: Protocol.protocolVersion });
       });
 
-      const get = Effect.fn("DurablePromises.get")(function* (id: Protocol.PromiseId) {
+      const get: DurablePromisesService["get"] = Effect.fn("DurablePromises.get")(function* (id) {
         const response = yield* network.send(Protocol.PromiseGetRequest.make({ head: yield* head(), data: { id } }));
         if (isGetSuccess(response)) {
           return response.data.promise;
@@ -72,9 +68,7 @@ export class DurablePromises extends Context.Service<
         return yield* Effect.fail(promiseError(id, response.head.status, response.data));
       });
 
-      const create = Effect.fn("DurablePromises.create")(function* (
-        data: typeof Protocol.PromiseCreateRequest.Type.data,
-      ) {
+      const create: DurablePromisesService["create"] = Effect.fn("DurablePromises.create")(function* (data) {
         const response = yield* network.send(Protocol.PromiseCreateRequest.make({ head: yield* head(), data }));
         if (isCreateSuccess(response)) {
           return response.data.promise;
@@ -82,9 +76,7 @@ export class DurablePromises extends Context.Service<
         return yield* Effect.fail(promiseError(data.id, response.head.status, response.data));
       });
 
-      const settle = Effect.fn("DurablePromises.settle")(function* (
-        data: typeof Protocol.PromiseSettleRequest.Type.data,
-      ) {
+      const settle: DurablePromisesService["settle"] = Effect.fn("DurablePromises.settle")(function* (data) {
         const response = yield* network.send(Protocol.PromiseSettleRequest.make({ head: yield* head(), data }));
         if (isSettleSuccess(response)) {
           return response.data.promise;
@@ -92,9 +84,9 @@ export class DurablePromises extends Context.Service<
         return yield* Effect.fail(promiseError(data.id, response.head.status, response.data));
       });
 
-      const registerCallback = Effect.fn("DurablePromises.registerCallback")(function* (
-        data: typeof Protocol.PromiseRegisterCallbackRequest.Type.data,
-      ) {
+      const registerCallback: DurablePromisesService["registerCallback"] = Effect.fn(
+        "DurablePromises.registerCallback",
+      )(function* (data) {
         const response = yield* network.send(
           Protocol.PromiseRegisterCallbackRequest.make({ head: yield* head(), data }),
         );
@@ -104,9 +96,9 @@ export class DurablePromises extends Context.Service<
         return yield* Effect.fail(promiseError(data.awaited, response.head.status, response.data));
       });
 
-      const registerListener = Effect.fn("DurablePromises.registerListener")(function* (
-        data: typeof Protocol.PromiseRegisterListenerRequest.Type.data,
-      ) {
+      const registerListener: DurablePromisesService["registerListener"] = Effect.fn(
+        "DurablePromises.registerListener",
+      )(function* (data) {
         const response = yield* network.send(
           Protocol.PromiseRegisterListenerRequest.make({ head: yield* head(), data }),
         );
@@ -127,30 +119,23 @@ export class DurablePromises extends Context.Service<
           return Option.some(message.data.promise);
         });
 
-      const awaitSettled = Effect.fn("DurablePromises.awaitSettled")(function* (id: Protocol.PromiseId) {
-        const loop: Effect.Effect<Protocol.PromiseSettled, ResonateProtocolError | TransportError> = Effect.suspend(
-          () =>
-            Effect.gen(function* () {
-              const promise = yield* registerListener({ awaited: id, address: network.unicast });
-              if (promise.state !== "pending") {
-                return promise;
-              }
-              const observed = yield* Stream.runHead(
-                network.messages.pipe(Stream.filterMap(settledFor(id)), Stream.take(1)),
-              ).pipe(
-                Effect.catchCause(() =>
-                  Effect.as(Effect.sleep(Duration.seconds(5)), Option.none<Protocol.PromiseSettled>()),
-                ),
-                Effect.race(Effect.as(Effect.sleep(Duration.seconds(60)), Option.none<Protocol.PromiseSettled>())),
-              );
-              return yield* Option.match(observed, {
-                onNone: () => loop,
-                onSome: Effect.succeed,
-              });
-            }),
-        );
-        return yield* loop.pipe(Effect.retry(Schedule.spaced(Duration.seconds(5))));
-      });
+      const awaitSettled: DurablePromisesService["awaitSettled"] = Effect.fn("DurablePromises.awaitSettled")(
+        function* (id) {
+          const observed = yield* Effect.gen(function* () {
+            const promise = yield* registerListener({ awaited: id, address: network.unicast });
+            if (promise.state !== "pending") {
+              return Option.some(promise);
+            }
+            return yield* Stream.runHead(network.messages.pipe(Stream.filterMap(settledFor(id)), Stream.take(1))).pipe(
+              Effect.race(Effect.as(Effect.sleep(Duration.seconds(60)), Option.none<Protocol.PromiseSettled>())),
+            );
+          }).pipe(Effect.repeat({ until: Option.isSome }), Effect.retry(Schedule.spaced(Duration.seconds(5))));
+          return yield* Option.match(observed, {
+            onNone: () => Effect.die("DurablePromises.awaitSettled repeated without observing settlement"),
+            onSome: Effect.succeed,
+          });
+        },
+      );
 
       return DurablePromises.of({ get, create, settle, registerCallback, registerListener, awaitSettled });
     }),

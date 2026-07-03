@@ -1,10 +1,6 @@
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
-  // `@effect/vitest` imports `getCurrentSuite` from "@vitest/runner", which isn't
-  // installed (vite-plus bundles its own fork). Point it at vite-plus's bundled
-  // runner so suite identity matches the test runner, without the deprecated
-  // "vitest/suite" subpath.
   resolve: {
     alias: {
       "@vitest/runner": "@voidzero-dev/vite-plus-test/plugins/runner",
@@ -14,6 +10,7 @@ export default defineConfig({
     "*": "vp check --fix",
   },
   run: {
+    cache: false,
     tasks: {
       "check:all": {
         command: "echo Checks passed",
@@ -41,8 +38,7 @@ export default defineConfig({
     passWithNoTests: true,
     include: ["test/**/*.test.ts"],
     exclude: ["node_modules", "dist", "repos"],
-    // Inline `@effect/vitest` so Vite transforms it and applies the `@vitest/runner`
-    // alias above (externalized deps bypass Vite's resolver and use Node's).
+
     server: {
       deps: {
         inline: ["@effect/vitest"],
