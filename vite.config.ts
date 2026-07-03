@@ -29,6 +29,9 @@ export default defineConfig({
       differential: {
         command: "bunx --bun vp test run test/Differential.test.ts",
       },
+      dst: {
+        command: "bunx --bun vp test run test/DstSimulator.test.ts",
+      },
       "check:typecheck": {
         command: "tsgo --noEmit",
       },

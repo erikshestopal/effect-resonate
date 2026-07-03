@@ -47,3 +47,7 @@ larger batches.
 
 - `vp run check` green including a small seed batch; failures reproduce from
   printed seed.
+
+## Implementation notes
+
+- Done in spec 22: added a fixed seed DST batch in `test/DstSimulator.test.ts` plus `vp run dst`. The simulator uses one seeded PRNG per run to choose worker restarts, yield/reorder points, and TestClock advances over a corpus covering recorded side effects, sleeps, and fan-out; it asserts final outcome invariance, exactly-once local-step counters, and server invariants after each perturbation. A raw protocol op-stream fuzzer creates/settles random-but-valid promises and checks invariants after every operation.
