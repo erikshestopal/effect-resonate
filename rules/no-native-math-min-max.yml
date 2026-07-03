@@ -1,0 +1,10 @@
+id: no-native-math-min-max
+language: TypeScript
+severity: error
+message: Use effect Number helpers such as Num.min or Num.max instead of Math.min or Math.max in src.
+files:
+  - src/**/*.ts
+rule:
+  any:
+    - pattern: Math.min($$$ARGS)
+    - pattern: Math.max($$$ARGS)

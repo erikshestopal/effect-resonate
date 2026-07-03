@@ -1,0 +1,20 @@
+id: no-native-string-methods
+language: TypeScript
+severity: error
+message: Use effect String helpers such as Str.startsWith, Str.endsWith, Str.split, Str.trimStart, or Str.replaceAll instead of native string methods in src.
+files:
+  - src/**/*.ts
+rule:
+  all:
+    - any:
+        - pattern: $VALUE.startsWith($$$ARGS)
+        - pattern: $VALUE.endsWith($$$ARGS)
+        - pattern: $VALUE.trimStart($$$ARGS)
+        - pattern: $VALUE.trimEnd($$$ARGS)
+        - pattern: $VALUE.trim($$$ARGS)
+        - pattern: $VALUE.replaceAll($$$ARGS)
+        - pattern: $VALUE.split($$$ARGS)
+    - not:
+        any:
+          - pattern: Str.$METHOD($$$ARGS)
+          - pattern: String.$METHOD($$$ARGS)

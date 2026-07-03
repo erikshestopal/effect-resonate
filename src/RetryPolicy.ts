@@ -20,7 +20,7 @@
  *
  * @since 0.0.0
  */
-import { Duration, Schema, SchemaTransformation } from "effect";
+import { Duration, Number as Num, Schema, SchemaTransformation } from "effect";
 
 const Millis = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0));
 const MaxRetries = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
@@ -208,7 +208,7 @@ export const next = (policy: RetryPolicy, attempt: number): number | null =>
       ? null
       : RetryPolicy.match(policy, {
           Constant: (policy) => policy.delay,
-          Exponential: (policy) => Math.min(policy.delay * policy.factor ** attempt, policy.maxDelay),
+          Exponential: (policy) => Num.min(policy.delay * policy.factor ** attempt, policy.maxDelay),
           Linear: (policy) => policy.delay * attempt,
           Never: () => 0,
         });

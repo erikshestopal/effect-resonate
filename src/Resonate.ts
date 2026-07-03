@@ -39,6 +39,7 @@ import {
   Exit,
   HashSet,
   Layer,
+  Number as Num,
   Option,
   Order,
   Pipeable,
@@ -291,7 +292,7 @@ const fullCronSegment = (options: {
   if (options.values.size === 0) {
     return true;
   }
-  if (options.values.size !== options.max - options.min + 1) {
+  if (options.values.size !== Num.increment(options.max - options.min)) {
     return false;
   }
   return Arr.every(Arr.range(options.min, options.max), (value) => options.values.has(value));

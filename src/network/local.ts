@@ -23,6 +23,8 @@ import {
   Schema,
   SchemaParser,
   Stream,
+  Number as Num,
+  String as Str,
 } from "effect";
 import * as Protocol from "../Protocol.ts";
 import { decodeResponse, ResonateNetwork } from "./network.ts";
@@ -315,8 +317,10 @@ const setMessage = ({
 }): Emitting => {
   const entry: OutboxEntry = { address, message };
   const key = outboxKey(entry);
-  const index = state.outbox.findIndex((existing) => outboxKey(existing) === key);
-  const outbox = index >= 0 ? state.outbox.with(index, entry) : [...state.outbox, entry];
+  const outbox = Arr.findFirstIndex(state.outbox, (existing) => outboxKey(existing) === key).pipe(
+    Option.flatMap((index) => Arr.replace(state.outbox, index, entry)),
+    Option.getOrElse(() => Arr.append(state.outbox, entry)),
+  );
   return { state: { ...state, outbox }, emitted: [...emitted, entry] };
 };
 const millis = DateTime.toEpochMillis;
@@ -911,7 +915,7 @@ const taskCreate = ({
         const acquired = new TaskObject({
           ...task.fields,
           state: "acquired",
-          version: Protocol.TaskVersion.make(task.version + 1),
+          version: Protocol.TaskVersion.make(Num.increment(task.version)),
           pid: Option.some(pid),
           ttl: Option.some(ttl),
           resumes: [],
@@ -1024,7 +1028,7 @@ const taskAcquire = ({
   const acquired = new TaskObject({
     ...task.value.fields,
     state: "acquired",
-    version: Protocol.TaskVersion.make(task.value.version + 1),
+    version: Protocol.TaskVersion.make(Num.increment(task.value.version)),
     pid: Option.some(request.data.pid),
     ttl: Option.some(request.data.ttl),
     resumes: [],
@@ -1538,7 +1542,7 @@ const taskHeartbeat = ({
 const FiveFieldCronExpression = Schema.String.check(
   Schema.makeFilter(
     (cron) => {
-      const segments = Arr.filter(cron.split(" "), (segment) => segment.length > 0);
+      const segments = Arr.filter(Str.split(" ")(cron), Str.isNonEmpty);
       return segments.length === 5 && Result.isSuccess(Cron.parse(cron));
     },
     { title: "five-field cron expression" },
@@ -1693,7 +1697,10 @@ const catchUpSchedule = ({
   while (millis(current.nextRunAt) <= millis(now)) {
     const cronTime = current.nextRunAt;
     const promiseId = Protocol.PromiseId.make(
-      current.promiseId.replaceAll("{{.id}}", current.id).replaceAll("{{.timestamp}}", String(millis(cronTime))),
+      Str.replaceAll(
+        "{{.timestamp}}",
+        Str.String(millis(cronTime)),
+      )(Str.replaceAll("{{.id}}", current.id)(current.promiseId)),
     );
     const transition = promiseCreate({
       state: output.state,

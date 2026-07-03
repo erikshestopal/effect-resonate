@@ -6,7 +6,7 @@
  *
  * @since 0.0.0
  */
-import { Duration, Effect, Filter, HashSet, Layer, Option, Schedule, Schema, Stream } from "effect";
+import { Duration, Effect, Filter, HashSet, Layer, Option, Schedule, Schema, Stream, String as Str } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { TransportError } from "../Errors.ts";
 import * as Protocol from "../Protocol.ts";
@@ -42,6 +42,7 @@ export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork,
       const pid = Protocol.ProcessId.make(options.pid ?? "local");
       const configuredPid = Option.as(Option.fromNullishOr(options.pid), pid);
       const token = Option.fromNullishOr(options.token);
+      const baseUrl = Str.endsWith("/")(options.url) ? Str.slice(0, -1)(options.url) : options.url;
       const commonHeaders = Option.match(token, {
         onNone: () => ({ "Content-Type": "application/json" }),
         onSome: (token) => ({ "Content-Type": "application/json", Authorization: `Bearer ${token}` }),
@@ -76,10 +77,10 @@ export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork,
 
       const connectMessages = Stream.unwrap(
         client
-          .get(
-            `${options.url.endsWith("/") ? options.url.slice(0, -1) : options.url}${Protocol.TargetAddress.pollUni({ group, id: pid }).pollPath}`,
-            { headers: commonHeaders, accept: "text/event-stream" },
-          )
+          .get(`${baseUrl}${Protocol.TargetAddress.pollUni({ group, id: pid }).pollPath}`, {
+            headers: commonHeaders,
+            accept: "text/event-stream",
+          })
           .pipe(
             Effect.mapError((cause) => new TransportError({ reason: "ConnectionLost", cause })),
             Effect.flatMap((response) =>
@@ -96,7 +97,9 @@ export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork,
                 Stream.splitLines,
                 Stream.filterMap(
                   Filter.fromPredicateOption((line) =>
-                    line.startsWith("data:") ? Option.some(line.slice("data:".length).trimStart()) : Option.none(),
+                    Str.startsWith("data:")(line)
+                      ? Option.some(Str.trimStart(Str.slice("data:".length)(line)))
+                      : Option.none(),
                   ),
                 ),
                 Stream.mapEffect((input) =>

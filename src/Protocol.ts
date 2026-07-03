@@ -8,7 +8,7 @@
  * @since 0.0.0
  */
 import type { Duration } from "effect";
-import { DateTime, Option, Predicate, Schema, SchemaParser, SchemaTransformation } from "effect";
+import { DateTime, Option, Predicate, Schema, SchemaParser, SchemaTransformation, String as Str } from "effect";
 
 /**
  * Durable promise identifier.
@@ -198,7 +198,7 @@ export const TargetAddressString = Schema.Union([
 export const isTargetAddressString = SchemaParser.is(TargetAddressString);
 
 export const UserTagKey = Schema.String.check(
-  Schema.makeFilter((key: string) => !key.startsWith("resonate:"), {
+  Schema.makeFilter((key: string) => !Str.startsWith("resonate:")(key), {
     title: `a tag key outside the "resonate:" namespace`,
   }),
 ).pipe(Schema.brand("UserTagKey"));
@@ -257,10 +257,10 @@ export const TagsFromWire = Schema.Record(Schema.String, Schema.String).pipe(
           ...(timer === "true" ? { "resonate:timer": TimerTagValue.make(timer) } : {}),
           ...(scope === "local" || scope === "global" ? { "resonate:scope": ScopeTagValue.make(scope) } : {}),
           ...(Predicate.isNotUndefined(target) && isTargetAddressString(target) ? { "resonate:target": target } : {}),
-          ...(Predicate.isNotUndefined(origin) && origin.length > 0 ? { "resonate:origin": origin } : {}),
-          ...(Predicate.isNotUndefined(parent) && parent.length > 0 ? { "resonate:parent": parent } : {}),
-          ...(Predicate.isNotUndefined(branch) && branch.length > 0 ? { "resonate:branch": branch } : {}),
-          ...(Predicate.isNotUndefined(prefix) && prefix.length > 0 ? { "resonate:prefix": prefix } : {}),
+          ...(Predicate.isNotUndefined(origin) && Str.isNonEmpty(origin) ? { "resonate:origin": origin } : {}),
+          ...(Predicate.isNotUndefined(parent) && Str.isNonEmpty(parent) ? { "resonate:parent": parent } : {}),
+          ...(Predicate.isNotUndefined(branch) && Str.isNonEmpty(branch) ? { "resonate:branch": branch } : {}),
+          ...(Predicate.isNotUndefined(prefix) && Str.isNonEmpty(prefix) ? { "resonate:prefix": prefix } : {}),
           ...(Predicate.isNotUndefined(delay) && /^\d+$/.test(delay) ? { "resonate:delay": delay } : {}),
         };
         const unrecognized: Record<string, string> = {};
@@ -269,7 +269,7 @@ export const TagsFromWire = Schema.Record(Schema.String, Schema.String).pipe(
           if (key in reserved) {
             continue;
           }
-          if (key.startsWith("resonate:")) {
+          if (Str.startsWith("resonate:")(key)) {
             unrecognized[key] = value;
           } else {
             user[key] = value;

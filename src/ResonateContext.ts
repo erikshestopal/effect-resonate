@@ -20,6 +20,7 @@ import {
   HashMap,
   HashSet,
   Layer,
+  Number as Num,
   Option,
   Predicate,
   Random,
@@ -377,7 +378,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         readonly duration: Duration.Duration;
       }) {
         const now = yield* Clock.currentTimeMillis;
-        return timestamp(Math.min(now + Duration.toMillis(duration), DateTime.toEpochMillis(parent)));
+        return timestamp(Num.min(Num.sum(now, Duration.toMillis(duration)), DateTime.toEpochMillis(parent)));
       });
 
       const encodeInvocation = Effect.fn("ExecutionEngine.encodeInvocation")(function* ({
@@ -466,7 +467,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         readonly options: ContextOptions | undefined;
       }) {
         const id = options?.id ?? childId({ parent: state.root, seq: state.seq });
-        state.seq = state.seq + 1;
+        state.seq = Num.increment(state.seq);
         const cached = HashMap.get(state.cache, id);
         if (Option.isSome(cached)) {
           return cached.value;
@@ -509,7 +510,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         readonly instant: DateTime.Utc;
       }) {
         const id = childId({ parent: state.root, seq: state.seq });
-        state.seq = state.seq + 1;
+        state.seq = Num.increment(state.seq);
         const cached = HashMap.get(state.cache, id);
         if (Option.isSome(cached)) {
           return cached.value;
@@ -522,9 +523,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               head: requestHead({ corrId: `${state.root}:${id}:sleep`, origin: state.originId }),
               data: {
                 id,
-                timeoutAt: timestamp(
-                  Math.min(DateTime.toEpochMillis(instant), DateTime.toEpochMillis(state.timeoutAt)),
-                ),
+                timeoutAt: timestamp(Num.min(DateTime.toEpochMillis(instant), DateTime.toEpochMillis(state.timeoutAt))),
                 param: Protocol.emptyValue,
                 tags: Protocol.Tags.make({
                   reserved: {
@@ -634,7 +633,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
       }) {
         const seqid = childId({ parent: state.root, seq: state.seq });
         const id = options?.id ?? (mode === "detached" ? detachedId({ prefix: state.prefixId, seqid }) : seqid);
-        state.seq = state.seq + 1;
+        state.seq = Num.increment(state.seq);
         const cached = HashMap.get(state.cache, id);
         if (Option.isSome(cached)) {
           if (mode === "attached" && cached.value.state === "pending") {
@@ -824,7 +823,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           if (retryIn > 0) {
             yield* Effect.sleep(Duration.millis(retryIn));
           }
-          return yield* runAttempt(attempt + 1);
+          return yield* runAttempt(Num.increment(attempt));
         });
         return yield* runAttempt(0);
       });
