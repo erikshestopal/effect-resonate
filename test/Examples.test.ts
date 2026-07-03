@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, SchemaParser } from "effect";
+import { Effect, Schema, SchemaParser } from "effect";
+import { currentCodec } from "../src/Codec.ts";
 import * as Protocol from "../src/Protocol.ts";
 import { decodeResponse, encodeRequest } from "../src/Network.ts";
 
@@ -69,41 +70,70 @@ const waitForSettled = async (id: string) => {
   throw new Error(`promise ${id} did not settle`);
 };
 
+const resolveString = async (id: string, value: string) => {
+  const encoded = await Effect.runPromise(currentCodec.pipe(Effect.flatMap((codec) => codec.encode(value))));
+  const response = await request(
+    Protocol.PromiseSettleRequest.make({
+      kind: "promise.settle",
+      head: Protocol.RequestHead.make({
+        corrId: Protocol.CorrelationId.make(`examples-settle-${id}-${Date.now()}`),
+        version: Protocol.protocolVersion,
+      }),
+      data: { id: Protocol.PromiseId.make(id), state: Schema.Literal("resolved").make("resolved"), value: encoded },
+    }),
+  );
+  expect(response.head.status).toBe(200);
+};
+
 const examples: ReadonlyArray<{ readonly name: string; readonly args: ReadonlyArray<unknown> }> = [
-  { name: "helloWorld", args: ["World"] },
-  { name: "durableSleep", args: [1] },
-  { name: "sagaBooking", args: [{ tripId: "trip-1", shouldFail: false }] },
-  { name: "fanOutFanIn", args: [{ orderId: "order-1", email: "a@example.com", phone: "+15555550100" }] },
-  { name: "distributedMutex", args: [["worker-a", "worker-b"]] },
-  { name: "batchProcessor", args: [{ records: ["a", "b", "c"], batchSize: 2 }] },
+  { name: "foo", args: ["World"] },
+  { name: "countdown", args: [2, 1] },
+  { name: "sleepingWorkflow", args: [1] },
+  { name: "generateReport", args: [123] },
+  { name: "factorial", args: [4] },
+  { name: "fooWorkflow", args: ["workflow-1"] },
   {
-    name: "priorityQueue",
+    name: "notifyAll",
+    args: [{ orderId: "order-1", userId: "user-1", event: "created", message: "order created" }],
+  },
+  { name: "bookTrip", args: [{ tripId: "trip-1", shouldFail: false }] },
+  {
+    name: "importRecords",
     args: [
       {
-        jobs: [
-          { id: "low", priority: 1 },
-          { id: "high", priority: 10 },
+        records: [
+          { id: "a", value: 1 },
+          { id: "b", value: 2 },
         ],
+        batchSize: 1,
       },
     ],
   },
-  { name: "rateLimiter", args: [["req-1", "req-2"]] },
-  { name: "stateMachine", args: [{ orderId: "order-2", path: "deliver" }] },
-  { name: "foodDelivery", args: [{ orderId: "food-1", hasDriver: true }] },
-  { name: "eventSourcing", args: [{ userId: "user-1", events: ["created", "updated"] }] },
-  { name: "sessionLifecycle", args: [{ sessionId: "session-1", userId: "user-1", activities: ["click"] }] },
-  { name: "asyncHttpApi", args: ["request-1"] },
-  { name: "scheduleReport", args: ["user-123"] },
-  { name: "recursiveFactorial", args: [4] },
-  { name: "loadBalancedCompute", args: [7] },
-  { name: "webhookPayment", args: [{ eventId: "evt-1", amount: 42 }] },
-  { name: "healthMonitor", args: [{ services: ["api", "db"], iterations: 2 }] },
-  { name: "agentOrchestration", args: [{ topic: "resonate" }] },
-  { name: "imagePipeline", args: [{ prompt: "cat" }] },
+  {
+    name: "exclusiveResourceAccess",
+    args: [{ resource: "resource-1", workers: ["worker-a", "worker-b"], shouldCrash: false }],
+  },
+  {
+    name: "rateLimitedBatch",
+    args: [{ requests: [{ id: "req-1", endpoint: "/v1/orders", payload: "{}" }], ratePerSec: 1000 }],
+  },
+  {
+    name: "processPayment",
+    args: [{ event_id: "evt-1", type: "payment_intent.succeeded", amount: 42, currency: "USD", customer_id: "cus-1" }],
+  },
+  { name: "orderLifecycle", args: [{ orderId: "order-2", path: "deliver" }] },
+  {
+    name: "processEventStream",
+    args: [{ userId: "user-1", events: [{ eventId: "event-1", type: "created", payload: { name: "Ada" } }] }],
+  },
+  {
+    name: "processQueue",
+    args: [{ jobs: [{ id: "job-1", priority: "critical", description: "ship", workMs: 1 }] }],
+  },
 ];
 
-describe("official examples catalog", () => {
-  it("runs at least twenty converted examples against the shipped server", async () => {
+describe("official TypeScript examples", () => {
+  it("runs fifteen ports of the official TypeScript examples against the shipped server", async () => {
     if (Bun.which("resonate") === null) {
       console.error("[EXAMPLES SKIPPED] resonate CLI not found; install it to run examples.");
       expect(Bun.which("resonate")).toBeNull();
@@ -114,7 +144,7 @@ describe("official examples catalog", () => {
     const target = `poll://any@${group}`;
     const server = spawn(["resonate", "dev", "--server-port", String(serverPort), "--observability-metrics-port", "0"]);
     await sleep(2_000);
-    const worker = spawn(["bun", "examples/catalog.ts"], {
+    const worker = spawn(["bun", "examples/official-typescript.ts"], {
       RESONATE_URL: serverUrl,
       RESONATE_GROUP: group,
       RESONATE_PID: "examples-1",
@@ -137,6 +167,10 @@ describe("official examples catalog", () => {
           JSON.stringify(example.args),
           id,
         ]);
+        if (example.name === "fooWorkflow") {
+          await sleep(1_000);
+          await resolveString(`${id}.human_approval`, "human_approval");
+        }
         const promise = await waitForSettled(id);
         expect(promise.state).toBe("resolved");
         expect(await run(["resonate", "tree", "--server", serverUrl, id])).toContain(id);
@@ -145,8 +179,8 @@ describe("official examples catalog", () => {
       kill(worker);
       kill(server);
       const workerLog = await new Response(worker.stdout).text();
-      expect(workerLog).toContain("hello World");
-      expect(workerLog).toContain("photorealistic cat");
+      expect(workerLog).toContain("Hello World from bar");
+      expect(workerLog).toContain("critical:job-1:ship");
     }
   }, 90_000);
 });
