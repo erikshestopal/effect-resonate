@@ -85,11 +85,7 @@ const App = Resonate.group(
   processQueue,
 );
 
-const runStep = (message: string) =>
-  Effect.sync(() => {
-    console.log(message);
-    return message;
-  });
+const runStep = (message: string) => Effect.logInfo(message).pipe(Effect.as(message));
 
 const handlers = App.toLayer(
   App.of({

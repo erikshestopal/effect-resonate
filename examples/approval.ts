@@ -22,13 +22,8 @@ const handlers = App.toLayer(
       Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext.ResonateContext> {
         const ctx = yield* ResonateContext.ResonateContext;
         const approval = yield* ctx.promise(Approval);
-        yield* ctx.run(
-          Effect.sync(() => {
-            const message = `workflow ${workflowId} waiting on ${approval.id}`;
-            console.log(message);
-            return message;
-          }),
-        );
+        const message = `workflow ${workflowId} waiting on ${approval.id}`;
+        yield* ctx.run(Effect.logInfo(message).pipe(Effect.as(message)));
         const result = yield* approval.await;
         return `foo workflow ${workflowId} approved by ${result.approvedBy}`;
       }),

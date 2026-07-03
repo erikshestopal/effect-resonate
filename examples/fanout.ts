@@ -19,9 +19,9 @@ const notifyAll = Resonate.function("notifyAll", {
 const App = Resonate.group(notifyAll);
 
 const send = (channel: string, destination: string) =>
-  Effect.sync(() => {
+  Effect.gen(function* () {
     const message = `${channel}:${destination}`;
-    console.log(message);
+    yield* Effect.logInfo(message);
     return { channel, destination, ok: true };
   });
 

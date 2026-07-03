@@ -24,7 +24,7 @@ const handlers = Fns.toLayer(
       Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
         const ctx = yield* ResonateContext;
         for (let remaining = count; remaining > 0; remaining = remaining - 1) {
-          yield* ctx.run(Effect.sync(() => console.log(`Countdown: ${remaining}`)));
+          yield* ctx.run(Effect.logInfo(`Countdown: ${remaining}`));
           yield* ctx.sleep(Duration.seconds(seconds));
         }
         return "done";

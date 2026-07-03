@@ -18,21 +18,11 @@ const handlers = App.toLayer(
       Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext.ResonateContext> {
         const ctx = yield* ResonateContext.ResonateContext;
         for (let remaining = count; remaining > 0; remaining = remaining - 1) {
-          yield* ctx.run(
-            Effect.sync(() => {
-              const message = `Countdown: ${remaining}`;
-              console.log(message);
-              return message;
-            }),
-          );
+          const message = `Countdown: ${remaining}`;
+          yield* ctx.run(Effect.logInfo(message).pipe(Effect.as(message)));
           yield* ctx.sleep(Duration.seconds(seconds));
         }
-        yield* ctx.run(
-          Effect.sync(() => {
-            console.log("Done!");
-            return "Done!";
-          }),
-        );
+        yield* ctx.run(Effect.logInfo("Done!").pipe(Effect.as("Done!")));
         return "done";
       }),
   }),
