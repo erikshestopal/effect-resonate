@@ -8,7 +8,7 @@ export const sampleArgs = [{ id: "request-1", body: "hello" }] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-async-http-api-ts --func foo --json-args '[{"id":"request-1","body":"hello"}]' example-async-http-api-ts-demo
 
 const Payload = Schema.Struct({ id: Schema.String, body: Schema.String });
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -18,7 +18,9 @@ const handlers = App.toLayer(
         const ctx = yield* ResonateContext.ResonateContext;
         const results: Array<unknown> = [];
         results.push(
-          yield* ctx.run(Effect.logInfo(`async http ${input.id}`).pipe(Effect.as(`async http ${input.id}`))),
+          yield* ctx.run({
+            effect: Effect.logInfo(`async http ${input.id}`).pipe(Effect.as(`async http ${input.id}`)),
+          }),
         );
         yield* ctx.sleep(Duration.millis(1));
         return { repo, functionName, results };
@@ -33,7 +35,9 @@ const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault("example-async-http-api-ts-worker"));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

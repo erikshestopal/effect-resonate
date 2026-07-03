@@ -7,13 +7,12 @@ import * as Resonate from "../src/Resonate.ts";
 import { ResonateContext } from "../src/ResonateContext.ts";
 import { assertInvariants, ResonateTest, restartWorker, snapshot } from "../src/testing.ts";
 
-const Countdown = Resonate.function("HarnessCountdown", {
+const Countdown = Resonate.function({
+  name: "HarnessCountdown",
   payload: Schema.Tuple([Schema.Number, Schema.Number]),
 });
 
-const Replay = Resonate.function("HarnessReplay", {
-  payload: Schema.Number,
-});
+const Replay = Resonate.function({ name: "HarnessReplay", payload: Schema.Number });
 
 const AppFns = Resonate.group(Countdown, Replay);
 
@@ -35,7 +34,11 @@ describe("ResonateTest", () => {
 
     return Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
-      const handle = yield* client.beginRpc(Countdown, Protocol.ExecutionId.make("harness-countdown-1"), [3, 60]);
+      const handle = yield* client.beginRpc({
+        targetFunction: Countdown,
+        executionId: Protocol.ExecutionId.make("harness-countdown-1"),
+        args: [3, 60],
+      });
 
       yield* TestClock.adjust(Duration.minutes(3));
       yield* Effect.yieldNow;
@@ -47,7 +50,7 @@ describe("ResonateTest", () => {
         expect(Exit.isSuccess(exit.value)).toBe(true);
       }
       yield* snapshot.pipe(Effect.flatMap(assertInvariants));
-    }).pipe(Effect.provide(ResonateTest.layer(AppFns, HandlersLive)));
+    }).pipe(Effect.provide(ResonateTest.layer({ group: AppFns, handlers: HandlersLive })));
   });
 
   it.effect("restarts the worker and replays recorded local steps exactly once", () =>
@@ -59,7 +62,7 @@ describe("ResonateTest", () => {
           HarnessReplay: (seconds) =>
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              yield* ctx.run(Ref.update(stepCalls, (calls) => calls + 1));
+              yield* ctx.run({ effect: Ref.update(stepCalls, (calls) => calls + 1) });
               yield* ctx.sleep(Duration.seconds(seconds));
               return "replayed";
             }),
@@ -69,7 +72,11 @@ describe("ResonateTest", () => {
       const program = Effect.gen(function* () {
         const client = yield* Resonate.ResonateClient;
         const promises = yield* DurablePromises;
-        const handle = yield* client.beginRpc(Replay, Protocol.ExecutionId.make("harness-replay-1"), [60]);
+        const handle = yield* client.beginRpc({
+          targetFunction: Replay,
+          executionId: Protocol.ExecutionId.make("harness-replay-1"),
+          args: [60],
+        });
         yield* Effect.yieldNow;
         yield* Effect.yieldNow;
 
@@ -89,7 +96,7 @@ describe("ResonateTest", () => {
         yield* snapshot.pipe(Effect.flatMap(assertInvariants));
       });
 
-      yield* program.pipe(Effect.provide(ResonateTest.layer(AppFns, HandlersLive)));
+      yield* program.pipe(Effect.provide(ResonateTest.layer({ group: AppFns, handlers: HandlersLive })));
     }),
   );
 });

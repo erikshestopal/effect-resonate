@@ -14,33 +14,19 @@ import { Schedules } from "../src/Schedule.ts";
 import { Tasks } from "../src/Task.ts";
 import * as Worker from "../src/Worker.ts";
 
-const Workflow = Resonate.function("WorkerWorkflow", {
-  payload: Schema.Number,
-});
+const Workflow = Resonate.function({ name: "WorkerWorkflow", payload: Schema.Number });
 
-const Blocking = Resonate.function("BlockingWorkflow", {
-  payload: Schema.Number,
-});
+const Blocking = Resonate.function({ name: "BlockingWorkflow", payload: Schema.Number });
 
-const Suspend = Resonate.function("SuspendWorkflow", {
-  payload: Schema.Number,
-});
+const Suspend = Resonate.function({ name: "SuspendWorkflow", payload: Schema.Number });
 
-const Sleep = Resonate.function("SleepWorkflow", {
-  payload: Schema.Number,
-});
+const Sleep = Resonate.function({ name: "SleepWorkflow", payload: Schema.Number });
 
-const RemoteRoot = Resonate.function("WorkerRemoteRoot", {
-  payload: Schema.Number,
-});
+const RemoteRoot = Resonate.function({ name: "WorkerRemoteRoot", payload: Schema.Number });
 
-const RemoteChild = Resonate.function("WorkerRemoteChild", {
-  payload: Schema.Number,
-});
+const RemoteChild = Resonate.function({ name: "WorkerRemoteChild", payload: Schema.Number });
 
-const Scheduled = Resonate.function("ScheduledWorkflow", {
-  payload: Schema.Struct({ id: Schema.String }),
-});
+const Scheduled = Resonate.function({ name: "ScheduledWorkflow", payload: Schema.Struct({ id: Schema.String }) });
 
 const group = Resonate.group(Workflow, Blocking, Suspend, Sleep, RemoteRoot, RemoteChild, Scheduled);
 const isDebugSnapSuccess = SchemaParser.is(Protocol.DebugSnapResponse.members[0]);
@@ -68,15 +54,18 @@ const handlerLayer = group.toLayer(
     WorkerWorkflow: (value) =>
       Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
         const ctx = yield* ResonateContext;
-        const stepped = yield* ctx.run(Effect.succeed(value + 1));
+        const stepped = yield* ctx.run({ effect: Effect.succeed(value + 1) });
         return Number(stepped) + 1;
       }),
     BlockingWorkflow: () => Effect.never,
     SuspendWorkflow: () =>
       Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
         const ctx = yield* ResonateContext;
-        const child = yield* ctx.beginRun(Effect.die("external promise should not execute locally"), {
-          id: Protocol.PromiseId.make("worker-suspend-1.0"),
+        const child = yield* ctx.beginRun({
+          effect: Effect.die("external promise should not execute locally"),
+          options: {
+            id: Protocol.PromiseId.make("worker-suspend-1.0"),
+          },
         });
         yield* child.await;
         return "done";
@@ -90,16 +79,23 @@ const handlerLayer = group.toLayer(
     WorkerRemoteRoot: (value) =>
       Effect.gen(function* (): Effect.fn.Return<unknown, unknown, ResonateContext> {
         const ctx = yield* ResonateContext;
-        return yield* ctx.rpc(RemoteChild, [Number(value) + 1], { target: Protocol.WorkerGroup.make("workers") });
+        return yield* ctx.rpc({
+          target: RemoteChild,
+          args: [Number(value) + 1],
+          options: { target: Protocol.WorkerGroup.make("workers") },
+        });
       }),
     WorkerRemoteChild: (value) => Effect.succeed(Number(value) + 1),
     ScheduledWorkflow: (payload) => Effect.succeed(`scheduled:${payload.id}`),
   }),
 );
-const workerLayer = Worker.layer(group, {
-  group: Protocol.WorkerGroup.make("workers"),
-  pid: Protocol.ProcessId.make("worker-1"),
-  ttl: Duration.seconds(30),
+const workerLayer = Worker.layer({
+  group: group,
+  worker: {
+    group: Protocol.WorkerGroup.make("workers"),
+    pid: Protocol.ProcessId.make("worker-1"),
+    ttl: Duration.seconds(30),
+  },
 });
 const coreServicesLayer = Layer.mergeAll(codecLayer, protocolLayer, handlerLayer).pipe(Layer.provideMerge(baseLayer));
 const engineServicesLayer = engineLayer.pipe(Layer.provideMerge(coreServicesLayer));
@@ -164,7 +160,11 @@ describe("Worker", () => {
       const client = yield* Resonate.ResonateClient;
       const promises = yield* DurablePromises;
       const codec = yield* currentCodec;
-      const handle = yield* client.beginRpc(Workflow, Protocol.ExecutionId.make("worker-root-1"), [1]);
+      const handle = yield* client.beginRpc({
+        targetFunction: Workflow,
+        executionId: Protocol.ExecutionId.make("worker-root-1"),
+        args: [1],
+      });
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
       const promise = yield* promises.get(handle.id);
@@ -178,7 +178,11 @@ describe("Worker", () => {
       const client = yield* Resonate.ResonateClient;
       const promises = yield* DurablePromises;
       const codec = yield* currentCodec;
-      const handle = yield* client.beginRpc(RemoteRoot, Protocol.ExecutionId.make("worker-remote-1"), [1]);
+      const handle = yield* client.beginRpc({
+        targetFunction: RemoteRoot,
+        executionId: Protocol.ExecutionId.make("worker-remote-1"),
+        args: [1],
+      });
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
@@ -195,7 +199,11 @@ describe("Worker", () => {
   it.effect("heartbeats the actual held task/version so leases stay acquired", () =>
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
-      const handle = yield* client.beginRpc(Blocking, Protocol.ExecutionId.make("worker-heartbeat-1"), [0]);
+      const handle = yield* client.beginRpc({
+        targetFunction: Blocking,
+        executionId: Protocol.ExecutionId.make("worker-heartbeat-1"),
+        args: [0],
+      });
       yield* Effect.yieldNow;
       yield* TestClock.adjust(Duration.seconds(20));
       yield* tick(31_000);
@@ -252,7 +260,11 @@ describe("Worker", () => {
       const client = yield* Resonate.ResonateClient;
       const promises = yield* DurablePromises;
       const codec = yield* currentCodec;
-      const handle = yield* client.beginRpc(Sleep, Protocol.ExecutionId.make("worker-sleep-1"), [1]);
+      const handle = yield* client.beginRpc({
+        targetFunction: Sleep,
+        executionId: Protocol.ExecutionId.make("worker-sleep-1"),
+        args: [1],
+      });
 
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
@@ -290,8 +302,11 @@ describe("Worker", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const promises = yield* DurablePromises;
-      const handle = yield* client.beginRpc(Sleep, Protocol.ExecutionId.make("worker-sleep-clamp-1"), [2], {
-        timeout: Duration.minutes(30),
+      const handle = yield* client.beginRpc({
+        targetFunction: Sleep,
+        executionId: Protocol.ExecutionId.make("worker-sleep-clamp-1"),
+        args: [2],
+        options: { timeout: Duration.minutes(30) },
       });
 
       yield* Effect.yieldNow;

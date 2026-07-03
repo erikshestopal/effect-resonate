@@ -8,7 +8,7 @@ export const sampleArgs = [{ topic: "resonate", crashOnWriter: false }] as const
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-multi-agent-orchestration-ts --func orchestrate --json-args '[{"topic":"resonate","crashOnWriter":false}]' example-multi-agent-orchestration-ts-demo
 
 const Payload = Schema.Struct({ topic: Schema.String, crashOnWriter: Schema.Boolean });
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -18,10 +18,16 @@ const handlers = App.toLayer(
         const ctx = yield* ResonateContext.ResonateContext;
         const results: Array<unknown> = [];
         results.push(
-          yield* ctx.run(Effect.logInfo(`research ${input.topic}`).pipe(Effect.as(`research ${input.topic}`))),
+          yield* ctx.run({
+            effect: Effect.logInfo(`research ${input.topic}`).pipe(Effect.as(`research ${input.topic}`)),
+          }),
         );
-        results.push(yield* ctx.run(Effect.logInfo(`write ${input.topic}`).pipe(Effect.as(`write ${input.topic}`))));
-        results.push(yield* ctx.run(Effect.logInfo(`review ${input.topic}`).pipe(Effect.as(`review ${input.topic}`))));
+        results.push(
+          yield* ctx.run({ effect: Effect.logInfo(`write ${input.topic}`).pipe(Effect.as(`write ${input.topic}`)) }),
+        );
+        results.push(
+          yield* ctx.run({ effect: Effect.logInfo(`review ${input.topic}`).pipe(Effect.as(`review ${input.topic}`)) }),
+        );
         yield* ctx.sleep(Duration.millis(1));
         return { repo, functionName, results };
       }),
@@ -39,7 +45,9 @@ const worker = Layer.unwrap(
     );
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

@@ -57,7 +57,7 @@ export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork,
       const connectMessages = Stream.unwrap(
         client
           .get(
-            `${options.url.endsWith("/") ? options.url.slice(0, -1) : options.url}${Protocol.TargetAddress.pollUni(group, pid).pollPath}`,
+            `${options.url.endsWith("/") ? options.url.slice(0, -1) : options.url}${Protocol.TargetAddress.pollUni({ group, id: pid }).pollPath}`,
             { headers: commonHeaders, accept: "text/event-stream" },
           )
           .pipe(
@@ -97,9 +97,9 @@ export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork,
       return ResonateNetwork.of({
         send,
         messages: connectMessages.pipe(Stream.retry(retryReconnect)),
-        match: (target) => Protocol.TargetAddress.pollAny(target),
-        unicast: Protocol.TargetAddress.pollUni(group, pid),
-        anycast: (target) => Protocol.TargetAddress.pollAny(target, configuredPid),
+        match: (target) => Protocol.TargetAddress.pollAny({ group: target }),
+        unicast: Protocol.TargetAddress.pollUni({ group, id: pid }),
+        anycast: (target) => Protocol.TargetAddress.pollAny({ group: target, id: configuredPid }),
       });
     }),
   );

@@ -13,7 +13,7 @@ const Payload = Schema.Struct({
   requests: Schema.Array(Schema.Struct({ id: Schema.String, endpoint: Schema.String, payload: Schema.String })),
   ratePerSec: Schema.Finite,
 });
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -23,11 +23,11 @@ const handlers = App.toLayer(
         const ctx = yield* ResonateContext.ResonateContext;
         const results: Array<unknown> = [];
         results.push(
-          yield* ctx.run(
-            Effect.logInfo(`rate limited ${input.requests.length} requests`).pipe(
+          yield* ctx.run({
+            effect: Effect.logInfo(`rate limited ${input.requests.length} requests`).pipe(
               Effect.as(`rate limited ${input.requests.length} requests`),
             ),
-          ),
+          }),
         );
         yield* ctx.sleep(Duration.millis(1));
         return { repo, functionName, results };
@@ -42,7 +42,9 @@ const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault("example-rate-limiter-ts-worker"));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

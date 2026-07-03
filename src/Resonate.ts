@@ -68,7 +68,10 @@ export interface Registry {
   readonly [RegistryTypeId]: typeof RegistryTypeId;
   readonly items: ReadonlyArray<RegistryItem>;
   readonly pipe: typeof Pipeable.Prototype.pipe;
-  readonly get: (name: string, version?: Protocol.FunctionVersionOrLatest) => Option.Option<RegistryItem>;
+  readonly get: (options: {
+    readonly name: string;
+    readonly version?: Protocol.FunctionVersionOrLatest;
+  }) => Option.Option<RegistryItem>;
 }
 
 export const makeRegistry = (items: ReadonlyArray<RegistryItem>): Effect.Effect<Registry> => {
@@ -87,8 +90,9 @@ export const makeRegistry = (items: ReadonlyArray<RegistryItem>): Effect.Effect<
     ...Pipeable.Prototype,
     [RegistryTypeId]: RegistryTypeId,
     items,
-    get(name, version = "latest") {
-      const named = items.filter((item) => item.definition.name === name);
+    get(options) {
+      const version = options.version ?? "latest";
+      const named = items.filter((item) => item.definition.name === options.name);
       if (named.length === 0) {
         return Option.none();
       }
@@ -110,37 +114,41 @@ export interface FunctionGroup<Fns extends ReadonlyArray<AnyFunction>> {
   readonly toLayer: <const Handlers extends HandlersFrom<Fns[number]>, E = never, R = never>(
     build: Handlers | Effect.Effect<Handlers, E, R>,
   ) => Layer.Layer<Handler<Fns[number]>, E, R>;
-  readonly toLayerHandler: <const Name extends Fns[number]["name"], E = never, R = never>(
-    name: Name,
-    build:
+  readonly toLayerHandler: <const Name extends Fns[number]["name"], E = never, R = never>(options: {
+    readonly name: Name;
+    readonly build:
       | HandlerFunction<Extract<Fns[number], { readonly name: Name }>>
-      | Effect.Effect<HandlerFunction<Extract<Fns[number], { readonly name: Name }>>, E, R>,
-  ) => Layer.Layer<Handler<Extract<Fns[number], { readonly name: Name }>>, E, R>;
+      | Effect.Effect<HandlerFunction<Extract<Fns[number], { readonly name: Name }>>, E, R>;
+  }) => Layer.Layer<Handler<Extract<Fns[number], { readonly name: Name }>>, E, R>;
   readonly registry: Effect.Effect<Registry, never, Handler<Fns[number]>>;
 }
 
 const functionGroupToContext = <
   Fns extends ReadonlyArray<AnyFunction>,
   const Handlers extends HandlersFrom<Fns[number]>,
->(
-  self: FunctionGroup<Fns>,
-  handlers: Handlers,
-): Effect.Effect<Context.Context<Handler<Fns[number]>>> => {
+>(options: {
+  readonly self: FunctionGroup<Fns>;
+  readonly handlers: Handlers;
+}): Effect.Effect<Context.Context<Handler<Fns[number]>>> => {
   let context = Context.empty() as Context.Context<Handler<Fns[number]>>;
   const items: Array<RegistryItem> = [];
-  for (const definition of self.fns) {
-    const handler = handlers[definition.name as keyof Handlers] as HandlerFunction<typeof definition>;
+  for (const definition of options.self.fns) {
+    const handler = options.handlers[definition.name as keyof Handlers] as HandlerFunction<typeof definition>;
     items.push({ definition, handler });
     context = Context.add(context, Handler(definition), handler);
   }
   return Effect.as(makeRegistry(items), context);
 };
 
-export const defineFunction = <const Name extends string, Payload extends Schema.Codec<unknown, unknown, never, never>>(
-  name: Name,
-  options: { readonly payload: Payload; readonly version?: number | Protocol.FunctionVersion },
-): Definition<Name, Payload> => ({
-  name,
+export const defineFunction = <
+  const Name extends string,
+  Payload extends Schema.Codec<unknown, unknown, never, never>,
+>(options: {
+  readonly name: Name;
+  readonly payload: Payload;
+  readonly version?: number | Protocol.FunctionVersion;
+}): Definition<Name, Payload> => ({
+  name: options.name,
   payload: options.payload,
   version: Protocol.FunctionVersion.make(options.version ?? 1),
 });
@@ -155,16 +163,19 @@ export const group = <const Fns extends ReadonlyArray<AnyFunction>>(...fns: Fns)
   toLayer(build) {
     return Layer.effectContext(
       (Effect.isEffect(build) ? build : Effect.succeed(build)).pipe(
-        Effect.flatMap((handlers) => functionGroupToContext(this, handlers)),
+        Effect.flatMap((handlers) => functionGroupToContext({ self: this, handlers })),
       ),
     );
   },
-  toLayerHandler(name, build) {
-    const definition = fns.find((fn) => fn.name === name);
+  toLayerHandler(options) {
+    const definition = fns.find((fn) => fn.name === options.name);
     if (Predicate.isUndefined(definition)) {
-      return Layer.effectContext(Effect.die(`Function '${name}' is not part of this group`));
+      return Layer.effectContext(Effect.die(`Function '${options.name}' is not part of this group`));
     }
-    return Layer.effect(Handler(definition), Effect.isEffect(build) ? build : Effect.succeed(build));
+    return Layer.effect(
+      Handler(definition),
+      Effect.isEffect(options.build) ? options.build : Effect.succeed(options.build),
+    );
   },
   registry: Effect.gen(function* () {
     const items: Array<RegistryItem> = [];
@@ -199,26 +210,34 @@ export interface ScheduleValue<F extends AnyFunction = AnyFunction> {
   readonly layer: Layer.Layer<never, unknown, Schedules | ResonateNetwork>;
 }
 
-const fullCronSegment = (values: ReadonlySet<number>, min: number, max: number): boolean => {
-  if (values.size === 0) {
+const fullCronSegment = (options: {
+  readonly values: ReadonlySet<number>;
+  readonly min: number;
+  readonly max: number;
+}): boolean => {
+  if (options.values.size === 0) {
     return true;
   }
-  if (values.size !== max - min + 1) {
+  if (options.values.size !== options.max - options.min + 1) {
     return false;
   }
-  for (let value = min; value <= max; value = value + 1) {
-    if (!values.has(value)) {
+  for (let value = options.min; value <= options.max; value = value + 1) {
+    if (!options.values.has(value)) {
       return false;
     }
   }
   return true;
 };
 
-const cronSegment = (values: ReadonlySet<number>, min: number, max: number): string => {
-  if (fullCronSegment(values, min, max)) {
+const cronSegment = (options: {
+  readonly values: ReadonlySet<number>;
+  readonly min: number;
+  readonly max: number;
+}): string => {
+  if (fullCronSegment(options)) {
     return "*";
   }
-  return [...values].sort((left, right) => left - right).join(",");
+  return [...options.values].sort((left, right) => left - right).join(",");
 };
 
 const fiveFieldCronExpression = (cron: Cron.Cron): Effect.Effect<string, never> => {
@@ -227,11 +246,11 @@ const fiveFieldCronExpression = (cron: Cron.Cron): Effect.Effect<string, never> 
   }
   return Effect.succeed(
     [
-      cronSegment(cron.minutes, 0, 59),
-      cronSegment(cron.hours, 0, 23),
-      cronSegment(cron.days, 1, 31),
-      cronSegment(cron.months, 1, 12),
-      cronSegment(cron.weekdays, 0, 6),
+      cronSegment({ values: cron.minutes, min: 0, max: 59 }),
+      cronSegment({ values: cron.hours, min: 0, max: 23 }),
+      cronSegment({ values: cron.days, min: 1, max: 31 }),
+      cronSegment({ values: cron.months, min: 1, max: 12 }),
+      cronSegment({ values: cron.weekdays, min: 0, max: 6 }),
     ].join(" "),
   );
 };
@@ -267,7 +286,7 @@ export const schedule = <F extends AnyFunction>(options: ScheduleOptions<F>): Sc
       cron: yield* fiveFieldCronExpression(options.cron),
       promiseId: "{{.id}}.{{.timestamp}}",
       promiseTimeout: timeout,
-      promiseParam: withSchemaHeader(encoded, options.function.name),
+      promiseParam: withSchemaHeader({ value: encoded, schemaName: options.function.name }),
       promiseTags: Protocol.Tags.make({
         reserved: {
           ...tags.reserved,
@@ -333,28 +352,30 @@ export type PromiseSuccess<P extends PromiseDeclaration> = P["success"]["Type"];
 export type PromiseFailure<P extends PromiseDeclaration> =
   P["error"] extends Schema.Codec<unknown, unknown, never, never> ? P["error"]["Type"] : never;
 
-export function promise<const Name extends string, Success extends Schema.Codec<unknown, unknown, never, never>>(
-  name: Name,
-  options: { readonly success: Success },
-): PromiseDeclaration<Name, Success, undefined>;
+export function promise<
+  const Name extends string,
+  Success extends Schema.Codec<unknown, unknown, never, never>,
+>(options: { readonly name: Name; readonly success: Success }): PromiseDeclaration<Name, Success, undefined>;
 export function promise<
   const Name extends string,
   Success extends Schema.Codec<unknown, unknown, never, never>,
   Failure extends Schema.Codec<unknown, unknown, never, never>,
->(
-  name: Name,
-  options: { readonly success: Success; readonly error: Failure },
-): PromiseDeclaration<Name, Success, Failure>;
+>(options: {
+  readonly name: Name;
+  readonly success: Success;
+  readonly error: Failure;
+}): PromiseDeclaration<Name, Success, Failure>;
 export function promise<
   const Name extends string,
   Success extends Schema.Codec<unknown, unknown, never, never>,
   Failure extends Schema.Codec<unknown, unknown, never, never>,
->(name: Name, options: { readonly success: Success; readonly error?: Failure }) {
+>(options: { readonly name: Name; readonly success: Success; readonly error?: Failure }) {
   return {
-    name,
+    name: options.name,
     success: options.success,
     error: options.error,
-    id: (executionId: Protocol.ExecutionId | Protocol.PromiseId) => Protocol.PromiseId.make(`${executionId}.${name}`),
+    id: (executionId: Protocol.ExecutionId | Protocol.PromiseId) =>
+      Protocol.PromiseId.make(`${executionId}.${options.name}`),
   };
 }
 
@@ -367,33 +388,33 @@ export interface ResonateClientOptions {
 }
 
 export interface InvocationMethods {
-  <F extends AnyFunction>(
-    fn: F,
-    id: Protocol.ExecutionId,
-    args: PayloadArgs<F>,
-    options?: InvocationOptions,
-  ): Effect.Effect<DurableHandle, unknown>;
-  (
-    name: string,
-    id: Protocol.ExecutionId,
-    args: ReadonlyArray<unknown>,
-    options?: InvocationOptions,
-  ): Effect.Effect<DurableHandle, unknown>;
+  <F extends AnyFunction>(options: {
+    readonly targetFunction: F;
+    readonly executionId: Protocol.ExecutionId;
+    readonly args: PayloadArgs<F>;
+    readonly options?: InvocationOptions;
+  }): Effect.Effect<DurableHandle, unknown>;
+  (options: {
+    readonly targetFunction: string;
+    readonly executionId: Protocol.ExecutionId;
+    readonly args: ReadonlyArray<unknown>;
+    readonly options?: InvocationOptions;
+  }): Effect.Effect<DurableHandle, unknown>;
 }
 
 export interface AwaitInvocationMethods {
-  <F extends AnyFunction>(
-    fn: F,
-    id: Protocol.ExecutionId,
-    args: PayloadArgs<F>,
-    options?: InvocationOptions,
-  ): Effect.Effect<unknown, unknown>;
-  (
-    name: string,
-    id: Protocol.ExecutionId,
-    args: ReadonlyArray<unknown>,
-    options?: InvocationOptions,
-  ): Effect.Effect<unknown, unknown>;
+  <F extends AnyFunction>(options: {
+    readonly targetFunction: F;
+    readonly executionId: Protocol.ExecutionId;
+    readonly args: PayloadArgs<F>;
+    readonly options?: InvocationOptions;
+  }): Effect.Effect<unknown, unknown>;
+  (options: {
+    readonly targetFunction: string;
+    readonly executionId: Protocol.ExecutionId;
+    readonly args: ReadonlyArray<unknown>;
+    readonly options?: InvocationOptions;
+  }): Effect.Effect<unknown, unknown>;
 }
 
 const globalScope = Schema.Literal("global").make("global");
@@ -401,11 +422,14 @@ const resolvedState = Schema.Literal("resolved").make("resolved");
 const rejectedState = Schema.Literal("rejected").make("rejected");
 const canceledState = Schema.Literal("rejected_canceled").make("rejected_canceled");
 
-const prefixedId = (id: Protocol.ExecutionId, prefix: Option.Option<string>): Protocol.PromiseId =>
+const prefixedId = (options: {
+  readonly id: Protocol.ExecutionId;
+  readonly prefix: Option.Option<string>;
+}): Protocol.PromiseId =>
   Protocol.PromiseId.make(
-    Option.match(prefix, {
-      onNone: () => id,
-      onSome: (prefix) => `${prefix}:${id}`,
+    Option.match(options.prefix, {
+      onNone: () => options.id,
+      onSome: (prefix) => `${prefix}:${options.id}`,
     }),
   );
 
@@ -414,17 +438,20 @@ export interface ResonateClientService {
   readonly run: AwaitInvocationMethods;
   readonly beginRpc: InvocationMethods;
   readonly rpc: AwaitInvocationMethods;
-  readonly resolve: <P extends PromiseDeclaration>(
-    declaration: P,
-    id: Protocol.PromiseId,
-    value: PromiseSuccess<P>,
-  ) => Effect.Effect<void, unknown>;
-  readonly reject: <P extends PromiseDeclaration>(
-    declaration: P,
-    id: Protocol.PromiseId,
-    error: PromiseFailure<P>,
-  ) => Effect.Effect<void, unknown>;
-  readonly get: <F extends AnyFunction>(fn: F, id: Protocol.ExecutionId) => Effect.Effect<DurableHandle>;
+  readonly resolve: <P extends PromiseDeclaration>(options: {
+    readonly declaration: P;
+    readonly id: Protocol.PromiseId;
+    readonly value: PromiseSuccess<P>;
+  }) => Effect.Effect<void, unknown>;
+  readonly reject: <P extends PromiseDeclaration>(options: {
+    readonly declaration: P;
+    readonly id: Protocol.PromiseId;
+    readonly error: PromiseFailure<P>;
+  }) => Effect.Effect<void, unknown>;
+  readonly get: <F extends AnyFunction>(options: {
+    readonly fn: F;
+    readonly id: Protocol.ExecutionId;
+  }) => Effect.Effect<DurableHandle>;
   readonly cancel: (id: Protocol.PromiseId) => Effect.Effect<void, unknown>;
 }
 
@@ -443,67 +470,70 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
         const defaultTimeout = options?.timeout ?? Duration.hours(24);
         const idPrefix = Option.fromNullishOr(options?.idPrefix);
 
-        const encodeInvocation = Effect.fn("ResonateClient.encodeInvocation")(function* (
-          name: string,
-          args: ReadonlyArray<unknown>,
-          version: Protocol.FunctionVersionOrLatest,
-          retry?: RetryPolicy.RetryPolicy,
-        ): Effect.fn.Return<Protocol.Value, unknown> {
+        const encodeInvocation = Effect.fn("ResonateClient.encodeInvocation")(function* (options: {
+          readonly name: string;
+          readonly args: ReadonlyArray<unknown>;
+          readonly version: Protocol.FunctionVersionOrLatest;
+          readonly retry?: RetryPolicy.RetryPolicy;
+        }): Effect.fn.Return<Protocol.Value, unknown> {
           const invocation = InvocationParam.make({
-            func: name,
-            args,
-            version,
-            ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
+            func: options.name,
+            args: options.args,
+            version: options.version,
+            ...(Predicate.isNotUndefined(options.retry) ? { retry: options.retry } : {}),
           });
           const encoded = yield* codec.encode(invocation);
-          return withSchemaHeader(encoded, name);
+          return withSchemaHeader({ value: encoded, schemaName: options.name });
         });
 
-        const encodeTargetPayload = Effect.fn("ResonateClient.encodeTargetPayload")(function* (
-          target: AnyFunction | string,
-          args: ReadonlyArray<unknown>,
-          callOptions?: InvocationOptions,
-        ): Effect.fn.Return<Protocol.Value, unknown> {
-          if (Predicate.isString(target)) {
-            return yield* encodeInvocation(
-              target,
-              args,
-              Predicate.isUndefined(callOptions?.version) ? Protocol.FunctionVersion.make(1) : callOptions.version,
-              callOptions?.retryPolicy,
-            );
+        const encodeTargetPayload = Effect.fn("ResonateClient.encodeTargetPayload")(function* (options: {
+          readonly target: AnyFunction | string;
+          readonly args: ReadonlyArray<unknown>;
+          readonly callOptions?: InvocationOptions;
+        }): Effect.fn.Return<Protocol.Value, unknown> {
+          if (Predicate.isString(options.target)) {
+            return yield* encodeInvocation({
+              name: options.target,
+              args: options.args,
+              version: Predicate.isUndefined(options.callOptions?.version)
+                ? Protocol.FunctionVersion.make(1)
+                : options.callOptions.version,
+              retry: options.callOptions?.retryPolicy,
+            });
           }
-          const encodedArgs = yield* Schema.encodeUnknownEffect(target.payload)(args).pipe(
+          const target = options.target;
+          const encodedArgs = yield* Schema.encodeUnknownEffect(target.payload)(options.args).pipe(
             Effect.catchCause(() =>
-              args.length === 1
-                ? Schema.encodeUnknownEffect(target.payload)(args[0])
+              options.args.length === 1
+                ? Schema.encodeUnknownEffect(target.payload)(options.args[0])
                 : Effect.die("Invalid function payload"),
             ),
           );
-          return yield* encodeInvocation(
-            target.name,
-            Array.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
-            callOptions?.version ?? target.version,
-            callOptions?.retryPolicy,
-          );
+          return yield* encodeInvocation({
+            name: target.name,
+            args: Array.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
+            version: options.callOptions?.version ?? target.version,
+            retry: options.callOptions?.retryPolicy,
+          });
         });
 
-        const rootTags = (
-          id: Protocol.PromiseId,
-          target: Protocol.TargetAddress,
-          extra: Protocol.Tags,
-        ): Protocol.Tags =>
+        const rootTags = (options: {
+          readonly id: Protocol.PromiseId;
+          readonly target: Protocol.TargetAddress;
+          readonly extra: Protocol.Tags;
+        }): Protocol.Tags =>
           Protocol.Tags.make({
             reserved: {
-              ...extra.reserved,
-              "resonate:origin": id,
-              "resonate:prefix": id,
-              "resonate:branch": id,
-              "resonate:parent": id,
+              ...options.extra.reserved,
+              "resonate:origin": options.id,
+              "resonate:prefix": options.id,
+              "resonate:branch": options.id,
+              "resonate:parent": options.id,
               "resonate:scope": globalScope,
-              "resonate:target": target,
+              "resonate:target": options.target,
             },
-            unrecognized: extra.unrecognized,
-            user: extra.user,
+            unrecognized: options.extra.unrecognized,
+            user: options.extra.user,
           });
 
         const decodeSettled = Effect.fn("ResonateClient.decodeSettled")(function* (promise: Protocol.PromiseSettled) {
@@ -540,32 +570,40 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           return yield* Schema.decodeUnknownEffect(Protocol.Timestamp)(now + Duration.toMillis(timeout));
         });
 
-        const beginRpcImpl = Effect.fn("ResonateClient.beginRpc")(function* (
-          targetFunction: AnyFunction | string,
-          executionId: Protocol.ExecutionId,
-          args: ReadonlyArray<unknown>,
-          callOptions?: InvocationOptions,
-        ): Effect.fn.Return<DurableHandle, unknown> {
-          const id = prefixedId(executionId, idPrefix);
-          const target = network.match(callOptions?.target ?? groupName);
-          const param = yield* encodeTargetPayload(targetFunction, args, callOptions);
+        const beginRpcImpl = Effect.fn("ResonateClient.beginRpc")(function* (options: {
+          readonly targetFunction: AnyFunction | string;
+          readonly executionId: Protocol.ExecutionId;
+          readonly args: ReadonlyArray<unknown>;
+          readonly options?: InvocationOptions;
+        }): Effect.fn.Return<DurableHandle, unknown> {
+          const id = prefixedId({ id: options.executionId, prefix: idPrefix });
+          const target = network.match(options.options?.target ?? groupName);
+          const param = yield* encodeTargetPayload({
+            target: options.targetFunction,
+            args: options.args,
+            callOptions: options.options,
+          });
           yield* promises.create({
             id,
-            timeoutAt: yield* timeoutAt(callOptions?.timeout ?? defaultTimeout),
+            timeoutAt: yield* timeoutAt(options.options?.timeout ?? defaultTimeout),
             param,
-            tags: rootTags(id, target, callOptions?.tags ?? Protocol.emptyTags),
+            tags: rootTags({ id, target, extra: options.options?.tags ?? Protocol.emptyTags }),
           });
           return handle(id);
         });
 
-        const beginRunImpl = Effect.fn("ResonateClient.beginRun")(function* (
-          targetFunction: AnyFunction | string,
-          executionId: Protocol.ExecutionId,
-          args: ReadonlyArray<unknown>,
-          callOptions?: InvocationOptions,
-        ): Effect.fn.Return<DurableHandle, unknown> {
-          const id = prefixedId(executionId, idPrefix);
-          const param = yield* encodeTargetPayload(targetFunction, args, callOptions);
+        const beginRunImpl = Effect.fn("ResonateClient.beginRun")(function* (options: {
+          readonly targetFunction: AnyFunction | string;
+          readonly executionId: Protocol.ExecutionId;
+          readonly args: ReadonlyArray<unknown>;
+          readonly options?: InvocationOptions;
+        }): Effect.fn.Return<DurableHandle, unknown> {
+          const id = prefixedId({ id: options.executionId, prefix: idPrefix });
+          const param = yield* encodeTargetPayload({
+            target: options.targetFunction,
+            args: options.args,
+            callOptions: options.options,
+          });
           yield* tasks.create({
             pid,
             ttl,
@@ -576,9 +614,13 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
               }),
               data: {
                 id,
-                timeoutAt: yield* timeoutAt(callOptions?.timeout ?? defaultTimeout),
+                timeoutAt: yield* timeoutAt(options.options?.timeout ?? defaultTimeout),
                 param,
-                tags: rootTags(id, network.anycast(groupName), callOptions?.tags ?? Protocol.emptyTags),
+                tags: rootTags({
+                  id,
+                  target: network.anycast(groupName),
+                  extra: options.options?.tags ?? Protocol.emptyTags,
+                }),
               },
             }),
           });
@@ -587,51 +629,51 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
 
         return ResonateClient.of({
           beginRun: beginRunImpl,
-          run: Effect.fn("ResonateClient.run")(function* (
-            targetFunction: AnyFunction | string,
-            executionId: Protocol.ExecutionId,
-            args: ReadonlyArray<unknown>,
-            callOptions?: InvocationOptions,
-          ): Effect.fn.Return<unknown, unknown> {
-            const current = yield* beginRunImpl(targetFunction, executionId, args, callOptions);
+          run: Effect.fn("ResonateClient.run")(function* (options: {
+            readonly targetFunction: AnyFunction | string;
+            readonly executionId: Protocol.ExecutionId;
+            readonly args: ReadonlyArray<unknown>;
+            readonly options?: InvocationOptions;
+          }): Effect.fn.Return<unknown, unknown> {
+            const current = yield* beginRunImpl(options);
             return yield* current.await;
           }),
           beginRpc: beginRpcImpl,
-          rpc: Effect.fn("ResonateClient.rpc")(function* (
-            targetFunction: AnyFunction | string,
-            executionId: Protocol.ExecutionId,
-            args: ReadonlyArray<unknown>,
-            callOptions?: InvocationOptions,
-          ): Effect.fn.Return<unknown, unknown> {
-            const current = yield* beginRpcImpl(targetFunction, executionId, args, callOptions);
+          rpc: Effect.fn("ResonateClient.rpc")(function* (options: {
+            readonly targetFunction: AnyFunction | string;
+            readonly executionId: Protocol.ExecutionId;
+            readonly args: ReadonlyArray<unknown>;
+            readonly options?: InvocationOptions;
+          }): Effect.fn.Return<unknown, unknown> {
+            const current = yield* beginRpcImpl(options);
             return yield* current.await;
           }),
-          resolve: Effect.fn("ResonateClient.resolve")(function* (declaration, id, value) {
-            const encoded = yield* Schema.encodeUnknownEffect(declaration.success)(value);
+          resolve: Effect.fn("ResonateClient.resolve")(function* (options) {
+            const encoded = yield* Schema.encodeUnknownEffect(options.declaration.success)(options.value);
             const protocolValue = yield* codec.encode(encoded);
             yield* promises.settle({
-              id,
+              id: options.id,
               state: resolvedState,
-              value: withSchemaHeader(protocolValue, declaration.name),
+              value: withSchemaHeader({ value: protocolValue, schemaName: options.declaration.name }),
             });
           }),
-          reject: Effect.fn("ResonateClient.reject")(function* (declaration, id, error) {
-            if (Predicate.isUndefined(declaration.error)) {
-              return yield* Effect.die(`Promise declaration '${declaration.name}' has no error schema`);
+          reject: Effect.fn("ResonateClient.reject")(function* (options) {
+            if (Predicate.isUndefined(options.declaration.error)) {
+              return yield* Effect.die(`Promise declaration '${options.declaration.name}' has no error schema`);
             }
-            const encoded = yield* Schema.encodeUnknownEffect(declaration.error)(error);
+            const encoded = yield* Schema.encodeUnknownEffect(options.declaration.error)(options.error);
             const protocolValue = yield* codec.encode(encoded);
             yield* promises.settle({
-              id,
+              id: options.id,
               state: rejectedState,
-              value: withSchemaHeader(protocolValue, declaration.name),
+              value: withSchemaHeader({ value: protocolValue, schemaName: options.declaration.name }),
             });
           }),
-          get: Effect.fn("ResonateClient.get")(function* <F extends AnyFunction>(
-            _fn: F,
-            executionId: Protocol.ExecutionId,
-          ): Effect.fn.Return<DurableHandle> {
-            return handle(prefixedId(executionId, idPrefix));
+          get: Effect.fn("ResonateClient.get")(function* <F extends AnyFunction>(options: {
+            readonly fn: F;
+            readonly id: Protocol.ExecutionId;
+          }): Effect.fn.Return<DurableHandle> {
+            return handle(prefixedId({ id: options.id, prefix: idPrefix }));
           }),
           cancel: Effect.fn("ResonateClient.cancel")(function* (id) {
             yield* promises.settle({ id, state: canceledState, value: Protocol.emptyValue });

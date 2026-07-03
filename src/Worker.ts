@@ -39,19 +39,19 @@ interface HeldTask {
 
 type WorkerRequirements<F extends AnyFunction> = ResonateNetwork | Crypto.Crypto | Handler<F>;
 
-export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
-  group: FunctionGroup<Fns>,
-  config: WorkerConfig,
-): Layer.Layer<never, never, WorkerRequirements<Fns[number]>> =>
+export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
+  readonly group: FunctionGroup<Fns>;
+  readonly worker: WorkerConfig;
+}): Layer.Layer<never, never, WorkerRequirements<Fns[number]>> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const network = yield* ResonateNetwork;
       const tasks = yield* Tasks;
       const engine = yield* ExecutionEngine;
       const crypto = yield* Crypto.Crypto;
-      const registry = yield* group.registry;
-      const pid = config.pid ?? Protocol.ProcessId.make(yield* Effect.orDie(crypto.randomUUIDv4));
-      const ttl = config.ttl ?? Duration.seconds(60);
+      const registry = yield* config.group.registry;
+      const pid = config.worker.pid ?? Protocol.ProcessId.make(yield* Effect.orDie(crypto.randomUUIDv4));
+      const ttl = config.worker.ttl ?? Duration.seconds(60);
       const heartbeatEvery = Duration.max(Duration.millis(1), Duration.divideUnsafe(ttl, 2));
       const held = yield* Ref.make(HashMap.empty<Protocol.TaskId, HeldTask>());
 
@@ -61,18 +61,19 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
         Effect.schedule(Schedule.spaced(heartbeatEvery)),
       );
 
-      const executeUntilBlocked = Effect.fn("Worker.executeUntilBlocked")(function* (
-        task: Protocol.TaskAcquired,
-        promise: Protocol.PromiseRecord,
-        registry: ExecuteOptions["registry"],
-        preload: ReadonlyArray<Protocol.PromiseRecord>,
-      ): Effect.fn.Return<void, unknown> {
+      const executeUntilBlocked = Effect.fn("Worker.executeUntilBlocked")(function* (options: {
+        readonly task: Protocol.TaskAcquired;
+        readonly promise: Protocol.PromiseRecord;
+        readonly registry: ExecuteOptions["registry"];
+        readonly preload: ReadonlyArray<Protocol.PromiseRecord>;
+      }): Effect.fn.Return<void, unknown> {
+        const { task, promise, registry, preload } = options;
         const outcome = yield* engine.execute({ task, promise, registry, preload });
         if (Predicate.isTagged(outcome, "Done")) {
           return;
         }
-        const result = yield* tasks.suspend(
-          {
+        const result = yield* tasks.suspend({
+          data: {
             id: task.id,
             version: task.version,
             actions: outcome.awaited.map((id) =>
@@ -85,22 +86,22 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
               }),
             ),
           },
-          {
+          options: {
             origin: Protocol.promiseOrigin(promise),
           },
-        );
+        });
         if (SchemaParser.is(SuspendAccepted)(result)) {
           return;
         }
-        return yield* executeUntilBlocked(task, promise, registry, result.preload);
+        return yield* executeUntilBlocked({ task, promise, registry, preload: result.preload });
       });
 
       const handleExecute = Effect.fn("Worker.handleExecute")(function* (message: Protocol.ExecuteMessage) {
         const acquired = yield* tasks
-          .acquire(
-            { id: message.data.task.id, version: message.data.task.version, pid, ttl },
-            { origin: message.data.task.id },
-          )
+          .acquire({
+            data: { id: message.data.task.id, version: message.data.task.version, pid, ttl },
+            options: { origin: message.data.task.id },
+          })
           .pipe(
             Effect.map(Option.some),
             Effect.catchTag("TaskFenced", () => Effect.succeed(Option.none<TaskClaimResult>())),
@@ -116,12 +117,12 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
         const claim = acquired.value;
         yield* Ref.update(held, HashMap.set(claim.task.id, { id: claim.task.id, version: claim.task.version }));
         const releaseBestEffort = tasks
-          .release(
-            { id: claim.task.id, version: claim.task.version },
-            { origin: Protocol.promiseOrigin(claim.promise) },
-          )
+          .release({
+            data: { id: claim.task.id, version: claim.task.version },
+            options: { origin: Protocol.promiseOrigin(claim.promise) },
+          })
           .pipe(Effect.ignore);
-        yield* executeUntilBlocked(claim.task, claim.promise, registry, claim.preload).pipe(
+        yield* executeUntilBlocked({ task: claim.task, promise: claim.promise, registry, preload: claim.preload }).pipe(
           Effect.onError((cause) => (Cause.hasInterruptsOnly(cause) ? Effect.void : releaseBestEffort)),
           Effect.ensuring(Ref.update(held, HashMap.remove(claim.task.id))),
         );
@@ -140,17 +141,17 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
     }),
   ).pipe(Layer.provideMerge(ExecutionEngine.layer.pipe(Layer.provideMerge(Tasks.layer))));
 
-export const layerHttp = <const Fns extends ReadonlyArray<AnyFunction>>(
-  group: FunctionGroup<Fns>,
-  config: HttpWorkerConfig,
-): Layer.Layer<never, never, Handler<Fns[number]>> =>
-  layer(group, config).pipe(
+export const layerHttp = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
+  readonly group: FunctionGroup<Fns>;
+  readonly http: HttpWorkerConfig;
+}): Layer.Layer<never, never, Handler<Fns[number]>> =>
+  layer({ group: config.group, worker: config.http }).pipe(
     Layer.provideMerge(
       NetworkHttp.layer({
-        url: config.url,
-        group: config.group,
-        pid: config.pid,
-        token: config.token,
+        url: config.http.url,
+        group: config.http.group,
+        pid: config.http.pid,
+        token: config.http.token,
       }).pipe(Layer.provide(BunHttpClient.layer)),
     ),
     Layer.provideMerge(BunCrypto.layer),

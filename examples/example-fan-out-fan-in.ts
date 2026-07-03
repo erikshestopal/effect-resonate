@@ -15,7 +15,7 @@ const Payload = Schema.Struct({
   event: Schema.String,
   message: Schema.String,
 });
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -24,12 +24,20 @@ const handlers = App.toLayer(
       Effect.gen(function* (): Effect.fn.Return<unknown, unknown, ResonateContext.ResonateContext> {
         const ctx = yield* ResonateContext.ResonateContext;
         const results: Array<unknown> = [];
-        results.push(yield* ctx.run(Effect.logInfo(`email ${input.userId}`).pipe(Effect.as(`email ${input.userId}`))));
-        results.push(yield* ctx.run(Effect.logInfo(`sms ${input.userId}`).pipe(Effect.as(`sms ${input.userId}`))));
         results.push(
-          yield* ctx.run(Effect.logInfo(`slack ${input.orderId}`).pipe(Effect.as(`slack ${input.orderId}`))),
+          yield* ctx.run({ effect: Effect.logInfo(`email ${input.userId}`).pipe(Effect.as(`email ${input.userId}`)) }),
         );
-        results.push(yield* ctx.run(Effect.logInfo(`push ${input.orderId}`).pipe(Effect.as(`push ${input.orderId}`))));
+        results.push(
+          yield* ctx.run({ effect: Effect.logInfo(`sms ${input.userId}`).pipe(Effect.as(`sms ${input.userId}`)) }),
+        );
+        results.push(
+          yield* ctx.run({
+            effect: Effect.logInfo(`slack ${input.orderId}`).pipe(Effect.as(`slack ${input.orderId}`)),
+          }),
+        );
+        results.push(
+          yield* ctx.run({ effect: Effect.logInfo(`push ${input.orderId}`).pipe(Effect.as(`push ${input.orderId}`)) }),
+        );
         yield* ctx.sleep(Duration.millis(1));
         return { repo, functionName, results };
       }),
@@ -43,7 +51,9 @@ const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault("example-fan-out-fan-in-ts-worker"));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

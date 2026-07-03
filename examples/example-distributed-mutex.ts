@@ -12,7 +12,7 @@ const Payload = Schema.Struct({
   workers: Schema.Array(Schema.String),
   shouldCrash: Schema.Boolean,
 });
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -22,11 +22,11 @@ const handlers = App.toLayer(
         const ctx = yield* ResonateContext.ResonateContext;
         const results: Array<unknown> = [];
         results.push(
-          yield* ctx.run(
-            Effect.logInfo(`${input.workers.join(",")} accessed ${input.resource}`).pipe(
+          yield* ctx.run({
+            effect: Effect.logInfo(`${input.workers.join(",")} accessed ${input.resource}`).pipe(
               Effect.as(`${input.workers.join(",")} accessed ${input.resource}`),
             ),
-          ),
+          }),
         );
         yield* ctx.sleep(Duration.millis(1));
         return { repo, functionName, results };
@@ -43,7 +43,9 @@ const worker = Layer.unwrap(
     );
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

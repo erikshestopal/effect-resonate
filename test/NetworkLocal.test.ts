@@ -15,7 +15,7 @@ const layers = Layer.mergeAll(
 
 const pid = (value: string) => Protocol.PromiseId.make(value);
 
-const anycastDefault = Protocol.TargetAddress.pollAny(Protocol.WorkerGroup.make("default"));
+const anycastDefault = Protocol.TargetAddress.pollAny({ group: Protocol.WorkerGroup.make("default") });
 
 const targetTags = Protocol.Tags.make({
   reserved: { "resonate:target": anycastDefault },

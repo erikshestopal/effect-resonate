@@ -4,14 +4,9 @@ import * as Resonate from "../src/Resonate.ts";
 import { ResonateContext } from "../src/ResonateContext.ts";
 import * as Protocol from "../src/Protocol.ts";
 
-const Countdown = Resonate.function("Countdown", {
-  payload: Schema.Tuple([Schema.Number, Schema.Number]),
-});
+const Countdown = Resonate.function({ name: "Countdown", payload: Schema.Tuple([Schema.Number, Schema.Number]) });
 
-const Checkout = Resonate.function("Checkout", {
-  payload: Schema.Struct({ id: Schema.String }),
-  version: 2,
-});
+const Checkout = Resonate.function({ name: "Checkout", payload: Schema.Struct({ id: Schema.String }), version: 2 });
 
 const contextLayer = Layer.succeed(
   ResonateContext,
@@ -83,7 +78,7 @@ describe("Resonate function registry", () => {
       expect(yield* checkout({ id: "order-1" }).pipe(Effect.provide(contextLayer))).toBe("order-1");
 
       const registry = yield* group.registry.pipe(Effect.provide(layer));
-      const latest = registry.get("Checkout");
+      const latest = registry.get({ name: "Checkout" });
       expect(Option.isSome(latest)).toBe(true);
       if (Option.isSome(latest)) {
         expect(latest.value.definition.version).toBe(2);
@@ -111,9 +106,7 @@ describe("Resonate function registry", () => {
 
   it.effect("rejects duplicate name and version at layer build", () =>
     Effect.gen(function* () {
-      const duplicate = Resonate.function("Countdown", {
-        payload: Schema.Tuple([Schema.Number, Schema.Number]),
-      });
+      const duplicate = Resonate.function({ name: "Countdown", payload: Schema.Tuple([Schema.Number, Schema.Number]) });
       const group = Resonate.group(Countdown, duplicate);
       const layer = group.toLayer(
         group.of({
@@ -128,7 +121,7 @@ describe("Resonate function registry", () => {
   it.effect("builds a single handler layer", () =>
     Effect.gen(function* () {
       const group = Resonate.group(Checkout);
-      const layer = group.toLayerHandler("Checkout", (order) => Effect.succeed(order.id));
+      const layer = group.toLayerHandler({ name: "Checkout", build: (order) => Effect.succeed(order.id) });
       const checkout = yield* Resonate.Handler(Checkout).pipe(Effect.provide(layer));
       expect(yield* checkout({ id: "single" }).pipe(Effect.provide(contextLayer))).toBe("single");
     }),

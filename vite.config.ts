@@ -68,6 +68,7 @@ export default defineConfig({
   },
   lint: {
     plugins: ["unicorn", "typescript", "oxc", "promise", "import"],
+    jsPlugins: ["./lint/oxlint-plugin.js"],
     categories: {},
     overrides: [
       {
@@ -76,8 +77,15 @@ export default defineConfig({
           "no-unused-vars": "off",
         },
       },
+      {
+        files: ["test/**", "examples/**", "lint/**"],
+        rules: {
+          "resonate/max-positional-params": "off",
+        },
+      },
     ],
     rules: {
+      "resonate/max-positional-params": "error",
       curly: "error",
       "for-direction": "warn",
       "no-async-promise-executor": "warn",

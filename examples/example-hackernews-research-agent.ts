@@ -8,7 +8,7 @@ export const sampleArgs = ["durable execution", []] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-hackernews-research-agent-ts --func scanKeyword --json-args '["durable execution",[]]' example-hackernews-research-agent-ts-demo
 
 const Payload = Schema.Tuple([Schema.String, Schema.Array(Schema.String)]);
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -18,11 +18,11 @@ const handlers = App.toLayer(
         const ctx = yield* ResonateContext.ResonateContext;
         const slackWebhook = yield* Config.string("SLACK_WEBHOOK").pipe(Config.withDefault(""));
         yield* Config.string("OPENAI_API_KEY").pipe(Config.withDefault(""));
-        yield* ctx.run(Effect.logInfo(`searched Hacker News for ${keyword}`));
+        yield* ctx.run({ effect: Effect.logInfo(`searched Hacker News for ${keyword}`) });
         const stories = [{ objectID: "1", title: `${keyword} on Hacker News`, url: "" }];
         const newlyAnalyzed: Array<unknown> = [];
         for (const story of stories.filter((candidate) => !seenIds.includes(candidate.objectID))) {
-          yield* ctx.run(Effect.logInfo(`analyzed ${story.objectID}`));
+          yield* ctx.run({ effect: Effect.logInfo(`analyzed ${story.objectID}`) });
           newlyAnalyzed.push({
             storyId: story.objectID,
             title: story.title,
@@ -31,7 +31,7 @@ const handlers = App.toLayer(
           });
         }
         if (slackWebhook.length > 0 && newlyAnalyzed.length > 0) {
-          yield* ctx.run(Effect.logInfo(`notified Slack ${slackWebhook}`));
+          yield* ctx.run({ effect: Effect.logInfo(`notified Slack ${slackWebhook}`) });
         }
         return { keyword, storiesFound: stories.length, newlyAnalyzed };
       }),
@@ -45,7 +45,9 @@ const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault(`${repo}-worker`));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(30) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(30) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

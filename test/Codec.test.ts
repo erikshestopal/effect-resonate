@@ -187,9 +187,11 @@ describe("encryptor seam", () => {
 
 describe("schema header", () => {
   it("annotates values additively", () => {
-    expect(withSchemaHeader({ data: "NDI=", headers: { a: "b" } }, "Countdown/payload")).toEqual({
-      data: "NDI=",
-      headers: { a: "b", "resonate:schema": "Countdown/payload" },
-    });
+    expect(withSchemaHeader({ value: { data: "NDI=", headers: { a: "b" } }, schemaName: "Countdown/payload" })).toEqual(
+      {
+        data: "NDI=",
+        headers: { a: "b", "resonate:schema": "Countdown/payload" },
+      },
+    );
   });
 });

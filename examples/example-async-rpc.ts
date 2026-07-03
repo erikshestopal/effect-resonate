@@ -8,7 +8,7 @@ export const sampleArgs = ["ping"] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-async-rpc-ts --func foo --json-args '["ping"]' example-async-rpc-ts-demo
 
 const Payload = Schema.String;
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -17,9 +17,15 @@ const handlers = App.toLayer(
       Effect.gen(function* (): Effect.fn.Return<unknown, unknown, ResonateContext.ResonateContext> {
         const ctx = yield* ResonateContext.ResonateContext;
         const results: Array<unknown> = [];
-        results.push(yield* ctx.run(Effect.logInfo(`service-a ${input}`).pipe(Effect.as(`service-a ${input}`))));
-        results.push(yield* ctx.run(Effect.logInfo(`service-b ${input}`).pipe(Effect.as(`service-b ${input}`))));
-        results.push(yield* ctx.run(Effect.logInfo(`service-c ${input}`).pipe(Effect.as(`service-c ${input}`))));
+        results.push(
+          yield* ctx.run({ effect: Effect.logInfo(`service-a ${input}`).pipe(Effect.as(`service-a ${input}`)) }),
+        );
+        results.push(
+          yield* ctx.run({ effect: Effect.logInfo(`service-b ${input}`).pipe(Effect.as(`service-b ${input}`)) }),
+        );
+        results.push(
+          yield* ctx.run({ effect: Effect.logInfo(`service-c ${input}`).pipe(Effect.as(`service-c ${input}`)) }),
+        );
         yield* ctx.sleep(Duration.millis(1));
         return { repo, functionName, results };
       }),
@@ -33,7 +39,9 @@ const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault("example-async-rpc-ts-worker"));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

@@ -8,7 +8,7 @@ export const sampleArgs = [{ gameId: "game-1" }] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-chess-hero-gcp-ts --func chessHero --json-args '[{"gameId":"game-1"}]' example-chess-hero-gcp-ts-demo
 
 const Payload = Schema.Struct({ gameId: Schema.String });
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -18,9 +18,11 @@ const handlers = App.toLayer(
         const ctx = yield* ResonateContext.ResonateContext;
         const results: Array<unknown> = [];
         results.push(
-          yield* ctx.run(
-            Effect.logInfo(`analyze chess game ${input.gameId}`).pipe(Effect.as(`analyze chess game ${input.gameId}`)),
-          ),
+          yield* ctx.run({
+            effect: Effect.logInfo(`analyze chess game ${input.gameId}`).pipe(
+              Effect.as(`analyze chess game ${input.gameId}`),
+            ),
+          }),
         );
         yield* ctx.sleep(Duration.millis(1));
         return { repo, functionName, results };
@@ -35,7 +37,9 @@ const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault("example-chess-hero-gcp-ts-worker"));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

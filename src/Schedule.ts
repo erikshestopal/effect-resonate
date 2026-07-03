@@ -7,7 +7,12 @@ const isGetSuccess = SchemaParser.is(Protocol.ScheduleGetSuccessResponse);
 const isCreateSuccess = SchemaParser.is(Protocol.ScheduleCreateSuccessResponse);
 const isDeleteSuccess = SchemaParser.is(Protocol.ScheduleDeleteSuccessResponse);
 
-const scheduleError = (id: Protocol.ScheduleId, status: number, message: unknown): ResonateProtocolError => {
+const scheduleError = (options: {
+  readonly id: Protocol.ScheduleId;
+  readonly status: number;
+  readonly message: unknown;
+}): ResonateProtocolError => {
+  const { id, status, message } = options;
   if (status === 404) {
     return new ScheduleNotFound({ id });
   }
@@ -42,14 +47,14 @@ export class Schedules extends Context.Service<Schedules, SchedulesService>()("e
           if (isGetSuccess(response)) {
             return response.data.schedule;
           }
-          return yield* scheduleError(id, response.head.status, response.data);
+          return yield* scheduleError({ id, status: response.head.status, message: response.data });
         }),
         create: Effect.fn("Schedules.create")(function* (data) {
           const response = yield* network.send(Protocol.ScheduleCreateRequest.make({ head: yield* head(), data }));
           if (isCreateSuccess(response)) {
             return response.data.schedule;
           }
-          return yield* scheduleError(data.id, response.head.status, response.data);
+          return yield* scheduleError({ id: data.id, status: response.head.status, message: response.data });
         }),
         delete: Effect.fn("Schedules.delete")(function* (id) {
           const response = yield* network.send(
@@ -58,7 +63,7 @@ export class Schedules extends Context.Service<Schedules, SchedulesService>()("e
           if (isDeleteSuccess(response)) {
             return;
           }
-          return yield* scheduleError(id, response.head.status, response.data);
+          return yield* scheduleError({ id, status: response.head.status, message: response.data });
         }),
       });
     }),

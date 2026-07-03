@@ -15,7 +15,7 @@ const Payload = Schema.Struct({
   requesterId: Schema.String,
   type: Schema.String,
 });
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -25,15 +25,19 @@ const handlers = App.toLayer(
         const ctx = yield* ResonateContext.ResonateContext;
         const results: Array<unknown> = [];
         results.push(
-          yield* ctx.run(
-            Effect.logInfo(`download ${input.documentUrl}`).pipe(Effect.as(`download ${input.documentUrl}`)),
-          ),
+          yield* ctx.run({
+            effect: Effect.logInfo(`download ${input.documentUrl}`).pipe(Effect.as(`download ${input.documentUrl}`)),
+          }),
         );
         results.push(
-          yield* ctx.run(Effect.logInfo(`analyze ${input.jobId}`).pipe(Effect.as(`analyze ${input.jobId}`))),
+          yield* ctx.run({
+            effect: Effect.logInfo(`analyze ${input.jobId}`).pipe(Effect.as(`analyze ${input.jobId}`)),
+          }),
         );
         results.push(
-          yield* ctx.run(Effect.logInfo(`notify ${input.requesterId}`).pipe(Effect.as(`notify ${input.requesterId}`))),
+          yield* ctx.run({
+            effect: Effect.logInfo(`notify ${input.requesterId}`).pipe(Effect.as(`notify ${input.requesterId}`)),
+          }),
         );
         yield* ctx.sleep(Duration.millis(1));
         return { repo, functionName, results };
@@ -48,7 +52,9 @@ const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault("example-aws-lambda-ts-worker"));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

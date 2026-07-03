@@ -16,7 +16,7 @@ const Payload = Schema.Struct({
   currency: Schema.String,
   customer_id: Schema.String,
 });
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -26,17 +26,21 @@ const handlers = App.toLayer(
         const ctx = yield* ResonateContext.ResonateContext;
         const results: Array<unknown> = [];
         results.push(
-          yield* ctx.run(Effect.logInfo(`validated ${input.event_id}`).pipe(Effect.as(`validated ${input.event_id}`))),
+          yield* ctx.run({
+            effect: Effect.logInfo(`validated ${input.event_id}`).pipe(Effect.as(`validated ${input.event_id}`)),
+          }),
         );
         results.push(
-          yield* ctx.run(
-            Effect.logInfo(`charged ${input.amount} ${input.currency}`).pipe(
+          yield* ctx.run({
+            effect: Effect.logInfo(`charged ${input.amount} ${input.currency}`).pipe(
               Effect.as(`charged ${input.amount} ${input.currency}`),
             ),
-          ),
+          }),
         );
         results.push(
-          yield* ctx.run(Effect.logInfo(`ledger ${input.event_id}`).pipe(Effect.as(`ledger ${input.event_id}`))),
+          yield* ctx.run({
+            effect: Effect.logInfo(`ledger ${input.event_id}`).pipe(Effect.as(`ledger ${input.event_id}`)),
+          }),
         );
         yield* ctx.sleep(Duration.millis(1));
         return { repo, functionName, results };
@@ -51,7 +55,9 @@ const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault("example-webhook-handler-ts-worker"));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

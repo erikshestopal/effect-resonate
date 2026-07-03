@@ -103,21 +103,23 @@ describe("Tasks", () => {
       expect(gotTask.state).toBe("acquired");
 
       const version = Protocol.TaskVersion.make(1);
-      yield* tasks.release({ id: Protocol.TaskId.make("task-1"), version });
+      yield* tasks.release({ data: { id: Protocol.TaskId.make("task-1"), version } });
       yield* snap();
 
-      const acquired = yield* tasks.acquire({ id: Protocol.TaskId.make("task-1"), version, pid, ttl });
+      const acquired = yield* tasks.acquire({ data: { id: Protocol.TaskId.make("task-1"), version, pid, ttl } });
       expect(acquired.task.state).toBe("acquired");
       yield* snap();
 
       const fenced = yield* Effect.flip(
         tasks.fulfill({
-          id: Protocol.TaskId.make("task-1"),
-          version,
-          action: Protocol.PromiseSettleRequest.make({
-            head: yield* makeRequestHead,
-            data: promiseSettleData("task-1"),
-          }),
+          data: {
+            id: Protocol.TaskId.make("task-1"),
+            version,
+            action: Protocol.PromiseSettleRequest.make({
+              head: yield* makeRequestHead,
+              data: promiseSettleData("task-1"),
+            }),
+          },
         }),
       );
       expect(Predicate.isTagged(fenced, "TaskFenced")).toBe(true);
@@ -125,14 +127,16 @@ describe("Tasks", () => {
       yield* promises.create(promiseCreateData("awaited"));
       yield* promises.settle(promiseSettleData("awaited"));
       const refused = yield* tasks.suspend({
-        id: Protocol.TaskId.make("task-1"),
-        version: Protocol.TaskVersion.make(2),
-        actions: [
-          Protocol.PromiseRegisterCallbackRequest.make({
-            head: yield* makeRequestHead,
-            data: { awaited: Protocol.PromiseId.make("awaited"), awaiter: Protocol.PromiseId.make("task-1") },
-          }),
-        ],
+        data: {
+          id: Protocol.TaskId.make("task-1"),
+          version: Protocol.TaskVersion.make(2),
+          actions: [
+            Protocol.PromiseRegisterCallbackRequest.make({
+              head: yield* makeRequestHead,
+              data: { awaited: Protocol.PromiseId.make("awaited"), awaiter: Protocol.PromiseId.make("task-1") },
+            }),
+          ],
+        },
       });
       expect(Predicate.isTagged(refused, "SuspendRefused")).toBe(true);
       yield* snap();
@@ -142,12 +146,14 @@ describe("Tasks", () => {
       yield* snap();
 
       const fencedCreate = yield* tasks.fence({
-        id: Protocol.TaskId.make("task-1"),
-        version: currentVersion,
-        action: Protocol.PromiseCreateRequest.make({
-          head: yield* makeRequestHead,
-          data: promiseCreateData("child"),
-        }),
+        data: {
+          id: Protocol.TaskId.make("task-1"),
+          version: currentVersion,
+          action: Protocol.PromiseCreateRequest.make({
+            head: yield* makeRequestHead,
+            data: promiseCreateData("child"),
+          }),
+        },
       });
       expect(fencedCreate.action.head.status).toBe(200);
       yield* snap();

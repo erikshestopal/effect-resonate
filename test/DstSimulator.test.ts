@@ -8,17 +8,11 @@ import * as Resonate from "../src/Resonate.ts";
 import { ResonateContext } from "../src/ResonateContext.ts";
 import { assertInvariants, ResonateTest, restartWorker, snapshot } from "../src/testing.ts";
 
-const DstCounter = Resonate.function("DstCounter", {
-  payload: Schema.Number,
-});
+const DstCounter = Resonate.function({ name: "DstCounter", payload: Schema.Number });
 
-const DstFanout = Resonate.function("DstFanout", {
-  payload: Schema.Number,
-});
+const DstFanout = Resonate.function({ name: "DstFanout", payload: Schema.Number });
 
-const DstSleep = Resonate.function("DstSleep", {
-  payload: Schema.Number,
-});
+const DstSleep = Resonate.function({ name: "DstSleep", payload: Schema.Number });
 
 const DstFns = Resonate.group(DstCounter, DstFanout, DstSleep);
 
@@ -73,15 +67,15 @@ const runProgramCorpus = Effect.fn("DstSimulator.runProgramCorpus")(function* (s
       DstCounter: (value) =>
         Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
           const ctx = yield* ResonateContext;
-          yield* ctx.run(Ref.update(sideEffects, (count) => count + 1));
+          yield* ctx.run({ effect: Ref.update(sideEffects, (count) => count + 1) });
           yield* ctx.sleep(Duration.seconds(60));
           return Number(value) + 1;
         }),
       DstFanout: (value) =>
         Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
           const ctx = yield* ResonateContext;
-          const left = yield* ctx.beginRun(Effect.succeed(Number(value) + 1));
-          const right = yield* ctx.beginRun(Effect.succeed(Number(value) + 2));
+          const left = yield* ctx.beginRun({ effect: Effect.succeed(Number(value) + 1) });
+          const right = yield* ctx.beginRun({ effect: Effect.succeed(Number(value) + 2) });
           const results = yield* ctx.all([left.await, right.await]);
           return Number(results[0]) + Number(results[1]);
         }),
@@ -96,9 +90,21 @@ const runProgramCorpus = Effect.fn("DstSimulator.runProgramCorpus")(function* (s
 
   const program = Effect.gen(function* () {
     const client = yield* Resonate.ResonateClient;
-    const counter = yield* client.beginRpc(DstCounter, Protocol.ExecutionId.make(`dst-${seed}-counter`), [seed]);
-    const fanout = yield* client.beginRpc(DstFanout, Protocol.ExecutionId.make(`dst-${seed}-fanout`), [seed]);
-    const sleeper = yield* client.beginRpc(DstSleep, Protocol.ExecutionId.make(`dst-${seed}-sleep`), [60]);
+    const counter = yield* client.beginRpc({
+      targetFunction: DstCounter,
+      executionId: Protocol.ExecutionId.make(`dst-${seed}-counter`),
+      args: [seed],
+    });
+    const fanout = yield* client.beginRpc({
+      targetFunction: DstFanout,
+      executionId: Protocol.ExecutionId.make(`dst-${seed}-fanout`),
+      args: [seed],
+    });
+    const sleeper = yield* client.beginRpc({
+      targetFunction: DstSleep,
+      executionId: Protocol.ExecutionId.make(`dst-${seed}-sleep`),
+      args: [60],
+    });
 
     for (let index = 0; index < 8; index = index + 1) {
       yield* perturb(prng);
@@ -114,7 +120,7 @@ const runProgramCorpus = Effect.fn("DstSimulator.runProgramCorpus")(function* (s
     expect(yield* Ref.get(sideEffects)).toBe(1);
   });
 
-  yield* program.pipe(Effect.provide(ResonateTest.layer(DstFns, handlers)));
+  yield* program.pipe(Effect.provide(ResonateTest.layer({ group: DstFns, handlers: handlers })));
 });
 
 const runOperationFuzzer = Effect.fn("DstSimulator.runOperationFuzzer")(function* (seed: number) {
@@ -158,7 +164,7 @@ const runOperationFuzzer = Effect.fn("DstSimulator.runOperationFuzzer")(function
     }
   });
 
-  yield* program.pipe(Effect.provide(ResonateTest.layer(DstFns, handlers)));
+  yield* program.pipe(Effect.provide(ResonateTest.layer({ group: DstFns, handlers: handlers })));
 });
 
 describe("deterministic simulation", () => {

@@ -8,7 +8,7 @@ export const sampleArgs = [{ prompt: "cat", crashMode: "none" }] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-ai-image-pipeline-ts --func runImagePipeline --json-args '[{"prompt":"cat","crashMode":"none"}]' example-ai-image-pipeline-ts-demo
 
 const Payload = Schema.Struct({ prompt: Schema.String, crashMode: Schema.String });
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -18,15 +18,19 @@ const handlers = App.toLayer(
         const ctx = yield* ResonateContext.ResonateContext;
         const results: Array<unknown> = [];
         results.push(
-          yield* ctx.run(
-            Effect.logInfo(`photorealistic ${input.prompt}`).pipe(Effect.as(`photorealistic ${input.prompt}`)),
-          ),
+          yield* ctx.run({
+            effect: Effect.logInfo(`photorealistic ${input.prompt}`).pipe(Effect.as(`photorealistic ${input.prompt}`)),
+          }),
         );
         results.push(
-          yield* ctx.run(Effect.logInfo(`cartoon ${input.prompt}`).pipe(Effect.as(`cartoon ${input.prompt}`))),
+          yield* ctx.run({
+            effect: Effect.logInfo(`cartoon ${input.prompt}`).pipe(Effect.as(`cartoon ${input.prompt}`)),
+          }),
         );
         results.push(
-          yield* ctx.run(Effect.logInfo(`abstract ${input.prompt}`).pipe(Effect.as(`abstract ${input.prompt}`))),
+          yield* ctx.run({
+            effect: Effect.logInfo(`abstract ${input.prompt}`).pipe(Effect.as(`abstract ${input.prompt}`)),
+          }),
         );
         yield* ctx.sleep(Duration.millis(1));
         return { repo, functionName, results };
@@ -43,7 +47,9 @@ const worker = Layer.unwrap(
     );
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

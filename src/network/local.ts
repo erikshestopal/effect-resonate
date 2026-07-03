@@ -17,7 +17,6 @@ import {
 } from "effect";
 import * as Protocol from "../Protocol.ts";
 import { decodeResponse, ResonateNetwork } from "./network.ts";
-
 export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/PromiseObject")({
   id: Protocol.PromiseId,
   state: Protocol.PromiseState,
@@ -27,9 +26,7 @@ export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/Pro
   timeoutAt: Schema.DateTimeUtc,
   createdAt: Schema.DateTimeUtc,
   settledAt: Schema.Option(Schema.DateTimeUtc),
-
   callbacks: Schema.Array(Protocol.PromiseId),
-
   listeners: Schema.Array(Protocol.TargetAddress),
 }) {
   get fields() {
@@ -46,23 +43,18 @@ export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/Pro
       listeners: this.listeners,
     };
   }
-
   get isTimer(): boolean {
     return this.tags.isTimer;
   }
-
   get target(): Option.Option<Protocol.TargetAddress> {
     return Option.fromNullishOr(this.tags.reserved["resonate:target"]);
   }
-
   get external(): boolean {
     return Option.isSome(this.target) || this.isTimer || this.tags.reserved["resonate:scope"] === "global";
   }
-
   get timedOutState(): "resolved" | "rejected_timedout" {
     return this.isTimer ? "resolved" : "rejected_timedout";
   }
-
   projected(now: DateTime.Utc): PromiseObject {
     if (this.state !== "pending" || DateTime.toEpochMillis(this.timeoutAt) > DateTime.toEpochMillis(now)) {
       return this;
@@ -73,7 +65,6 @@ export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/Pro
       settledAt: Option.some(this.timeoutAt),
     });
   }
-
   toRecord(): Protocol.PromiseRecord {
     if (this.state === "pending") {
       return new Protocol.PromisePending({
@@ -97,14 +88,12 @@ export class PromiseObject extends Schema.Class<PromiseObject>("NetworkLocal/Pro
     });
   }
 }
-
 export class TaskObject extends Schema.Class<TaskObject>("NetworkLocal/TaskObject")({
   id: Protocol.TaskId,
   state: Protocol.TaskState,
   version: Protocol.TaskVersion,
   pid: Schema.Option(Protocol.ProcessId),
   ttl: Schema.Option(Schema.Duration),
-
   resumes: Schema.Array(Protocol.PromiseId),
 }) {
   get fields() {
@@ -117,12 +106,10 @@ export class TaskObject extends Schema.Class<TaskObject>("NetworkLocal/TaskObjec
       resumes: this.resumes,
     };
   }
-
   toRecord(): Protocol.TaskRecord {
     const common = {
       id: this.id,
       version: this.version,
-
       resumes: this.resumes.length,
     };
     return Match.value(this.state).pipe(
@@ -135,7 +122,6 @@ export class TaskObject extends Schema.Class<TaskObject>("NetworkLocal/TaskObjec
     );
   }
 }
-
 export class ScheduleObject extends Schema.Class<ScheduleObject>("NetworkLocal/ScheduleObject")({
   id: Protocol.ScheduleId,
   cron: Schema.String,
@@ -160,7 +146,6 @@ export class ScheduleObject extends Schema.Class<ScheduleObject>("NetworkLocal/S
       lastRunAt: this.lastRunAt,
     };
   }
-
   toRecord(): Protocol.ScheduleRecord {
     return new Protocol.ScheduleRecord({
       id: this.id,
@@ -175,17 +160,14 @@ export class ScheduleObject extends Schema.Class<ScheduleObject>("NetworkLocal/S
     });
   }
 }
-
 interface TaskTimeoutEntry {
   readonly kind: 0 | 1;
   readonly at: DateTime.Utc;
 }
-
 interface OutboxEntry {
   readonly address: Protocol.TargetAddress;
   readonly message: Protocol.Message;
 }
-
 interface ServerState {
   readonly promises: HashMap.HashMap<Protocol.PromiseId, PromiseObject>;
   readonly tasks: HashMap.HashMap<Protocol.TaskId, TaskObject>;
@@ -195,9 +177,7 @@ interface ServerState {
   readonly scheduleTimeouts: HashMap.HashMap<Protocol.ScheduleId, DateTime.Utc>;
   readonly outbox: ReadonlyArray<OutboxEntry>;
 }
-
 export type DebugState = (typeof Protocol.DebugSnapResponse.members)[0]["Type"]["data"];
-
 const initialState: ServerState = {
   promises: HashMap.empty(),
   tasks: HashMap.empty(),
@@ -207,98 +187,146 @@ const initialState: ServerState = {
   scheduleTimeouts: HashMap.empty(),
   outbox: [],
 };
-
 interface Emitting {
   readonly state: ServerState;
   readonly emitted: ReadonlyArray<OutboxEntry>;
 }
-
-const setPromise = (state: ServerState, promise: PromiseObject): ServerState => ({
+const setPromise = ({
+  state,
+  promise,
+}: {
+  readonly state: ServerState;
+  readonly promise: PromiseObject;
+}): ServerState => ({
   ...state,
   promises: HashMap.set(state.promises, promise.id, promise),
 });
-
-const setTask = (state: ServerState, task: TaskObject): ServerState => ({
+const setTask = ({ state, task }: { readonly state: ServerState; readonly task: TaskObject }): ServerState => ({
   ...state,
   tasks: HashMap.set(state.tasks, task.id, task),
 });
-
-const setSchedule = (state: ServerState, schedule: ScheduleObject): ServerState => ({
+const setSchedule = ({
+  state,
+  schedule,
+}: {
+  readonly state: ServerState;
+  readonly schedule: ScheduleObject;
+}): ServerState => ({
   ...state,
   schedules: HashMap.set(state.schedules, schedule.id, schedule),
 });
-
-const delSchedule = (state: ServerState, id: Protocol.ScheduleId): ServerState => ({
+const delSchedule = ({
+  state,
+  id,
+}: {
+  readonly state: ServerState;
+  readonly id: Protocol.ScheduleId;
+}): ServerState => ({
   ...state,
   schedules: HashMap.remove(state.schedules, id),
 });
-
-const setPromiseTimeout = (state: ServerState, id: Protocol.PromiseId, at: DateTime.Utc): ServerState => ({
+const setPromiseTimeout = ({
+  state,
+  id,
+  at,
+}: {
+  readonly state: ServerState;
+  readonly id: Protocol.PromiseId;
+  readonly at: DateTime.Utc;
+}): ServerState => ({
   ...state,
   promiseTimeouts: HashMap.set(state.promiseTimeouts, id, at),
 });
-
-const delPromiseTimeout = (state: ServerState, id: Protocol.PromiseId): ServerState => ({
+const delPromiseTimeout = ({
+  state,
+  id,
+}: {
+  readonly state: ServerState;
+  readonly id: Protocol.PromiseId;
+}): ServerState => ({
   ...state,
   promiseTimeouts: HashMap.remove(state.promiseTimeouts, id),
 });
-
-const setTaskTimeout = (state: ServerState, id: Protocol.TaskId, entry: TaskTimeoutEntry): ServerState => ({
+const setTaskTimeout = ({
+  state,
+  id,
+  entry,
+}: {
+  readonly state: ServerState;
+  readonly id: Protocol.TaskId;
+  readonly entry: TaskTimeoutEntry;
+}): ServerState => ({
   ...state,
   taskTimeouts: HashMap.set(state.taskTimeouts, id, entry),
 });
-
-const delTaskTimeout = (state: ServerState, id: Protocol.TaskId): ServerState => ({
+const delTaskTimeout = ({ state, id }: { readonly state: ServerState; readonly id: Protocol.TaskId }): ServerState => ({
   ...state,
   taskTimeouts: HashMap.remove(state.taskTimeouts, id),
 });
-
-const setScheduleTimeout = (state: ServerState, id: Protocol.ScheduleId, at: DateTime.Utc): ServerState => ({
+const setScheduleTimeout = ({
+  state,
+  id,
+  at,
+}: {
+  readonly state: ServerState;
+  readonly id: Protocol.ScheduleId;
+  readonly at: DateTime.Utc;
+}): ServerState => ({
   ...state,
   scheduleTimeouts: HashMap.set(state.scheduleTimeouts, id, at),
 });
-
-const delScheduleTimeout = (state: ServerState, id: Protocol.ScheduleId): ServerState => ({
+const delScheduleTimeout = ({
+  state,
+  id,
+}: {
+  readonly state: ServerState;
+  readonly id: Protocol.ScheduleId;
+}): ServerState => ({
   ...state,
   scheduleTimeouts: HashMap.remove(state.scheduleTimeouts, id),
 });
-
 const outboxKey = (entry: OutboxEntry): string =>
   entry.message.kind === "execute"
     ? `execute:${entry.message.data.task.id}`
     : `unblock:${entry.message.data.promise.id}:${entry.address.address}`;
-
-const setMessage = (
-  { emitted, state }: Emitting,
-  address: Protocol.TargetAddress,
-  message: Protocol.Message,
-): Emitting => {
+const setMessage = ({
+  input: { emitted, state },
+  address,
+  message,
+}: {
+  readonly input: Emitting;
+  readonly address: Protocol.TargetAddress;
+  readonly message: Protocol.Message;
+}): Emitting => {
   const entry: OutboxEntry = { address, message };
   const key = outboxKey(entry);
   const index = state.outbox.findIndex((existing) => outboxKey(existing) === key);
   const outbox = index >= 0 ? state.outbox.with(index, entry) : [...state.outbox, entry];
   return { state: { ...state, outbox }, emitted: [...emitted, entry] };
 };
-
 const millis = DateTime.toEpochMillis;
-
-const maybeExecute = (input: Emitting, task: TaskObject): Emitting => {
+const maybeExecute = ({ input, task }: { readonly input: Emitting; readonly task: TaskObject }): Emitting => {
   const promise = HashMap.get(input.state.promises, task.id);
   const target = Option.flatMap(promise, (promise) => promise.target);
   if (Option.isNone(target)) {
     return input;
   }
-  return setMessage(
-    input,
-    target.value,
-    Protocol.ExecuteMessage.make({
+  return setMessage({
+    input: input,
+    address: target.value,
+    message: Protocol.ExecuteMessage.make({
       head: {},
       data: { task: { id: task.id, version: task.version } },
     }),
-  );
+  });
 };
-
-const preload = (state: ServerState, id: Protocol.PromiseId): ReadonlyArray<Protocol.PromiseRecord> => {
+const preload = ({
+  state,
+  id,
+}: {
+  readonly state: ServerState;
+  readonly id: Protocol.PromiseId;
+}): ReadonlyArray<Protocol.PromiseRecord> => {
   const promise = HashMap.get(state.promises, id);
   if (Option.isNone(promise)) {
     return [];
@@ -311,14 +339,19 @@ const preload = (state: ServerState, id: Protocol.PromiseId): ReadonlyArray<Prot
     .filter((candidate) => candidate.id !== id && candidate.tags.reserved["resonate:branch"] === branch)
     .map((candidate) => candidate.toRecord());
 };
-
-const enqueueResume = (
-  { emitted, state }: Emitting,
-  awaitedId: Protocol.PromiseId,
-  awaiterId: Protocol.PromiseId,
-  now: DateTime.Utc,
-  retryTimeout: Duration.Duration,
-): Emitting => {
+const enqueueResume = ({
+  input: { emitted, state },
+  awaitedId,
+  awaiterId,
+  now,
+  retryTimeout,
+}: {
+  readonly input: Emitting;
+  readonly awaitedId: Protocol.PromiseId;
+  readonly awaiterId: Protocol.PromiseId;
+  readonly now: DateTime.Utc;
+  readonly retryTimeout: Duration.Duration;
+}): Emitting => {
   const task = HashMap.get(state.tasks, awaiterId);
   if (Option.isNone(task)) {
     return { state, emitted };
@@ -330,31 +363,38 @@ const enqueueResume = (
         state: "pending",
         resumes: [awaitedId],
       });
-      let next = setTask(state, resumed);
-      next = setTaskTimeout(next, resumed.id, {
-        kind: 0,
-        at: DateTime.addDuration(now, retryTimeout),
+      let next = setTask({ state: state, task: resumed });
+      next = setTaskTimeout({
+        state: next,
+        id: resumed.id,
+        entry: {
+          kind: 0,
+          at: DateTime.addDuration(now, retryTimeout),
+        },
       });
       const awaiterPromise = HashMap.get(next.promises, awaiterId);
       const target = Option.flatMap(awaiterPromise, (promise) => promise.target);
       if (Option.isNone(target)) {
         return { state: next, emitted };
       }
-      return setMessage(
-        { state: next, emitted },
-        target.value,
-        Protocol.ExecuteMessage.make({
+      return setMessage({
+        input: { state: next, emitted },
+        address: target.value,
+        message: Protocol.ExecuteMessage.make({
           head: {},
           data: { task: { id: resumed.id, version: resumed.version } },
         }),
-      );
+      });
     }),
     Match.whenOr({ state: "pending" }, { state: "acquired" }, { state: "halted" }, (buffered) => {
       if (buffered.resumes.includes(awaitedId)) {
         return { state, emitted };
       }
       return {
-        state: setTask(state, new TaskObject({ ...buffered.fields, resumes: [...buffered.resumes, awaitedId] })),
+        state: setTask({
+          state: state,
+          task: new TaskObject({ ...buffered.fields, resumes: [...buffered.resumes, awaitedId] }),
+        }),
         emitted,
       };
     }),
@@ -362,32 +402,36 @@ const enqueueResume = (
     Match.exhaustive,
   );
 };
-
-const settlementCascade = (
-  input: Emitting,
-  settled: PromiseObject,
-  priorCallbacks: ReadonlyArray<Protocol.PromiseId>,
-  priorListeners: ReadonlyArray<Protocol.TargetAddress>,
-  now: DateTime.Utc,
-  retryTimeout: Duration.Duration,
-): Emitting => {
+const settlementCascade = ({
+  input,
+  settled,
+  priorCallbacks,
+  priorListeners,
+  now,
+  retryTimeout,
+}: {
+  readonly input: Emitting;
+  readonly settled: PromiseObject;
+  readonly priorCallbacks: ReadonlyArray<Protocol.PromiseId>;
+  readonly priorListeners: ReadonlyArray<Protocol.TargetAddress>;
+  readonly now: DateTime.Utc;
+  readonly retryTimeout: Duration.Duration;
+}): Emitting => {
   let { emitted, state } = input;
-
   const task = HashMap.get(state.tasks, settled.id);
   if (Option.isSome(task)) {
-    state = setTask(
-      state,
-      new TaskObject({
+    state = setTask({
+      state: state,
+      task: new TaskObject({
         ...task.value.fields,
         state: "fulfilled",
         pid: Option.none(),
         ttl: Option.none(),
         resumes: [],
       }),
-    );
-    state = delTaskTimeout(state, settled.id);
+    });
+    state = delTaskTimeout({ state: state, id: settled.id });
   }
-
   state = {
     ...state,
     promises: HashMap.map(state.promises, (promise) =>
@@ -399,24 +443,39 @@ const settlementCascade = (
         : promise,
     ),
   };
-
   let next: Emitting = { state, emitted };
   for (const address of priorListeners) {
-    next = setMessage(next, address, Protocol.UnblockMessage.make({ head: {}, data: { promise: settled.toRecord() } }));
+    next = setMessage({
+      input: next,
+      address: address,
+      message: Protocol.UnblockMessage.make({ head: {}, data: { promise: settled.toRecord() } }),
+    });
   }
   for (const awaiterId of priorCallbacks) {
-    next = enqueueResume(next, settled.id, awaiterId, now, retryTimeout);
+    next = enqueueResume({
+      input: next,
+      awaitedId: settled.id,
+      awaiterId: awaiterId,
+      now: now,
+      retryTimeout: retryTimeout,
+    });
   }
   return next;
 };
-
 interface Transition<R extends Protocol.Response = Protocol.Response> {
   readonly state: ServerState;
   readonly response: R;
   readonly emitted: ReadonlyArray<OutboxEntry>;
 }
-
-const promiseGet = (state: ServerState, now: DateTime.Utc, request: Protocol.Request<"promise.get">): Transition => {
+const promiseGet = ({
+  state,
+  now,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly request: Protocol.Request<"promise.get">;
+}): Transition => {
   const promise = HashMap.get(state.promises, request.data.id);
   if (Option.isNone(promise)) {
     return {
@@ -439,17 +498,24 @@ const promiseGet = (state: ServerState, now: DateTime.Utc, request: Protocol.Req
     emitted: [],
   };
 };
-
-const promiseCreate = (
-  state: ServerState,
-  now: DateTime.Utc,
-  retryTimeout: Duration.Duration,
-  request: Protocol.Request<"promise.create">,
-): Transition<(typeof Protocol.PromiseCreateResponse)["Type"]> => {
-  const respond = (
-    next: Emitting,
-    promise: PromiseObject,
-  ): Transition<(typeof Protocol.PromiseCreateResponse)["Type"]> => ({
+const promiseCreate = ({
+  state,
+  now,
+  retryTimeout,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly retryTimeout: Duration.Duration;
+  readonly request: Protocol.Request<"promise.create">;
+}): Transition<(typeof Protocol.PromiseCreateResponse)["Type"]> => {
+  const respond = ({
+    next,
+    promise,
+  }: {
+    readonly next: Emitting;
+    readonly promise: PromiseObject;
+  }): Transition<(typeof Protocol.PromiseCreateResponse)["Type"]> => ({
     state: next.state,
     response: Protocol.PromiseCreateResponse.make({
       kind: "promise.create",
@@ -458,14 +524,11 @@ const promiseCreate = (
     }),
     emitted: next.emitted,
   });
-
   const existing = HashMap.get(state.promises, request.data.id);
   if (Option.isSome(existing)) {
-    return respond({ state, emitted: [] }, existing.value.projected(now));
+    return respond({ next: { state, emitted: [] }, promise: existing.value.projected(now) });
   }
-
   const { id, param, tags, timeoutAt } = request.data;
-
   if (millis(timeoutAt) > millis(now)) {
     const promise = new PromiseObject({
       id,
@@ -479,13 +542,13 @@ const promiseCreate = (
       callbacks: [],
       listeners: [],
     });
-    let next = setPromise(state, promise);
+    let next = setPromise({ state: state, promise: promise });
     if (promise.external) {
-      next = setPromiseTimeout(next, promise.id, promise.timeoutAt);
+      next = setPromiseTimeout({ state: next, id: promise.id, at: promise.timeoutAt });
     }
     const target = promise.target;
     if (Option.isNone(target)) {
-      return respond({ state: next, emitted: [] }, promise);
+      return respond({ next: { state: next, emitted: [] }, promise: promise });
     }
     const task = new TaskObject({
       id: promise.id,
@@ -495,24 +558,27 @@ const promiseCreate = (
       ttl: Option.none(),
       resumes: [],
     });
-    next = setTask(next, task);
+    next = setTask({ state: next, task: task });
     const delay = tags.reserved["resonate:delay"];
     if (Predicate.isNotUndefined(delay) && millis(delay) > millis(now)) {
-      next = setTaskTimeout(next, task.id, { kind: 0, at: delay });
-      return respond({ state: next, emitted: [] }, promise);
+      next = setTaskTimeout({ state: next, id: task.id, entry: { kind: 0, at: delay } });
+      return respond({ next: { state: next, emitted: [] }, promise: promise });
     }
-    next = setTaskTimeout(next, task.id, { kind: 0, at: DateTime.addDuration(now, retryTimeout) });
-    const dispatched = setMessage(
-      { state: next, emitted: [] },
-      target.value,
-      Protocol.ExecuteMessage.make({
+    next = setTaskTimeout({
+      state: next,
+      id: task.id,
+      entry: { kind: 0, at: DateTime.addDuration(now, retryTimeout) },
+    });
+    const dispatched = setMessage({
+      input: { state: next, emitted: [] },
+      address: target.value,
+      message: Protocol.ExecuteMessage.make({
         head: {},
         data: { task: { id: task.id, version: task.version } },
       }),
-    );
-    return respond(dispatched, promise);
+    });
+    return respond({ next: dispatched, promise: promise });
   }
-
   const promise = new PromiseObject({
     id,
     state: tags.isTimer ? "resolved" : "rejected_timedout",
@@ -525,11 +591,11 @@ const promiseCreate = (
     callbacks: [],
     listeners: [],
   });
-  let next = setPromise(state, promise);
+  let next = setPromise({ state: state, promise: promise });
   if (Predicate.isNotUndefined(tags.reserved["resonate:target"])) {
-    next = setTask(
-      next,
-      new TaskObject({
+    next = setTask({
+      state: next,
+      task: new TaskObject({
         id: promise.id,
         state: "fulfilled",
         version: Protocol.TaskVersion.make(0),
@@ -537,21 +603,28 @@ const promiseCreate = (
         ttl: Option.none(),
         resumes: [],
       }),
-    );
+    });
   }
-  return respond({ state: next, emitted: [] }, promise);
+  return respond({ next: { state: next, emitted: [] }, promise: promise });
 };
-
-const promiseSettle = (
-  state: ServerState,
-  now: DateTime.Utc,
-  retryTimeout: Duration.Duration,
-  request: Protocol.Request<"promise.settle">,
-): Transition<(typeof Protocol.PromiseSettleResponse)["Type"]> => {
-  const respond = (
-    next: Emitting,
-    promise: PromiseObject,
-  ): Transition<(typeof Protocol.PromiseSettleResponse)["Type"]> => ({
+const promiseSettle = ({
+  state,
+  now,
+  retryTimeout,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly retryTimeout: Duration.Duration;
+  readonly request: Protocol.Request<"promise.settle">;
+}): Transition<(typeof Protocol.PromiseSettleResponse)["Type"]> => {
+  const respond = ({
+    next,
+    promise,
+  }: {
+    readonly next: Emitting;
+    readonly promise: PromiseObject;
+  }): Transition<(typeof Protocol.PromiseSettleResponse)["Type"]> => ({
     state: next.state,
     response: Protocol.PromiseSettleResponse.make({
       kind: "promise.settle",
@@ -560,7 +633,6 @@ const promiseSettle = (
     }),
     emitted: next.emitted,
   });
-
   const stored = HashMap.get(state.promises, request.data.id);
   if (Option.isNone(stored)) {
     return {
@@ -575,12 +647,11 @@ const promiseSettle = (
   }
   const promise = stored.value;
   if (promise.state !== "pending") {
-    return respond({ state, emitted: [] }, promise);
+    return respond({ next: { state, emitted: [] }, promise: promise });
   }
   if (millis(promise.timeoutAt) <= millis(now)) {
-    return respond({ state, emitted: [] }, promise.projected(now));
+    return respond({ next: { state, emitted: [] }, promise: promise.projected(now) });
   }
-
   const settled = new PromiseObject({
     ...promise.fields,
     state: request.data.state,
@@ -589,25 +660,28 @@ const promiseSettle = (
     callbacks: [],
     listeners: [],
   });
-  let next = setPromise(state, settled);
-  next = delPromiseTimeout(next, settled.id);
-  const cascaded = settlementCascade(
-    { state: next, emitted: [] },
-    settled,
-    promise.callbacks,
-    promise.listeners,
-    now,
-    retryTimeout,
-  );
-  return respond(cascaded, settled);
+  let next = setPromise({ state: state, promise: settled });
+  next = delPromiseTimeout({ state: next, id: settled.id });
+  const cascaded = settlementCascade({
+    input: { state: next, emitted: [] },
+    settled: settled,
+    priorCallbacks: promise.callbacks,
+    priorListeners: promise.listeners,
+    now: now,
+    retryTimeout: retryTimeout,
+  });
+  return respond({ next: cascaded, promise: settled });
 };
-
-const promiseRegisterCallback = (
-  state: ServerState,
-  now: DateTime.Utc,
-  request: Protocol.Request<"promise.register_callback">,
-): Transition => {
-  const fail = (status: 400 | 404 | 422, message: string): Transition => ({
+const promiseRegisterCallback = ({
+  state,
+  now,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly request: Protocol.Request<"promise.register_callback">;
+}): Transition => {
+  const fail = ({ status, message }: { readonly status: 400 | 404 | 422; readonly message: string }): Transition => ({
     state,
     response: Protocol.PromiseRegisterCallbackResponse.make({
       kind: "promise.register_callback",
@@ -616,7 +690,7 @@ const promiseRegisterCallback = (
     }),
     emitted: [],
   });
-  const respond = (next: ServerState, promise: PromiseObject): Transition => ({
+  const respond = ({ next, promise }: { readonly next: ServerState; readonly promise: PromiseObject }): Transition => ({
     state: next,
     response: Protocol.PromiseRegisterCallbackResponse.make({
       kind: "promise.register_callback",
@@ -625,31 +699,29 @@ const promiseRegisterCallback = (
     }),
     emitted: [],
   });
-
   if (request.data.awaited === request.data.awaiter) {
-    return fail(400, "Awaited and awaiter must be different");
+    return fail({ status: 400, message: "Awaited and awaiter must be different" });
   }
   const awaited = HashMap.get(state.promises, request.data.awaited);
   if (Option.isNone(awaited)) {
-    return fail(404, "Awaited promise not found");
+    return fail({ status: 404, message: "Awaited promise not found" });
   }
   const awaiter = HashMap.get(state.promises, request.data.awaiter);
   if (Option.isNone(awaiter)) {
-    return fail(422, "Awaiter promise not found");
+    return fail({ status: 422, message: "Awaiter promise not found" });
   }
   if (Option.isNone(awaiter.value.target)) {
-    return fail(422, "Awaiter has no address");
+    return fail({ status: 422, message: "Awaiter has no address" });
   }
   if (awaited.value.state !== "pending") {
-    return respond(state, awaited.value);
+    return respond({ next: state, promise: awaited.value });
   }
   if (millis(awaited.value.timeoutAt) <= millis(now)) {
-    return respond(state, awaited.value.projected(now));
+    return respond({ next: state, promise: awaited.value.projected(now) });
   }
-
   const awaiterFresh = awaiter.value.state === "pending" && millis(awaiter.value.timeoutAt) > millis(now);
   if (!awaiterFresh) {
-    return respond(state, awaited.value);
+    return respond({ next: state, promise: awaited.value });
   }
   const registered = awaited.value.callbacks.includes(request.data.awaiter)
     ? awaited.value
@@ -657,15 +729,18 @@ const promiseRegisterCallback = (
         ...awaited.value.fields,
         callbacks: [...awaited.value.callbacks, request.data.awaiter],
       });
-  return respond(setPromise(state, registered), awaited.value);
+  return respond({ next: setPromise({ state: state, promise: registered }), promise: awaited.value });
 };
-
-const promiseRegisterListener = (
-  state: ServerState,
-  now: DateTime.Utc,
-  request: Protocol.Request<"promise.register_listener">,
-): Transition => {
-  const respond = (next: ServerState, promise: PromiseObject): Transition => ({
+const promiseRegisterListener = ({
+  state,
+  now,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly request: Protocol.Request<"promise.register_listener">;
+}): Transition => {
+  const respond = ({ next, promise }: { readonly next: ServerState; readonly promise: PromiseObject }): Transition => ({
     state: next,
     response: Protocol.PromiseRegisterListenerResponse.make({
       kind: "promise.register_listener",
@@ -674,7 +749,6 @@ const promiseRegisterListener = (
     }),
     emitted: [],
   });
-
   const awaited = HashMap.get(state.promises, request.data.awaited);
   if (Option.isNone(awaited)) {
     return {
@@ -688,10 +762,10 @@ const promiseRegisterListener = (
     };
   }
   if (awaited.value.state !== "pending") {
-    return respond(state, awaited.value);
+    return respond({ next: state, promise: awaited.value });
   }
   if (millis(awaited.value.timeoutAt) <= millis(now)) {
-    return respond(state, awaited.value.projected(now));
+    return respond({ next: state, promise: awaited.value.projected(now) });
   }
   const address = request.data.address;
   const registered = awaited.value.listeners.some((existing) => existing.address === address.address)
@@ -700,15 +774,29 @@ const promiseRegisterListener = (
         ...awaited.value.fields,
         listeners: [...awaited.value.listeners, address],
       });
-  return respond(setPromise(state, registered), awaited.value);
+  return respond({ next: setPromise({ state: state, promise: registered }), promise: awaited.value });
 };
-
-const taskFresh = (state: ServerState, task: TaskObject, now: DateTime.Utc): Option.Option<PromiseObject> => {
+const taskFresh = ({
+  state,
+  task,
+  now,
+}: {
+  readonly state: ServerState;
+  readonly task: TaskObject;
+  readonly now: DateTime.Utc;
+}): Option.Option<PromiseObject> => {
   const promise = HashMap.get(state.promises, task.id);
   return Option.filter(promise, (promise) => promise.state === "pending" && millis(promise.timeoutAt) > millis(now));
 };
-
-const taskGet = (state: ServerState, now: DateTime.Utc, request: Protocol.Request<"task.get">): Transition => {
+const taskGet = ({
+  state,
+  now,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly request: Protocol.Request<"task.get">;
+}): Transition => {
   const task = HashMap.get(state.tasks, request.data.id);
   if (Option.isNone(task) || Option.isNone(HashMap.get(state.promises, request.data.id))) {
     return {
@@ -721,7 +809,7 @@ const taskGet = (state: ServerState, now: DateTime.Utc, request: Protocol.Reques
       emitted: [],
     };
   }
-  const projected = Option.isSome(taskFresh(state, task.value, now))
+  const projected = Option.isSome(taskFresh({ state: state, task: task.value, now: now }))
     ? task.value
     : new TaskObject({
         ...task.value.fields,
@@ -740,9 +828,24 @@ const taskGet = (state: ServerState, now: DateTime.Utc, request: Protocol.Reques
     emitted: [],
   };
 };
-
-const taskCreate = (state: ServerState, now: DateTime.Utc, request: Protocol.Request<"task.create">): Transition => {
-  const respond = (next: Emitting, task: Option.Option<TaskObject>, promise: PromiseObject): Transition => ({
+const taskCreate = ({
+  state,
+  now,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly request: Protocol.Request<"task.create">;
+}): Transition => {
+  const respond = ({
+    next,
+    task,
+    promise,
+  }: {
+    readonly next: Emitting;
+    readonly task: Option.Option<TaskObject>;
+    readonly promise: PromiseObject;
+  }): Transition => ({
     state: next.state,
     response: Protocol.TaskCreateResponse.make({
       kind: "task.create",
@@ -751,13 +854,12 @@ const taskCreate = (state: ServerState, now: DateTime.Utc, request: Protocol.Req
         ? {
             task: task.value.toRecord(),
             promise: promise.toRecord(),
-            preload: preload(next.state, promise.id),
+            preload: preload({ state: next.state, id: promise.id }),
           }
-        : { promise: promise.toRecord(), preload: preload(next.state, promise.id) },
+        : { promise: promise.toRecord(), preload: preload({ state: next.state, id: promise.id }) },
     }),
     emitted: next.emitted,
   });
-
   const { pid, ttl } = request.data;
   const { id, param, tags, timeoutAt } = request.data.action.data;
   const existingPromise = HashMap.get(state.promises, id);
@@ -780,7 +882,11 @@ const taskCreate = (state: ServerState, now: DateTime.Utc, request: Protocol.Req
     }
     return Match.value(existingTask.value).pipe(
       Match.when({ state: "fulfilled" }, (task) =>
-        respond({ state, emitted: [] }, Option.some(task), existingPromise.value.projected(now)),
+        respond({
+          next: { state, emitted: [] },
+          task: Option.some(task),
+          promise: existingPromise.value.projected(now),
+        }),
       ),
       Match.when({ state: "pending" }, (task) => {
         const acquired = new TaskObject({
@@ -791,9 +897,13 @@ const taskCreate = (state: ServerState, now: DateTime.Utc, request: Protocol.Req
           ttl: Option.some(ttl),
           resumes: [],
         });
-        let next = setTask(state, acquired);
-        next = setTaskTimeout(next, acquired.id, { kind: 1, at: DateTime.addDuration(now, ttl) });
-        return respond({ state: next, emitted: [] }, Option.some(acquired), existingPromise.value.projected(now));
+        let next = setTask({ state: state, task: acquired });
+        next = setTaskTimeout({ state: next, id: acquired.id, entry: { kind: 1, at: DateTime.addDuration(now, ttl) } });
+        return respond({
+          next: { state: next, emitted: [] },
+          task: Option.some(acquired),
+          promise: existingPromise.value.projected(now),
+        });
       }),
       Match.orElse(() => ({
         state,
@@ -806,7 +916,6 @@ const taskCreate = (state: ServerState, now: DateTime.Utc, request: Protocol.Req
       })),
     );
   }
-
   if (millis(timeoutAt) <= millis(now)) {
     const promise = new PromiseObject({
       id,
@@ -828,9 +937,12 @@ const taskCreate = (state: ServerState, now: DateTime.Utc, request: Protocol.Req
       ttl: Option.none(),
       resumes: [],
     });
-    return respond({ state: setTask(setPromise(state, promise), task), emitted: [] }, Option.some(task), promise);
+    return respond({
+      next: { state: setTask({ state: setPromise({ state: state, promise: promise }), task: task }), emitted: [] },
+      task: Option.some(task),
+      promise: promise,
+    });
   }
-
   const promise = new PromiseObject({
     id,
     state: "pending",
@@ -851,14 +963,21 @@ const taskCreate = (state: ServerState, now: DateTime.Utc, request: Protocol.Req
     ttl: Option.some(ttl),
     resumes: [],
   });
-  let next = setPromise(state, promise);
-  next = setPromiseTimeout(next, promise.id, promise.timeoutAt);
-  next = setTask(next, task);
-  next = setTaskTimeout(next, task.id, { kind: 1, at: DateTime.addDuration(now, ttl) });
-  return respond({ state: next, emitted: [] }, Option.some(task), promise);
+  let next = setPromise({ state: state, promise: promise });
+  next = setPromiseTimeout({ state: next, id: promise.id, at: promise.timeoutAt });
+  next = setTask({ state: next, task: task });
+  next = setTaskTimeout({ state: next, id: task.id, entry: { kind: 1, at: DateTime.addDuration(now, ttl) } });
+  return respond({ next: { state: next, emitted: [] }, task: Option.some(task), promise: promise });
 };
-
-const taskAcquire = (state: ServerState, now: DateTime.Utc, request: Protocol.Request<"task.acquire">): Transition => {
+const taskAcquire = ({
+  state,
+  now,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly request: Protocol.Request<"task.acquire">;
+}): Transition => {
   const task = HashMap.get(state.tasks, request.data.id);
   if (Option.isNone(task)) {
     return {
@@ -871,7 +990,7 @@ const taskAcquire = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
       emitted: [],
     };
   }
-  const promise = taskFresh(state, task.value, now);
+  const promise = taskFresh({ state: state, task: task.value, now: now });
   if (task.value.state !== "pending" || Option.isNone(promise) || task.value.version !== request.data.version) {
     return {
       state,
@@ -891,10 +1010,14 @@ const taskAcquire = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
     ttl: Option.some(request.data.ttl),
     resumes: [],
   });
-  let next = setTask(state, acquired);
-  next = setTaskTimeout(next, acquired.id, {
-    kind: 1,
-    at: DateTime.addDuration(now, request.data.ttl),
+  let next = setTask({ state: state, task: acquired });
+  next = setTaskTimeout({
+    state: next,
+    id: acquired.id,
+    entry: {
+      kind: 1,
+      at: DateTime.addDuration(now, request.data.ttl),
+    },
   });
   return {
     state: next,
@@ -904,35 +1027,46 @@ const taskAcquire = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
       data: {
         task: acquired.toRecord(),
         promise: promise.value.toRecord(),
-        preload: preload(next, acquired.id),
+        preload: preload({ state: next, id: acquired.id }),
       },
     }),
     emitted: [],
   };
 };
-
-const taskGate = (
-  state: ServerState,
-  now: DateTime.Utc,
-  id: Protocol.TaskId,
-  version: Protocol.TaskVersion,
-): Option.Option<{ readonly task: TaskObject; readonly promise: PromiseObject }> => {
+const taskGate = ({
+  state,
+  now,
+  id,
+  version,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly id: Protocol.TaskId;
+  readonly version: Protocol.TaskVersion;
+}): Option.Option<{
+  readonly task: TaskObject;
+  readonly promise: PromiseObject;
+}> => {
   const task = HashMap.get(state.tasks, id);
   if (Option.isNone(task) || task.value.state !== "acquired" || task.value.version !== version) {
     return Option.none();
   }
-  return Option.map(taskFresh(state, task.value, now), (promise) => ({
+  return Option.map(taskFresh({ state: state, task: task.value, now: now }), (promise) => ({
     task: task.value,
     promise,
   }));
 };
-
-const taskRelease = (
-  state: ServerState,
-  now: DateTime.Utc,
-  retryTimeout: Duration.Duration,
-  request: Protocol.Request<"task.release">,
-): Transition => {
+const taskRelease = ({
+  state,
+  now,
+  retryTimeout,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly retryTimeout: Duration.Duration;
+  readonly request: Protocol.Request<"task.release">;
+}): Transition => {
   const task = HashMap.get(state.tasks, request.data.id);
   if (Option.isNone(task)) {
     return {
@@ -945,7 +1079,7 @@ const taskRelease = (
       emitted: [],
     };
   }
-  const gated = taskGate(state, now, request.data.id, request.data.version);
+  const gated = taskGate({ state: state, now: now, id: request.data.id, version: request.data.version });
   if (Option.isNone(gated)) {
     return {
       state,
@@ -963,12 +1097,16 @@ const taskRelease = (
     pid: Option.none(),
     ttl: Option.none(),
   });
-  let next = setTask(state, released);
-  next = setTaskTimeout(next, released.id, {
-    kind: 0,
-    at: DateTime.addDuration(now, retryTimeout),
+  let next = setTask({ state: state, task: released });
+  next = setTaskTimeout({
+    state: next,
+    id: released.id,
+    entry: {
+      kind: 0,
+      at: DateTime.addDuration(now, retryTimeout),
+    },
   });
-  const output = maybeExecute({ state: next, emitted: [] }, released);
+  const output = maybeExecute({ input: { state: next, emitted: [] }, task: released });
   return {
     state: output.state,
     response: Protocol.TaskReleaseResponse.make({
@@ -979,8 +1117,15 @@ const taskRelease = (
     emitted: output.emitted,
   };
 };
-
-const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Request<"task.suspend">): Transition => {
+const taskSuspend = ({
+  state,
+  now,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly request: Protocol.Request<"task.suspend">;
+}): Transition => {
   const task = HashMap.get(state.tasks, request.data.id);
   if (Option.isNone(task)) {
     return {
@@ -1009,7 +1154,7 @@ const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
       emitted: [],
     };
   }
-  const gated = taskGate(state, now, request.data.id, request.data.version);
+  const gated = taskGate({ state: state, now: now, id: request.data.id, version: request.data.version });
   if (Option.isNone(gated)) {
     return {
       state,
@@ -1044,13 +1189,13 @@ const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
   }
   if (settled) {
     const cleared = new TaskObject({ ...gated.value.task.fields, resumes: [] });
-    const next = setTask(state, cleared);
+    const next = setTask({ state: state, task: cleared });
     return {
       state: next,
       response: Protocol.TaskSuspendResponse.make({
         kind: "task.suspend",
         head: { corrId: request.head.corrId, status: 300, version: request.head.version },
-        data: { preload: preload(next, request.data.id) },
+        data: { preload: preload({ state: next, id: request.data.id }) },
       }),
       emitted: [],
     };
@@ -1063,7 +1208,7 @@ const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
           ...awaited.fields,
           callbacks: [...awaited.callbacks, request.data.id],
         });
-    next = setPromise(next, registered);
+    next = setPromise({ state: next, promise: registered });
   }
   const suspended = new TaskObject({
     ...gated.value.task.fields,
@@ -1072,8 +1217,8 @@ const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
     ttl: Option.none(),
     resumes: [],
   });
-  next = setTask(next, suspended);
-  next = delTaskTimeout(next, suspended.id);
+  next = setTask({ state: next, task: suspended });
+  next = delTaskTimeout({ state: next, id: suspended.id });
   return {
     state: next,
     response: Protocol.TaskSuspendResponse.make({
@@ -1084,8 +1229,13 @@ const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
     emitted: [],
   };
 };
-
-const taskHalt = (state: ServerState, request: Protocol.Request<"task.halt">): Transition => {
+const taskHalt = ({
+  state,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly request: Protocol.Request<"task.halt">;
+}): Transition => {
   const task = HashMap.get(state.tasks, request.data.id);
   if (Option.isNone(task)) {
     return {
@@ -1127,7 +1277,7 @@ const taskHalt = (state: ServerState, request: Protocol.Request<"task.halt">): T
     ttl: Option.none(),
   });
   return {
-    state: delTaskTimeout(setTask(state, halted), halted.id),
+    state: delTaskTimeout({ state: setTask({ state: state, task: halted }), id: halted.id }),
     response: Protocol.TaskHaltResponse.make({
       kind: "task.halt",
       head: { corrId: request.head.corrId, status: 200, version: request.head.version },
@@ -1136,13 +1286,17 @@ const taskHalt = (state: ServerState, request: Protocol.Request<"task.halt">): T
     emitted: [],
   };
 };
-
-const taskContinue = (
-  state: ServerState,
-  now: DateTime.Utc,
-  retryTimeout: Duration.Duration,
-  request: Protocol.Request<"task.continue">,
-): Transition => {
+const taskContinue = ({
+  state,
+  now,
+  retryTimeout,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly retryTimeout: Duration.Duration;
+  readonly request: Protocol.Request<"task.continue">;
+}): Transition => {
   const task = HashMap.get(state.tasks, request.data.id);
   if (Option.isNone(task)) {
     return {
@@ -1178,12 +1332,16 @@ const taskContinue = (
     };
   }
   const continued = new TaskObject({ ...task.value.fields, state: "pending" });
-  let next = setTask(state, continued);
-  next = setTaskTimeout(next, continued.id, {
-    kind: 0,
-    at: DateTime.addDuration(now, retryTimeout),
+  let next = setTask({ state: state, task: continued });
+  next = setTaskTimeout({
+    state: next,
+    id: continued.id,
+    entry: {
+      kind: 0,
+      at: DateTime.addDuration(now, retryTimeout),
+    },
   });
-  const output = maybeExecute({ state: next, emitted: [] }, continued);
+  const output = maybeExecute({ input: { state: next, emitted: [] }, task: continued });
   return {
     state: output.state,
     response: Protocol.TaskContinueResponse.make({
@@ -1194,13 +1352,17 @@ const taskContinue = (
     emitted: output.emitted,
   };
 };
-
-const taskFulfill = (
-  state: ServerState,
-  now: DateTime.Utc,
-  retryTimeout: Duration.Duration,
-  request: Protocol.Request<"task.fulfill">,
-): Transition => {
+const taskFulfill = ({
+  state,
+  now,
+  retryTimeout,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly retryTimeout: Duration.Duration;
+  readonly request: Protocol.Request<"task.fulfill">;
+}): Transition => {
   const task = HashMap.get(state.tasks, request.data.id);
   if (Option.isNone(task)) {
     return {
@@ -1213,7 +1375,7 @@ const taskFulfill = (
       emitted: [],
     };
   }
-  const gated = taskGate(state, now, request.data.id, request.data.version);
+  const gated = taskGate({ state: state, now: now, id: request.data.id, version: request.data.version });
   if (Option.isNone(gated) || request.data.action.data.id !== request.data.id) {
     return {
       state,
@@ -1233,16 +1395,16 @@ const taskFulfill = (
     callbacks: [],
     listeners: [],
   });
-  let next = setPromise(state, settled);
-  next = delPromiseTimeout(next, settled.id);
-  const output = settlementCascade(
-    { state: next, emitted: [] },
-    settled,
-    gated.value.promise.callbacks,
-    gated.value.promise.listeners,
-    now,
-    retryTimeout,
-  );
+  let next = setPromise({ state: state, promise: settled });
+  next = delPromiseTimeout({ state: next, id: settled.id });
+  const output = settlementCascade({
+    input: { state: next, emitted: [] },
+    settled: settled,
+    priorCallbacks: gated.value.promise.callbacks,
+    priorListeners: gated.value.promise.listeners,
+    now: now,
+    retryTimeout: retryTimeout,
+  });
   return {
     state: output.state,
     response: Protocol.TaskFulfillResponse.make({
@@ -1253,13 +1415,17 @@ const taskFulfill = (
     emitted: output.emitted,
   };
 };
-
-const taskFence = (
-  state: ServerState,
-  now: DateTime.Utc,
-  retryTimeout: Duration.Duration,
-  request: Protocol.Request<"task.fence">,
-): Transition => {
+const taskFence = ({
+  state,
+  now,
+  retryTimeout,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly retryTimeout: Duration.Duration;
+  readonly request: Protocol.Request<"task.fence">;
+}): Transition => {
   const task = HashMap.get(state.tasks, request.data.id);
   if (Option.isNone(task)) {
     return {
@@ -1272,7 +1438,7 @@ const taskFence = (
       emitted: [],
     };
   }
-  if (Option.isNone(taskGate(state, now, request.data.id, request.data.version))) {
+  if (Option.isNone(taskGate({ state: state, now: now, id: request.data.id, version: request.data.version }))) {
     return {
       state,
       response: Protocol.TaskFenceResponse.make({
@@ -1284,34 +1450,37 @@ const taskFence = (
     };
   }
   if (request.data.action.kind === "promise.create") {
-    const inner = promiseCreate(state, now, retryTimeout, request.data.action);
+    const inner = promiseCreate({ state: state, now: now, retryTimeout: retryTimeout, request: request.data.action });
     return {
       state: inner.state,
       response: Protocol.TaskFenceResponse.make({
         kind: "task.fence",
         head: { corrId: request.head.corrId, status: 200, version: request.head.version },
-        data: { action: inner.response, preload: preload(inner.state, request.data.id) },
+        data: { action: inner.response, preload: preload({ state: inner.state, id: request.data.id }) },
       }),
       emitted: inner.emitted,
     };
   }
-  const inner = promiseSettle(state, now, retryTimeout, request.data.action);
+  const inner = promiseSettle({ state: state, now: now, retryTimeout: retryTimeout, request: request.data.action });
   return {
     state: inner.state,
     response: Protocol.TaskFenceResponse.make({
       kind: "task.fence",
       head: { corrId: request.head.corrId, status: 200, version: request.head.version },
-      data: { action: inner.response, preload: preload(inner.state, request.data.id) },
+      data: { action: inner.response, preload: preload({ state: inner.state, id: request.data.id }) },
     }),
     emitted: inner.emitted,
   };
 };
-
-const taskHeartbeat = (
-  state: ServerState,
-  now: DateTime.Utc,
-  request: Protocol.Request<"task.heartbeat">,
-): Transition => {
+const taskHeartbeat = ({
+  state,
+  now,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly request: Protocol.Request<"task.heartbeat">;
+}): Transition => {
   let next = state;
   for (const ref of request.data.tasks) {
     const task = HashMap.get(next.tasks, ref.id);
@@ -1323,13 +1492,17 @@ const taskHeartbeat = (
     ) {
       continue;
     }
-    const promise = taskFresh(next, task.value, now);
+    const promise = taskFresh({ state: next, task: task.value, now: now });
     if (Option.isNone(promise) || Option.isNone(task.value.ttl)) {
       continue;
     }
-    next = setTaskTimeout(next, ref.id, {
-      kind: 1,
-      at: DateTime.addDuration(now, task.value.ttl.value),
+    next = setTaskTimeout({
+      state: next,
+      id: ref.id,
+      entry: {
+        kind: 1,
+        at: DateTime.addDuration(now, task.value.ttl.value),
+      },
     });
   }
   return {
@@ -1342,7 +1515,6 @@ const taskHeartbeat = (
     emitted: [],
   };
 };
-
 const FiveFieldCronExpression = Schema.String.check(
   Schema.makeFilter(
     (cron) => {
@@ -1352,9 +1524,7 @@ const FiveFieldCronExpression = Schema.String.check(
     { title: "five-field cron expression" },
   ),
 );
-
 const isFiveFieldCronExpression = SchemaParser.is(FiveFieldCronExpression);
-
 const parseCron = (cron: string): Option.Option<Cron.Cron> => {
   if (!isFiveFieldCronExpression(cron)) {
     return Option.none();
@@ -1365,8 +1535,13 @@ const parseCron = (cron: string): Option.Option<Cron.Cron> => {
   }
   return Option.some(parsed.success);
 };
-
-const scheduleGet = (state: ServerState, request: Protocol.Request<"schedule.get">): Transition => {
+const scheduleGet = ({
+  state,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly request: Protocol.Request<"schedule.get">;
+}): Transition => {
   const schedule = HashMap.get(state.schedules, request.data.id);
   if (Option.isNone(schedule)) {
     return {
@@ -1389,12 +1564,15 @@ const scheduleGet = (state: ServerState, request: Protocol.Request<"schedule.get
     emitted: [],
   };
 };
-
-const scheduleCreate = (
-  state: ServerState,
-  now: DateTime.Utc,
-  request: Protocol.Request<"schedule.create">,
-): Transition => {
+const scheduleCreate = ({
+  state,
+  now,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly request: Protocol.Request<"schedule.create">;
+}): Transition => {
   const existing = HashMap.get(state.schedules, request.data.id);
   if (Option.isSome(existing)) {
     return {
@@ -1430,8 +1608,8 @@ const scheduleCreate = (
     nextRunAt: DateTime.makeUnsafe(Cron.next(cron.value, now).getTime()),
     lastRunAt: Option.none(),
   });
-  let next = setSchedule(state, schedule);
-  next = setScheduleTimeout(next, schedule.id, schedule.nextRunAt);
+  let next = setSchedule({ state: state, schedule: schedule });
+  next = setScheduleTimeout({ state: next, id: schedule.id, at: schedule.nextRunAt });
   return {
     state: next,
     response: Protocol.ScheduleCreateResponse.make({
@@ -1442,8 +1620,13 @@ const scheduleCreate = (
     emitted: [],
   };
 };
-
-const scheduleDelete = (state: ServerState, request: Protocol.Request<"schedule.delete">): Transition => {
+const scheduleDelete = ({
+  state,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly request: Protocol.Request<"schedule.delete">;
+}): Transition => {
   if (Option.isNone(HashMap.get(state.schedules, request.data.id))) {
     return {
       state,
@@ -1455,7 +1638,7 @@ const scheduleDelete = (state: ServerState, request: Protocol.Request<"schedule.
       emitted: [],
     };
   }
-  const next = delScheduleTimeout(delSchedule(state, request.data.id), request.data.id);
+  const next = delScheduleTimeout({ state: delSchedule({ state: state, id: request.data.id }), id: request.data.id });
   return {
     state: next,
     response: Protocol.ScheduleDeleteResponse.make({
@@ -1466,23 +1649,25 @@ const scheduleDelete = (state: ServerState, request: Protocol.Request<"schedule.
     emitted: [],
   };
 };
-
 const internalHead = Protocol.RequestHead.make({
   corrId: Protocol.CorrelationId.make("local-schedule"),
   version: Protocol.protocolVersion,
 });
-
-const catchUpSchedule = (
-  input: Emitting,
-  schedule: ScheduleObject,
-  now: DateTime.Utc,
-  retryTimeout: Duration.Duration,
-): Emitting => {
+const catchUpSchedule = ({
+  input,
+  schedule,
+  now,
+  retryTimeout,
+}: {
+  readonly input: Emitting;
+  readonly schedule: ScheduleObject;
+  readonly now: DateTime.Utc;
+  readonly retryTimeout: Duration.Duration;
+}): Emitting => {
   const cron = parseCron(schedule.cron);
   if (Option.isNone(cron)) {
     return input;
   }
-
   let output = input;
   let current = schedule;
   while (millis(current.nextRunAt) <= millis(now)) {
@@ -1490,11 +1675,11 @@ const catchUpSchedule = (
     const promiseId = Protocol.PromiseId.make(
       current.promiseId.replaceAll("{{.id}}", current.id).replaceAll("{{.timestamp}}", String(millis(cronTime))),
     );
-    const transition = promiseCreate(
-      output.state,
-      cronTime,
-      retryTimeout,
-      Protocol.PromiseCreateRequest.make({
+    const transition = promiseCreate({
+      state: output.state,
+      now: cronTime,
+      retryTimeout: retryTimeout,
+      request: Protocol.PromiseCreateRequest.make({
         head: internalHead,
         data: {
           id: promiseId,
@@ -1507,7 +1692,7 @@ const catchUpSchedule = (
           }),
         },
       }),
-    );
+    });
     output = { state: transition.state, emitted: [...output.emitted, ...transition.emitted] };
     current = new ScheduleObject({
       ...current.fields,
@@ -1515,17 +1700,19 @@ const catchUpSchedule = (
       nextRunAt: DateTime.makeUnsafe(Cron.next(cron.value, cronTime).getTime()),
     });
   }
-
-  let next = setSchedule(output.state, current);
-  next = setScheduleTimeout(next, current.id, current.nextRunAt);
+  let next = setSchedule({ state: output.state, schedule: current });
+  next = setScheduleTimeout({ state: next, id: current.id, at: current.nextRunAt });
   return { state: next, emitted: output.emitted };
 };
-
-const tick = (
-  state: ServerState,
-  now: DateTime.Utc,
-  retryTimeout: Duration.Duration,
-): {
+const tick = ({
+  state,
+  now,
+  retryTimeout,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly retryTimeout: Duration.Duration;
+}): {
   state: ServerState;
   emitted: ReadonlyArray<OutboxEntry>;
   actions: ReadonlyArray<Protocol.DebugTickAction>;
@@ -1540,10 +1727,8 @@ const tick = (
       due.push(promise.value);
     }
   }
-
   const actions: Array<Protocol.DebugTickAction> = [];
   let next = state;
-
   const settled: Array<{
     promise: PromiseObject;
     callbacks: ReadonlyArray<Protocol.PromiseId>;
@@ -1564,30 +1749,29 @@ const tick = (
       callbacks: [],
       listeners: [],
     });
-    next = setPromise(next, persisted);
-    next = delPromiseTimeout(next, promise.id);
+    next = setPromise({ state: next, promise: persisted });
+    next = delPromiseTimeout({ state: next, id: promise.id });
     settled.push({
       promise: persisted,
       callbacks: promise.callbacks,
       listeners: promise.listeners,
     });
   }
-
   let output: Emitting = { state: next, emitted: [] };
   for (const { promise } of settled) {
     const task = HashMap.get(output.state.tasks, promise.id);
     if (Option.isSome(task) && task.value.state !== "fulfilled") {
-      let phase = setTask(
-        output.state,
-        new TaskObject({
+      let phase = setTask({
+        state: output.state,
+        task: new TaskObject({
           ...task.value.fields,
           state: "fulfilled",
           pid: Option.none(),
           ttl: Option.none(),
           resumes: [],
         }),
-      );
-      phase = delTaskTimeout(phase, promise.id);
+      });
+      phase = delTaskTimeout({ state: phase, id: promise.id });
       output = { state: phase, emitted: output.emitted };
     }
     output = {
@@ -1605,20 +1789,24 @@ const tick = (
       emitted: output.emitted,
     };
   }
-
   for (const { callbacks, listeners, promise } of settled) {
     for (const awaiterId of callbacks) {
-      output = enqueueResume(output, promise.id, awaiterId, now, retryTimeout);
+      output = enqueueResume({
+        input: output,
+        awaitedId: promise.id,
+        awaiterId: awaiterId,
+        now: now,
+        retryTimeout: retryTimeout,
+      });
     }
     for (const address of listeners) {
-      output = setMessage(
-        output,
-        address,
-        Protocol.UnblockMessage.make({ head: {}, data: { promise: promise.toRecord() } }),
-      );
+      output = setMessage({
+        input: output,
+        address: address,
+        message: Protocol.UnblockMessage.make({ head: {}, data: { promise: promise.toRecord() } }),
+      });
     }
   }
-
   const dueTaskTimeouts = [...HashMap.entries(output.state.taskTimeouts)].filter(
     ([, entry]) => millis(entry.at) <= millis(now),
   );
@@ -1634,11 +1822,15 @@ const tick = (
           data: { id, version: task.value.version },
         }),
       );
-      const taskState = setTaskTimeout(output.state, id, {
-        kind: 0,
-        at: DateTime.addDuration(now, retryTimeout),
+      const taskState = setTaskTimeout({
+        state: output.state,
+        id: id,
+        entry: {
+          kind: 0,
+          at: DateTime.addDuration(now, retryTimeout),
+        },
       });
-      output = maybeExecute({ state: taskState, emitted: output.emitted }, task.value);
+      output = maybeExecute({ input: { state: taskState, emitted: output.emitted }, task: task.value });
     }
     if (entry.kind === 1 && task.value.state === "acquired") {
       actions.push(
@@ -1653,41 +1845,49 @@ const tick = (
         pid: Option.none(),
         ttl: Option.none(),
       });
-      let taskState = setTask(output.state, pending);
-      taskState = setTaskTimeout(taskState, id, {
-        kind: 0,
-        at: DateTime.addDuration(now, retryTimeout),
+      let taskState = setTask({ state: output.state, task: pending });
+      taskState = setTaskTimeout({
+        state: taskState,
+        id: id,
+        entry: {
+          kind: 0,
+          at: DateTime.addDuration(now, retryTimeout),
+        },
       });
-      output = maybeExecute({ state: taskState, emitted: output.emitted }, pending);
+      output = maybeExecute({ input: { state: taskState, emitted: output.emitted }, task: pending });
     }
   }
-
   const dueScheduleTimeouts = [...HashMap.entries(output.state.scheduleTimeouts)].filter(
     ([, at]) => millis(at) <= millis(now),
   );
   for (const [id] of dueScheduleTimeouts) {
     const schedule = HashMap.get(output.state.schedules, id);
     if (Option.isSome(schedule)) {
-      output = catchUpSchedule(output, schedule.value, now, retryTimeout);
+      output = catchUpSchedule({ input: output, schedule: schedule.value, now: now, retryTimeout: retryTimeout });
     }
   }
-
   return { state: output.state, emitted: output.emitted, actions };
 };
-
-const apply = (
-  state: ServerState,
-  now: DateTime.Utc,
-  retryTimeout: Duration.Duration,
-  request: Protocol.Request,
-): Transition => {
+const apply = ({
+  state,
+  now,
+  retryTimeout,
+  request,
+}: {
+  readonly state: ServerState;
+  readonly now: DateTime.Utc;
+  readonly retryTimeout: Duration.Duration;
+  readonly request: Protocol.Request;
+}): Transition => {
   return Match.value(request).pipe(
     Match.discriminatorsExhaustive("kind")({
-      "promise.get": (request) => promiseGet(state, now, request),
-      "promise.create": (request) => promiseCreate(state, now, retryTimeout, request),
-      "promise.settle": (request) => promiseSettle(state, now, retryTimeout, request),
-      "promise.register_callback": (request) => promiseRegisterCallback(state, now, request),
-      "promise.register_listener": (request) => promiseRegisterListener(state, now, request),
+      "promise.get": (request) => promiseGet({ state: state, now: now, request: request }),
+      "promise.create": (request) =>
+        promiseCreate({ state: state, now: now, retryTimeout: retryTimeout, request: request }),
+      "promise.settle": (request) =>
+        promiseSettle({ state: state, now: now, retryTimeout: retryTimeout, request: request }),
+      "promise.register_callback": (request) => promiseRegisterCallback({ state: state, now: now, request: request }),
+      "promise.register_listener": (request) => promiseRegisterListener({ state: state, now: now, request: request }),
       "promise.search": (request) => ({
         state,
         response: Protocol.PromiseSearchResponse.make({
@@ -1725,7 +1925,7 @@ const apply = (
         emitted: [],
       }),
       "debug.tick": (request) => {
-        const result = tick(state, request.data.time, retryTimeout);
+        const result = tick({ state: state, now: request.data.time, retryTimeout: retryTimeout });
         return {
           state: result.state,
           response: Protocol.DebugTickResponse.make({
@@ -1767,16 +1967,19 @@ const apply = (
         }),
         emitted: [],
       }),
-      "task.get": (request) => taskGet(state, now, request),
-      "task.create": (request) => taskCreate(state, now, request),
-      "task.acquire": (request) => taskAcquire(state, now, request),
-      "task.release": (request) => taskRelease(state, now, retryTimeout, request),
-      "task.suspend": (request) => taskSuspend(state, now, request),
-      "task.halt": (request) => taskHalt(state, request),
-      "task.continue": (request) => taskContinue(state, now, retryTimeout, request),
-      "task.fulfill": (request) => taskFulfill(state, now, retryTimeout, request),
-      "task.fence": (request) => taskFence(state, now, retryTimeout, request),
-      "task.heartbeat": (request) => taskHeartbeat(state, now, request),
+      "task.get": (request) => taskGet({ state: state, now: now, request: request }),
+      "task.create": (request) => taskCreate({ state: state, now: now, request: request }),
+      "task.acquire": (request) => taskAcquire({ state: state, now: now, request: request }),
+      "task.release": (request) =>
+        taskRelease({ state: state, now: now, retryTimeout: retryTimeout, request: request }),
+      "task.suspend": (request) => taskSuspend({ state: state, now: now, request: request }),
+      "task.halt": (request) => taskHalt({ state: state, request: request }),
+      "task.continue": (request) =>
+        taskContinue({ state: state, now: now, retryTimeout: retryTimeout, request: request }),
+      "task.fulfill": (request) =>
+        taskFulfill({ state: state, now: now, retryTimeout: retryTimeout, request: request }),
+      "task.fence": (request) => taskFence({ state: state, now: now, retryTimeout: retryTimeout, request: request }),
+      "task.heartbeat": (request) => taskHeartbeat({ state: state, now: now, request: request }),
       "task.search": (request) => ({
         state,
         response: Protocol.TaskSearchResponse.make({
@@ -1786,9 +1989,9 @@ const apply = (
         }),
         emitted: [],
       }),
-      "schedule.get": (request) => scheduleGet(state, request),
-      "schedule.create": (request) => scheduleCreate(state, now, request),
-      "schedule.delete": (request) => scheduleDelete(state, request),
+      "schedule.get": (request) => scheduleGet({ state: state, request: request }),
+      "schedule.create": (request) => scheduleCreate({ state: state, now: now, request: request }),
+      "schedule.delete": (request) => scheduleDelete({ state: state, request: request }),
       "schedule.search": (request) => ({
         state,
         response: Protocol.ScheduleSearchResponse.make({
@@ -1801,16 +2004,12 @@ const apply = (
     }),
   );
 };
-
 export interface NetworkLocalOptions {
   readonly group?: string;
   readonly pid?: string;
-
   readonly retryTimeout?: Duration.Duration;
-
   readonly tickInterval?: Duration.Duration;
 }
-
 export const layer = (options?: NetworkLocalOptions): Layer.Layer<ResonateNetwork> =>
   Layer.effect(
     ResonateNetwork,
@@ -1819,29 +2018,25 @@ export const layer = (options?: NetworkLocalOptions): Layer.Layer<ResonateNetwor
       const pid = Protocol.ProcessId.make(options?.pid ?? "local");
       const retryTimeout = options?.retryTimeout ?? Duration.seconds(5);
       const tickInterval = options?.tickInterval ?? Duration.seconds(1);
-
       const ref = yield* Ref.make(initialState);
       const queue = yield* Queue.unbounded<Protocol.Message>();
-
       const applyRequest = Effect.fn("NetworkLocal.apply")(function* (request: Protocol.Request) {
         const now = yield* DateTime.now;
         const [response, emitted] = yield* Ref.modify(ref, (state) => {
-          const transition = apply(state, now, retryTimeout, request);
+          const transition = apply({ state: state, now: now, retryTimeout: retryTimeout, request: request });
           return [[transition.response, transition.emitted] as const, transition.state];
         });
         yield* Effect.forEach(emitted, (entry) => Queue.offer(queue, entry.message), { discard: true });
         return response;
       });
-
       yield* Effect.gen(function* () {
         const now = yield* DateTime.now;
         const emitted = yield* Ref.modify(ref, (state) => {
-          const result = tick(state, now, retryTimeout);
+          const result = tick({ state: state, now: now, retryTimeout: retryTimeout });
           return [result.emitted, result.state];
         });
         yield* Effect.forEach(emitted, (entry) => Queue.offer(queue, entry.message), { discard: true });
       }).pipe(Effect.delay(tickInterval), Effect.forever, Effect.forkScoped);
-
       return ResonateNetwork.of({
         send: Effect.fn("NetworkLocal.send")(function* (request) {
           const response = yield* applyRequest(request);
@@ -1849,9 +2044,9 @@ export const layer = (options?: NetworkLocalOptions): Layer.Layer<ResonateNetwor
           return yield* decodeResponse(request)(wire);
         }),
         messages: Stream.fromQueue(queue),
-        match: (target) => Protocol.TargetAddress.localAny(target),
-        unicast: Protocol.TargetAddress.localUni(group, pid),
-        anycast: (target) => Protocol.TargetAddress.localAny(target, Option.some(pid)),
+        match: (target) => Protocol.TargetAddress.localAny({ group: target }),
+        unicast: Protocol.TargetAddress.localUni({ group, id: pid }),
+        anycast: (target) => Protocol.TargetAddress.localAny({ group: target, id: Option.some(pid) }),
       });
     }),
   );

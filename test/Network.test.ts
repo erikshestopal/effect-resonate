@@ -105,7 +105,7 @@ describe("TestNetwork", () => {
       const test = yield* TestNetwork;
       const seen = yield* test.requests;
       expect(seen).toHaveLength(1);
-    }).pipe(Effect.provide([TestNetwork.layer(scripted), BunCrypto.layer])),
+    }).pipe(Effect.provide([TestNetwork.layer({ handler: scripted }), BunCrypto.layer])),
   );
 
   it.effect("pushed messages arrive on the stream in order", () =>
@@ -124,7 +124,7 @@ describe("TestNetwork", () => {
       yield* test.push(halt);
       const received = yield* Stream.take(network.messages, 2).pipe(Stream.runCollect);
       expect(received).toEqual([execute, halt]);
-    }).pipe(Effect.provide([TestNetwork.layer(scripted), BunCrypto.layer])),
+    }).pipe(Effect.provide([TestNetwork.layer({ handler: scripted }), BunCrypto.layer])),
   );
 
   it.effect("exposes native-shaped addresses", () =>
@@ -134,6 +134,8 @@ describe("TestNetwork", () => {
       expect(network.anycast(Protocol.WorkerGroup.make("payments")).address).toBe("poll://any@payments/pid-9");
       expect(network.match(Protocol.WorkerGroup.make("gpu")).address).toBe("poll://any@gpu");
       expect(Option.isNone(network.match(Protocol.WorkerGroup.make("gpu")).id)).toBe(true);
-    }).pipe(Effect.provide([TestNetwork.layer(scripted, { group: "payments", pid: "pid-9" }), BunCrypto.layer])),
+    }).pipe(
+      Effect.provide([TestNetwork.layer({ handler: scripted, group: "payments", pid: "pid-9" }), BunCrypto.layer]),
+    ),
   );
 });

@@ -124,10 +124,16 @@ const rejectedState = Schema.Literal("rejected").make("rejected");
 
 const timestamp = (millis: number): Protocol.Timestamp => Schema.decodeUnknownSync(Protocol.Timestamp)(millis);
 
-const childId = (parent: Protocol.PromiseId, seq: number): Protocol.PromiseId =>
+const childId = ({ parent, seq }: { readonly parent: Protocol.PromiseId; readonly seq: number }): Protocol.PromiseId =>
   Protocol.PromiseId.make(`${parent}.${seq}`);
 
-const detachedId = (prefix: Protocol.PromiseId, seqid: Protocol.PromiseId): Protocol.PromiseId => {
+const detachedId = ({
+  prefix,
+  seqid,
+}: {
+  readonly prefix: Protocol.PromiseId;
+  readonly seqid: Protocol.PromiseId;
+}): Protocol.PromiseId => {
   const bytes = new TextEncoder().encode(seqid);
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
@@ -143,7 +149,13 @@ const detachedId = (prefix: Protocol.PromiseId, seqid: Protocol.PromiseId): Prot
   return Protocol.PromiseId.make(`${prefix}.d${hash}`);
 };
 
-const requestHead = (corrId: string, origin?: Protocol.PromiseId): Protocol.RequestHead =>
+const requestHead = ({
+  corrId,
+  origin,
+}: {
+  readonly corrId: string;
+  readonly origin?: Protocol.PromiseId;
+}): Protocol.RequestHead =>
   Protocol.RequestHead.make({
     corrId: Protocol.CorrelationId.make(corrId),
     version: Protocol.protocolVersion,
@@ -159,11 +171,14 @@ const isPromiseSettleSuccess = SchemaParser.is(Protocol.PromiseSettleSuccessResp
 
 export interface ResonateContextService {
   readonly info: ContextInfo;
-  readonly run: (effect: Effect.Effect<unknown, unknown>, options?: ContextOptions) => Effect.Effect<unknown, unknown>;
-  readonly beginRun: (
-    effect: Effect.Effect<unknown, unknown>,
-    options?: ContextOptions,
-  ) => Effect.Effect<LocalDurableHandle, unknown>;
+  readonly run: (options: {
+    readonly effect: Effect.Effect<unknown, unknown>;
+    readonly options?: ContextOptions;
+  }) => Effect.Effect<unknown, unknown>;
+  readonly beginRun: (options: {
+    readonly effect: Effect.Effect<unknown, unknown>;
+    readonly options?: ContextOptions;
+  }) => Effect.Effect<LocalDurableHandle, unknown>;
   readonly all: <const Effects extends ReadonlyArray<Effect.Effect<unknown, unknown>>>(
     effects: Effects,
   ) => Effect.Effect<ReadonlyArray<unknown>, unknown>;
@@ -172,29 +187,45 @@ export interface ResonateContextService {
   readonly sleep: (duration: Duration.Input) => Effect.Effect<void, unknown>;
   readonly sleepUntil: (instant: DateTime.Utc) => Effect.Effect<void, unknown>;
   readonly beginRpc: {
-    <F extends AnyFunction>(
-      fn: F,
-      args: PayloadArgs<F>,
-      options?: ContextOptions,
-    ): Effect.Effect<LocalDurableHandle, unknown>;
-    (name: string, args: ReadonlyArray<unknown>, options?: ContextOptions): Effect.Effect<LocalDurableHandle, unknown>;
+    <F extends AnyFunction>(options: {
+      readonly target: F;
+      readonly args: PayloadArgs<F>;
+      readonly options?: ContextOptions;
+    }): Effect.Effect<LocalDurableHandle, unknown>;
+    (options: {
+      readonly target: string;
+      readonly args: ReadonlyArray<unknown>;
+      readonly options?: ContextOptions;
+    }): Effect.Effect<LocalDurableHandle, unknown>;
   };
   readonly rpc: {
-    <F extends AnyFunction>(fn: F, args: PayloadArgs<F>, options?: ContextOptions): Effect.Effect<unknown, unknown>;
-    (name: string, args: ReadonlyArray<unknown>, options?: ContextOptions): Effect.Effect<unknown, unknown>;
+    <F extends AnyFunction>(options: {
+      readonly target: F;
+      readonly args: PayloadArgs<F>;
+      readonly options?: ContextOptions;
+    }): Effect.Effect<unknown, unknown>;
+    (options: {
+      readonly target: string;
+      readonly args: ReadonlyArray<unknown>;
+      readonly options?: ContextOptions;
+    }): Effect.Effect<unknown, unknown>;
   };
   readonly detached: {
-    <F extends AnyFunction>(
-      fn: F,
-      args: PayloadArgs<F>,
-      options?: ContextOptions,
-    ): Effect.Effect<LocalDurableHandle, unknown>;
-    (name: string, args: ReadonlyArray<unknown>, options?: ContextOptions): Effect.Effect<LocalDurableHandle, unknown>;
+    <F extends AnyFunction>(options: {
+      readonly target: F;
+      readonly args: PayloadArgs<F>;
+      readonly options?: ContextOptions;
+    }): Effect.Effect<LocalDurableHandle, unknown>;
+    (options: {
+      readonly target: string;
+      readonly args: ReadonlyArray<unknown>;
+      readonly options?: ContextOptions;
+    }): Effect.Effect<LocalDurableHandle, unknown>;
   };
-  readonly promise: <P extends PromiseDeclaration>(
-    declaration: P,
-    options?: Pick<ContextOptions, "id" | "timeout" | "tags">,
-  ) => Effect.Effect<LocalDurableHandle<PromiseSuccess<P>, unknown>, unknown>;
+  readonly promise: <P extends PromiseDeclaration>(options: {
+    readonly declaration: P;
+    readonly options?: Pick<ContextOptions, "id" | "timeout" | "tags">;
+  }) => Effect.Effect<LocalDurableHandle<PromiseSuccess<P>, unknown>, unknown>;
   readonly panic: (message: string) => Effect.Effect<never, DurablePanic>;
 }
 
@@ -215,7 +246,13 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
       const tasks = yield* Tasks;
       const codec = yield* currentCodec;
 
-      const addPreload = (state: RuntimeState, preload: ReadonlyArray<Protocol.PromiseRecord>) => {
+      const addPreload = ({
+        state,
+        preload,
+      }: {
+        readonly state: RuntimeState;
+        readonly preload: ReadonlyArray<Protocol.PromiseRecord>;
+      }) => {
         for (const promise of preload) {
           state.cache = HashMap.set(state.cache, promise.id, promise);
         }
@@ -245,65 +282,80 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         return Effect.die(action);
       };
 
-      const settle = Effect.fn("ExecutionEngine.settle")(function* (
-        state: RuntimeState,
-        id: Protocol.PromiseId,
-        exit: Exit.Exit<unknown, unknown>,
-      ) {
+      const settle = Effect.fn("ExecutionEngine.settle")(function* ({
+        state,
+        id,
+        exit,
+      }: {
+        readonly state: RuntimeState;
+        readonly id: Protocol.PromiseId;
+        readonly exit: Exit.Exit<unknown, unknown>;
+      }) {
         const settled = Exit.isSuccess(exit) ? resolvedState : rejectedState;
         const value = yield* codec.encode(Exit.isSuccess(exit) ? exit.value : exit.cause);
-        const result = yield* tasks.fence(
-          {
+        const result = yield* tasks.fence({
+          data: {
             id: state.root,
             version: state.version,
             action: Protocol.PromiseSettleRequest.make({
-              head: requestHead(`${state.root}:${id}:settle`, state.originId),
+              head: requestHead({ corrId: `${state.root}:${id}:settle`, origin: state.originId }),
               data: { id, state: settled, value },
             }),
           },
-          { origin: state.originId },
-        );
-        addPreload(state, result.preload);
+          options: { origin: state.originId },
+        });
+        addPreload({ state, preload: result.preload });
         const promise = yield* actionPromise(result.action);
         state.cache = HashMap.set(state.cache, promise.id, promise);
         return promise;
       });
 
-      const fulfillRoot = Effect.fn("ExecutionEngine.fulfillRoot")(function* (
-        state: RuntimeState,
-        exit: Exit.Exit<unknown, unknown>,
-      ) {
+      const fulfillRoot = Effect.fn("ExecutionEngine.fulfillRoot")(function* ({
+        state,
+        exit,
+      }: {
+        readonly state: RuntimeState;
+        readonly exit: Exit.Exit<unknown, unknown>;
+      }) {
         const settled = Exit.isSuccess(exit) ? resolvedState : rejectedState;
         const value = yield* codec.encode(Exit.isSuccess(exit) ? exit.value : exit.cause);
-        const promise = yield* tasks.fulfill(
-          {
+        const promise = yield* tasks.fulfill({
+          data: {
             id: state.root,
             version: state.version,
             action: Protocol.PromiseSettleRequest.make({
-              head: requestHead(`${state.root}:fulfill`, state.originId),
+              head: requestHead({ corrId: `${state.root}:fulfill`, origin: state.originId }),
               data: { id: state.root, state: settled, value },
             }),
           },
-          { origin: state.originId },
-        );
+          options: { origin: state.originId },
+        });
         state.cache = HashMap.set(state.cache, promise.id, promise);
         return promise;
       });
 
-      const timeoutAt = Effect.fn("ExecutionEngine.timeoutAt")(function* (
-        parent: Protocol.Timestamp,
-        duration: Duration.Duration,
-      ) {
+      const timeoutAt = Effect.fn("ExecutionEngine.timeoutAt")(function* ({
+        parent,
+        duration,
+      }: {
+        readonly parent: Protocol.Timestamp;
+        readonly duration: Duration.Duration;
+      }) {
         const now = yield* Clock.currentTimeMillis;
         return timestamp(Math.min(now + Duration.toMillis(duration), DateTime.toEpochMillis(parent)));
       });
 
-      const encodeInvocation = Effect.fn("ExecutionEngine.encodeInvocation")(function* (
-        name: string,
-        args: ReadonlyArray<unknown>,
-        version: Protocol.FunctionVersionOrLatest,
-        retry?: RetryPolicy.RetryPolicy,
-      ): Effect.fn.Return<Protocol.Value, unknown> {
+      const encodeInvocation = Effect.fn("ExecutionEngine.encodeInvocation")(function* ({
+        name,
+        args,
+        version,
+        retry,
+      }: {
+        readonly name: string;
+        readonly args: ReadonlyArray<unknown>;
+        readonly version: Protocol.FunctionVersionOrLatest;
+        readonly retry?: RetryPolicy.RetryPolicy;
+      }): Effect.fn.Return<Protocol.Value, unknown> {
         const encoded = yield* codec.encode(
           InvocationParam.make({
             func: name,
@@ -312,21 +364,25 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
           }),
         );
-        return withSchemaHeader(encoded, name);
+        return withSchemaHeader({ value: encoded, schemaName: name });
       });
 
-      const encodeTargetPayload = Effect.fn("ExecutionEngine.encodeTargetPayload")(function* (
-        target: AnyFunction | string,
-        args: ReadonlyArray<unknown>,
-        options?: ContextOptions,
-      ): Effect.fn.Return<Protocol.Value, unknown> {
+      const encodeTargetPayload = Effect.fn("ExecutionEngine.encodeTargetPayload")(function* ({
+        target,
+        args,
+        options,
+      }: {
+        readonly target: AnyFunction | string;
+        readonly args: ReadonlyArray<unknown>;
+        readonly options?: ContextOptions;
+      }): Effect.fn.Return<Protocol.Value, unknown> {
         if (Predicate.isString(target)) {
-          return yield* encodeInvocation(
-            target,
+          return yield* encodeInvocation({
+            name: target,
             args,
-            Predicate.isUndefined(options?.version) ? Protocol.FunctionVersion.make(1) : options.version,
-            options?.retryPolicy,
-          );
+            version: Predicate.isUndefined(options?.version) ? Protocol.FunctionVersion.make(1) : options.version,
+            retry: options?.retryPolicy,
+          });
         }
         const encodedArgs = yield* Schema.encodeUnknownEffect(target.payload)(args).pipe(
           Effect.catchCause(() =>
@@ -335,20 +391,25 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               : Effect.die("Invalid function payload"),
           ),
         );
-        return yield* encodeInvocation(
-          target.name,
-          Array.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
-          options?.version ?? target.version,
-          options?.retryPolicy,
-        );
+        return yield* encodeInvocation({
+          name: target.name,
+          args: Array.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
+          version: options?.version ?? target.version,
+          retry: options?.retryPolicy,
+        });
       });
 
-      const localTags = (
-        state: RuntimeState,
-        id: Protocol.PromiseId,
-        extra: Protocol.Tags,
-        breaksLineage: boolean,
-      ): Protocol.Tags =>
+      const localTags = ({
+        state,
+        id,
+        extra,
+        breaksLineage,
+      }: {
+        readonly state: RuntimeState;
+        readonly id: Protocol.PromiseId;
+        readonly extra: Protocol.Tags;
+        readonly breaksLineage: boolean;
+      }): Protocol.Tags =>
         Protocol.Tags.make({
           reserved: {
             ...extra.reserved,
@@ -362,54 +423,68 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           user: extra.user,
         });
 
-      const createLocal = Effect.fn("ExecutionEngine.createLocal")(function* (
-        state: RuntimeState,
-        options: ContextOptions | undefined,
-      ) {
-        const id = options?.id ?? childId(state.root, state.seq);
+      const createLocal = Effect.fn("ExecutionEngine.createLocal")(function* ({
+        state,
+        options,
+      }: {
+        readonly state: RuntimeState;
+        readonly options: ContextOptions | undefined;
+      }) {
+        const id = options?.id ?? childId({ parent: state.root, seq: state.seq });
         state.seq = state.seq + 1;
         const cached = HashMap.get(state.cache, id);
         if (Option.isSome(cached)) {
           return cached.value;
         }
-        const result = yield* tasks.fence(
-          {
+        const result = yield* tasks.fence({
+          data: {
             id: state.root,
             version: state.version,
             action: Protocol.PromiseCreateRequest.make({
-              head: requestHead(`${state.root}:${id}:create`, state.originId),
+              head: requestHead({ corrId: `${state.root}:${id}:create`, origin: state.originId }),
               data: {
                 id,
-                timeoutAt: yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
+                timeoutAt: yield* timeoutAt({
+                  parent: state.timeoutAt,
+                  duration: options?.timeout ?? Duration.hours(24),
+                }),
                 param: Protocol.emptyValue,
-                tags: localTags(state, id, options?.tags ?? Protocol.emptyTags, Predicate.isNotUndefined(options?.id)),
+                tags: localTags({
+                  state,
+                  id,
+                  extra: options?.tags ?? Protocol.emptyTags,
+                  breaksLineage: Predicate.isNotUndefined(options?.id),
+                }),
               },
             }),
           },
-          { origin: state.originId },
-        );
-        addPreload(state, result.preload);
+          options: { origin: state.originId },
+        });
+        addPreload({ state, preload: result.preload });
         const promise = yield* actionPromise(result.action);
         state.cache = HashMap.set(state.cache, promise.id, promise);
         return promise;
       });
 
-      const createSleep = Effect.fn("ExecutionEngine.createSleep")(function* (
-        state: RuntimeState,
-        instant: DateTime.Utc,
-      ) {
-        const id = childId(state.root, state.seq);
+      const createSleep = Effect.fn("ExecutionEngine.createSleep")(function* ({
+        state,
+        instant,
+      }: {
+        readonly state: RuntimeState;
+        readonly instant: DateTime.Utc;
+      }) {
+        const id = childId({ parent: state.root, seq: state.seq });
         state.seq = state.seq + 1;
         const cached = HashMap.get(state.cache, id);
         if (Option.isSome(cached)) {
           return cached.value;
         }
-        const result = yield* tasks.fence(
-          {
+        const result = yield* tasks.fence({
+          data: {
             id: state.root,
             version: state.version,
             action: Protocol.PromiseCreateRequest.make({
-              head: requestHead(`${state.root}:${id}:sleep`, state.originId),
+              head: requestHead({ corrId: `${state.root}:${id}:sleep`, origin: state.originId }),
               data: {
                 id,
                 timeoutAt: timestamp(
@@ -431,19 +506,23 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               },
             }),
           },
-          { origin: state.originId },
-        );
-        addPreload(state, result.preload);
+          options: { origin: state.originId },
+        });
+        addPreload({ state, preload: result.preload });
         const promise = yield* actionPromise(result.action);
         state.cache = HashMap.set(state.cache, promise.id, promise);
         return promise;
       });
 
-      const createExternalPromise = Effect.fn("ExecutionEngine.createExternalPromise")(function* (
-        state: RuntimeState,
-        declaration: PromiseDeclaration,
-        options: Pick<ContextOptions, "id" | "timeout" | "tags"> | undefined,
-      ) {
+      const createExternalPromise = Effect.fn("ExecutionEngine.createExternalPromise")(function* ({
+        state,
+        declaration,
+        options,
+      }: {
+        readonly state: RuntimeState;
+        readonly declaration: PromiseDeclaration;
+        readonly options: Pick<ContextOptions, "id" | "timeout" | "tags"> | undefined;
+      }) {
         if (Predicate.isUndefined(options?.id)) {
           if (state.externalPromises.has(declaration.name)) {
             return yield* Effect.die(`Promise declaration '${declaration.name}' was created more than once`);
@@ -462,15 +541,18 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           }
           return cached.value;
         }
-        const result = yield* tasks.fence(
-          {
+        const result = yield* tasks.fence({
+          data: {
             id: state.root,
             version: state.version,
             action: Protocol.PromiseCreateRequest.make({
-              head: requestHead(`${state.root}:${id}:promise`, state.originId),
+              head: requestHead({ corrId: `${state.root}:${id}:promise`, origin: state.originId }),
               data: {
                 id,
-                timeoutAt: yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
+                timeoutAt: yield* timeoutAt({
+                  parent: state.timeoutAt,
+                  duration: options?.timeout ?? Duration.hours(24),
+                }),
                 param: Protocol.emptyValue,
                 tags: Protocol.Tags.make({
                   reserved: {
@@ -487,9 +569,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               },
             }),
           },
-          { origin: state.originId },
-        );
-        addPreload(state, result.preload);
+          options: { origin: state.originId },
+        });
+        addPreload({ state, preload: result.preload });
         const promise = yield* actionPromise(result.action);
         state.cache = HashMap.set(state.cache, promise.id, promise);
         if (promise.state === "pending") {
@@ -502,15 +584,21 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         return promise;
       });
 
-      const createRemote = Effect.fn("ExecutionEngine.createRemote")(function* (
-        state: RuntimeState,
-        targetFunction: AnyFunction | string,
-        args: ReadonlyArray<unknown>,
-        options: ContextOptions | undefined,
-        mode: "attached" | "detached",
-      ) {
-        const seqid = childId(state.root, state.seq);
-        const id = options?.id ?? (mode === "detached" ? detachedId(state.prefixId, seqid) : seqid);
+      const createRemote = Effect.fn("ExecutionEngine.createRemote")(function* ({
+        state,
+        targetFunction,
+        args,
+        options,
+        mode,
+      }: {
+        readonly state: RuntimeState;
+        readonly targetFunction: AnyFunction | string;
+        readonly args: ReadonlyArray<unknown>;
+        readonly options: ContextOptions | undefined;
+        readonly mode: "attached" | "detached";
+      }) {
+        const seqid = childId({ parent: state.root, seq: state.seq });
+        const id = options?.id ?? (mode === "detached" ? detachedId({ prefix: state.prefixId, seqid }) : seqid);
         state.seq = state.seq + 1;
         const cached = HashMap.get(state.cache, id);
         if (Option.isSome(cached)) {
@@ -526,22 +614,22 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         const targetGroup = options?.target ?? state.targetGroup;
         const target =
           state.targetTransport === "local"
-            ? Protocol.TargetAddress.localAny(targetGroup)
-            : Protocol.TargetAddress.pollAny(targetGroup);
+            ? Protocol.TargetAddress.localAny({ group: targetGroup })
+            : Protocol.TargetAddress.pollAny({ group: targetGroup });
         const now = yield* Clock.currentTimeMillis;
-        const result = yield* tasks.fence(
-          {
+        const result = yield* tasks.fence({
+          data: {
             id: state.root,
             version: state.version,
             action: Protocol.PromiseCreateRequest.make({
-              head: requestHead(`${state.root}:${id}:rpc`, state.originId),
+              head: requestHead({ corrId: `${state.root}:${id}:rpc`, origin: state.originId }),
               data: {
                 id,
                 timeoutAt:
                   mode === "detached"
                     ? timestamp(now + Duration.toMillis(options?.timeout ?? Duration.hours(24)))
-                    : yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
-                param: yield* encodeTargetPayload(targetFunction, args, options),
+                    : yield* timeoutAt({ parent: state.timeoutAt, duration: options?.timeout ?? Duration.hours(24) }),
+                param: yield* encodeTargetPayload({ target: targetFunction, args, options }),
                 tags: Protocol.Tags.make({
                   reserved: {
                     ...(options?.tags ?? Protocol.emptyTags).reserved,
@@ -558,9 +646,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               },
             }),
           },
-          { origin: state.originId },
-        );
-        addPreload(state, result.preload);
+          options: { origin: state.originId },
+        });
+        addPreload({ state, preload: result.preload });
         const promise = yield* actionPromise(result.action);
         state.cache = HashMap.set(state.cache, promise.id, promise);
         if (mode === "attached" && promise.state === "pending") {
@@ -573,11 +661,15 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         return promise;
       });
 
-      const makeHandle = (
-        state: RuntimeState,
-        promise: Protocol.PromiseRecord,
-        deferred: Deferred.Deferred<unknown, unknown>,
-      ): LocalDurableHandle => ({
+      const makeHandle = ({
+        state,
+        promise,
+        deferred,
+      }: {
+        readonly state: RuntimeState;
+        readonly promise: Protocol.PromiseRecord;
+        readonly deferred: Deferred.Deferred<unknown, unknown>;
+      }): LocalDurableHandle => ({
         id: promise.id,
         await:
           isExternalPromise(promise) && promise.state === "pending"
@@ -599,16 +691,20 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             }),
           ),
         ),
-        cancel: settle(state, promise.id, Exit.fail(new DurablePromiseCanceled({ id: promise.id }))).pipe(
+        cancel: settle({ state, id: promise.id, exit: Exit.fail(new DurablePromiseCanceled({ id: promise.id })) }).pipe(
           Effect.asVoid,
         ),
       });
 
-      const makePromiseHandle = <P extends PromiseDeclaration>(
-        state: RuntimeState,
-        promise: Protocol.PromiseRecord,
-        declaration: P,
-      ): LocalDurableHandle<PromiseSuccess<P>, unknown> => {
+      const makePromiseHandle = <P extends PromiseDeclaration>({
+        state,
+        promise,
+        declaration,
+      }: {
+        readonly state: RuntimeState;
+        readonly promise: Protocol.PromiseRecord;
+        readonly declaration: P;
+      }): LocalDurableHandle<PromiseSuccess<P>, unknown> => {
         const awaitExternal: Effect.Effect<PromiseSuccess<P>, unknown> = Effect.suspend(() => {
           if (promise.state === "pending") {
             const parked = HashMap.get(state.awaiting, promise.id);
@@ -655,18 +751,25 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           id: promise.id,
           await: awaitExternal,
           poll: awaitExternal.pipe(Effect.exit, Effect.map(Option.some)),
-          cancel: settle(state, promise.id, Exit.fail(new DurablePromiseCanceled({ id: promise.id }))).pipe(
-            Effect.asVoid,
-          ),
+          cancel: settle({
+            state,
+            id: promise.id,
+            exit: Exit.fail(new DurablePromiseCanceled({ id: promise.id })),
+          }).pipe(Effect.asVoid),
         };
       };
 
-      const runWithRetry = Effect.fn("ExecutionEngine.runWithRetry")(function* (
-        state: RuntimeState,
-        effect: Effect.Effect<unknown, unknown>,
-        policy: RetryPolicy.RetryPolicy,
-        nonRetryableErrors: ReadonlyArray<Schema.Codec<unknown, unknown, never, never>>,
-      ): Effect.fn.Return<Exit.Exit<unknown, unknown>> {
+      const runWithRetry = Effect.fn("ExecutionEngine.runWithRetry")(function* ({
+        state,
+        effect,
+        policy,
+        nonRetryableErrors,
+      }: {
+        readonly state: RuntimeState;
+        readonly effect: Effect.Effect<unknown, unknown>;
+        readonly policy: RetryPolicy.RetryPolicy;
+        readonly nonRetryableErrors: ReadonlyArray<Schema.Codec<unknown, unknown, never, never>>;
+      }): Effect.fn.Return<Exit.Exit<unknown, unknown>> {
         const runAttempt = Effect.fn("ExecutionEngine.runWithRetry.runAttempt")(function* (
           attempt: number,
         ): Effect.fn.Return<Exit.Exit<unknown, unknown>> {
@@ -698,18 +801,22 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
       });
 
       const layerFor = (state: RuntimeState): Layer.Layer<ResonateContext, never, never> => {
-        const beginRpcImpl = Effect.fn("ResonateContext.beginRpc")(function* (
-          targetFunction: AnyFunction | string,
-          args: ReadonlyArray<unknown>,
-          options?: ContextOptions,
-        ): Effect.fn.Return<LocalDurableHandle, unknown> {
-          const promise = yield* createRemote(state, targetFunction, args, options, "attached");
+        const beginRpcImpl = Effect.fn("ResonateContext.beginRpc")(function* ({
+          target,
+          args,
+          options,
+        }: {
+          readonly target: AnyFunction | string;
+          readonly args: ReadonlyArray<unknown>;
+          readonly options?: ContextOptions;
+        }): Effect.fn.Return<LocalDurableHandle, unknown> {
+          const promise = yield* createRemote({ state, targetFunction: target, args, options, mode: "attached" });
           const deferred = yield* Deferred.make<unknown, unknown>();
           if (promise.state !== "pending") {
             const settled = yield* decodeSettled(promise).pipe(Effect.exit);
             yield* Deferred.done(deferred, settled);
           }
-          return makeHandle(state, promise, deferred);
+          return makeHandle({ state, promise, deferred });
         });
 
         const service = ResonateContext.of({
@@ -725,27 +832,30 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             timeoutAt: state.timeoutAt,
             version: state.version,
           },
-          beginRun: Effect.fn("ResonateContext.beginRun")(function* (
-            effect: Effect.Effect<unknown, unknown>,
-            options?: ContextOptions,
-          ): Effect.fn.Return<LocalDurableHandle, unknown> {
-            const promise = yield* createLocal(state, options);
+          beginRun: Effect.fn("ResonateContext.beginRun")(function* ({
+            effect,
+            options,
+          }: {
+            readonly effect: Effect.Effect<unknown, unknown>;
+            readonly options?: ContextOptions;
+          }): Effect.fn.Return<LocalDurableHandle, unknown> {
+            const promise = yield* createLocal({ state, options });
             const deferred = yield* Deferred.make<unknown, unknown>();
             if (promise.state !== "pending") {
               const settled = yield* decodeSettled(promise).pipe(Effect.exit);
               yield* Deferred.done(deferred, settled);
-              return makeHandle(state, promise, deferred);
+              return makeHandle({ state, promise, deferred });
             }
             if (isExternalPromise(promise)) {
-              return makeHandle(state, promise, deferred);
+              return makeHandle({ state, promise, deferred });
             }
-            const fiber = yield* runWithRetry(
+            const fiber = yield* runWithRetry({
               state,
               effect,
-              options?.retryPolicy ?? RetryPolicy.exponential(),
-              options?.nonRetryableErrors ?? [],
-            ).pipe(
-              Effect.flatMap((exit) => settle(state, promise.id, exit)),
+              policy: options?.retryPolicy ?? RetryPolicy.exponential(),
+              nonRetryableErrors: options?.nonRetryableErrors ?? [],
+            }).pipe(
+              Effect.flatMap((exit) => settle({ state, id: promise.id, exit })),
               Effect.flatMap((settled) =>
                 decodeSettled(settled).pipe(
                   Effect.exit,
@@ -755,22 +865,28 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               Effect.forkDetach,
             );
             state.children.push({ id: promise.id, fiber });
-            return makeHandle(state, promise, deferred);
+            return makeHandle({ state, promise, deferred });
           }),
-          run: Effect.fn("ResonateContext.run")(function* (effect, options) {
-            const handle = yield* service.beginRun(effect, options);
+          run: Effect.fn("ResonateContext.run")(function* ({
+            effect,
+            options,
+          }: {
+            readonly effect: Effect.Effect<unknown, unknown>;
+            readonly options?: ContextOptions;
+          }) {
+            const handle = yield* service.beginRun({ effect, options });
             return yield* handle.await;
           }),
           get now() {
             return service
-              .run(Clock.currentTimeMillis)
+              .run({ effect: Clock.currentTimeMillis })
               .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Finite)), Effect.map(timestamp));
           },
           get random() {
-            return service.run(Random.next).pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Finite)));
+            return service.run({ effect: Random.next }).pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Finite)));
           },
           sleepUntil: Effect.fn("ResonateContext.sleepUntil")(function* (instant) {
-            const promise = yield* createSleep(state, instant);
+            const promise = yield* createSleep({ state, instant });
             if (promise.state !== "pending") {
               yield* decodeSettled(promise);
               return;
@@ -787,30 +903,45 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             return yield* service.sleepUntil(timestamp((yield* Clock.currentTimeMillis) + Duration.toMillis(duration)));
           }),
           beginRpc: beginRpcImpl,
-          rpc: Effect.fn("ResonateContext.rpc")(function* (
-            targetFunction: AnyFunction | string,
-            args: ReadonlyArray<unknown>,
-            options?: ContextOptions,
-          ): Effect.fn.Return<unknown, unknown> {
-            const handle = yield* beginRpcImpl(targetFunction, args, options);
+          rpc: Effect.fn("ResonateContext.rpc")(function* ({
+            target,
+            args,
+            options,
+          }: {
+            readonly target: AnyFunction | string;
+            readonly args: ReadonlyArray<unknown>;
+            readonly options?: ContextOptions;
+          }): Effect.fn.Return<unknown, unknown> {
+            const handle = yield* beginRpcImpl({ target, args, options });
             return yield* handle.await;
           }),
-          detached: Effect.fn("ResonateContext.detached")(function* (
-            targetFunction: AnyFunction | string,
-            args: ReadonlyArray<unknown>,
-            options?: ContextOptions,
-          ): Effect.fn.Return<LocalDurableHandle, unknown> {
-            const promise = yield* createRemote(state, targetFunction, args, options, "detached");
+          detached: Effect.fn("ResonateContext.detached")(function* ({
+            target,
+            args,
+            options,
+          }: {
+            readonly target: AnyFunction | string;
+            readonly args: ReadonlyArray<unknown>;
+            readonly options?: ContextOptions;
+          }): Effect.fn.Return<LocalDurableHandle, unknown> {
+            const targetFunction = target;
+            const promise = yield* createRemote({ state, targetFunction, args, options, mode: "detached" });
             const deferred = yield* Deferred.make<unknown, unknown>();
             if (promise.state !== "pending") {
               const settled = yield* decodeSettled(promise).pipe(Effect.exit);
               yield* Deferred.done(deferred, settled);
             }
-            return makeHandle(state, promise, deferred);
+            return makeHandle({ state, promise, deferred });
           }),
-          promise: Effect.fn("ResonateContext.promise")(function* (declaration, options) {
-            const promise = yield* createExternalPromise(state, declaration, options);
-            return makePromiseHandle(state, promise, declaration);
+          promise: Effect.fn("ResonateContext.promise")(function* <P extends PromiseDeclaration>({
+            declaration,
+            options,
+          }: {
+            readonly declaration: P;
+            readonly options?: Pick<ContextOptions, "id" | "timeout" | "tags">;
+          }) {
+            const promise = yield* createExternalPromise({ state, declaration, options });
+            return makePromiseHandle({ state, promise, declaration });
           }),
           all: (effects) =>
             Effect.gen(function* () {
@@ -860,7 +991,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             attempt: 0,
             seq: 0,
           };
-          addPreload(state, options.preload ?? []);
+          addPreload({ state, preload: options.preload ?? [] });
 
           if (options.promise.state !== "pending") {
             return new EngineDone({ promise: options.promise });
@@ -869,10 +1000,13 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           const invocation = yield* codec
             .decode(options.promise.param)
             .pipe(Effect.flatMap(Schema.decodeUnknownEffect(InvocationParam)));
-          const item = yield* Option.match(options.registry.get(invocation.func, invocation.version), {
-            onNone: () => Effect.die(`Function '${invocation.func}' is not registered`),
-            onSome: Effect.succeed,
-          });
+          const item = yield* Option.match(
+            options.registry.get({ name: invocation.func, version: invocation.version }),
+            {
+              onNone: () => Effect.die(`Function '${invocation.func}' is not registered`),
+              onSome: Effect.succeed,
+            },
+          );
           const decoded = yield* Schema.decodeUnknownEffect(item.definition.payload)(invocation.args).pipe(
             Effect.catchCause(() => Schema.decodeUnknownEffect(item.definition.payload)(invocation.args[0])),
           );
@@ -896,10 +1030,10 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             if (attachedAwaited.length > 0) {
               return new EngineSuspended({ awaited: [...new Set(attachedAwaited)] });
             }
-            const promise = yield* fulfillRoot(state, Exit.succeed(exit.value.value));
+            const promise = yield* fulfillRoot({ state, exit: Exit.succeed(exit.value.value) });
             return new EngineDone({ promise });
           }
-          const promise = yield* fulfillRoot(state, exit);
+          const promise = yield* fulfillRoot({ state, exit });
           return new EngineDone({ promise });
         }),
       });

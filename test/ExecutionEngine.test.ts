@@ -16,23 +16,18 @@ import { Tasks } from "../src/Task.ts";
 
 const isDebugSnapSuccess = SchemaParser.is(Protocol.DebugSnapResponse.members[0]);
 
-const Workflow = Resonate.function("Workflow", {
-  payload: Schema.Number,
-});
+const Workflow = Resonate.function({ name: "Workflow", payload: Schema.Number });
 
-const RemoteChild = Resonate.function("RemoteChild", {
-  payload: Schema.Number,
-});
+const RemoteChild = Resonate.function({ name: "RemoteChild", payload: Schema.Number });
 
-const RemoteParent = Resonate.function("RemoteParent", {
-  payload: Schema.Number,
-});
+const RemoteParent = Resonate.function({ name: "RemoteParent", payload: Schema.Number });
 
 class ApprovalDenied extends Schema.TaggedErrorClass<ApprovalDenied>()("ApprovalDenied", {
   reason: Schema.String,
 }) {}
 
-const Approval = Resonate.promise("approval", {
+const Approval = Resonate.promise({
+  name: "approval",
   success: Schema.Struct({ approvedBy: Schema.String }),
   error: ApprovalDenied,
 });
@@ -40,17 +35,13 @@ const Approval = Resonate.promise("approval", {
 const isApprovalDenied = SchemaParser.is(ApprovalDenied);
 const isDurablePromiseTimedOut = SchemaParser.is(DurablePromiseTimedOut);
 
-const ExternalWorkflow = Resonate.function("ExternalWorkflow", {
-  payload: Schema.String,
-});
+const ExternalWorkflow = Resonate.function({ name: "ExternalWorkflow", payload: Schema.String });
 
 class CardDeclined extends Schema.TaggedErrorClass<CardDeclined>()("CardDeclined", {
   code: Schema.String,
 }) {}
 
-const RetryWorkflow = Resonate.function("RetryWorkflow", {
-  payload: Schema.Number,
-});
+const RetryWorkflow = Resonate.function({ name: "RetryWorkflow", payload: Schema.Number });
 
 const workflowGroup = Resonate.group(Workflow);
 const remoteGroup = Resonate.group(Workflow, RemoteChild, RemoteParent);
@@ -110,9 +101,12 @@ describe("ExecutionEngine", () => {
           Workflow: (value) =>
             Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              const stepped = yield* ctx.run(Effect.succeed(value + 1));
-              const explicit = yield* ctx.beginRun(Effect.succeed(value + 2), {
-                id: Protocol.PromiseId.make("engine-explicit-local"),
+              const stepped = yield* ctx.run({ effect: Effect.succeed(value + 1) });
+              const explicit = yield* ctx.beginRun({
+                effect: Effect.succeed(value + 2),
+                options: {
+                  id: Protocol.PromiseId.make("engine-explicit-local"),
+                },
               });
               yield* explicit.await;
               return Number(stepped) + 1;
@@ -121,7 +115,11 @@ describe("ExecutionEngine", () => {
       );
       const registry = yield* workflowGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(Workflow, Protocol.ExecutionId.make("engine-root-1"), [1]);
+      const handle = yield* client.beginRun({
+        targetFunction: Workflow,
+        executionId: Protocol.ExecutionId.make("engine-root-1"),
+        args: [1],
+      });
       const root = yield* acquiredRoot(handle.id);
       const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(Predicate.isTagged(outcome, "Done")).toBe(true);
@@ -152,19 +150,23 @@ describe("ExecutionEngine", () => {
           Workflow: () =>
             Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              const value = yield* ctx.run(
-                Effect.sync(() => {
+              const value = yield* ctx.run({
+                effect: Effect.sync(() => {
                   executions = executions + 1;
                   return 41;
                 }),
-              );
+              });
               return Number(value) + 1;
             }),
         }),
       );
       const registry = yield* workflowGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(Workflow, Protocol.ExecutionId.make("engine-root-2"), [0]);
+      const handle = yield* client.beginRun({
+        targetFunction: Workflow,
+        executionId: Protocol.ExecutionId.make("engine-root-2"),
+        args: [0],
+      });
       const root = yield* acquiredRoot(handle.id);
       const encoded = yield* codec.encode(41);
       const child = yield* promises.create({
@@ -199,15 +201,21 @@ describe("ExecutionEngine", () => {
           RemoteParent: (value) =>
             Effect.gen(function* (): Effect.fn.Return<unknown, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              return yield* ctx.rpc(RemoteChild, [Number(value) + 1], {
-                target: Protocol.WorkerGroup.make("remote-workers"),
+              return yield* ctx.rpc({
+                target: RemoteChild,
+                args: [Number(value) + 1],
+                options: { target: Protocol.WorkerGroup.make("remote-workers") },
               });
             }),
         }),
       );
       const registry = yield* remoteGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(RemoteParent, Protocol.ExecutionId.make("engine-remote-1"), [1]);
+      const handle = yield* client.beginRun({
+        targetFunction: RemoteParent,
+        executionId: Protocol.ExecutionId.make("engine-remote-1"),
+        args: [1],
+      });
       const root = yield* acquiredRoot(handle.id);
       const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(Predicate.isTagged(outcome, "Suspended")).toBe(true);
@@ -242,14 +250,18 @@ describe("ExecutionEngine", () => {
           RemoteParent: () =>
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              yield* ctx.beginRpc(RemoteChild, [1]);
+              yield* ctx.beginRpc({ target: RemoteChild, args: [1] });
               return "parent-ready";
             }),
         }),
       );
       const registry = yield* remoteGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(RemoteParent, Protocol.ExecutionId.make("engine-remote-flush-1"), [0]);
+      const handle = yield* client.beginRun({
+        targetFunction: RemoteParent,
+        executionId: Protocol.ExecutionId.make("engine-remote-flush-1"),
+        args: [0],
+      });
       const root = yield* acquiredRoot(handle.id);
       const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(Predicate.isTagged(outcome, "Suspended")).toBe(true);
@@ -282,15 +294,19 @@ describe("ExecutionEngine", () => {
           RemoteParent: () =>
             Effect.gen(function* () {
               const ctx = yield* ResonateContext;
-              const left = yield* ctx.beginRpc(RemoteChild, [1]);
-              const right = yield* ctx.beginRpc(RemoteChild, [2]);
+              const left = yield* ctx.beginRpc({ target: RemoteChild, args: [1] });
+              const right = yield* ctx.beginRpc({ target: RemoteChild, args: [2] });
               return yield* ctx.all([left.await, right.await]);
             }),
         }),
       );
       const registry = yield* remoteGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(RemoteParent, Protocol.ExecutionId.make("engine-remote-fanout-1"), [0]);
+      const handle = yield* client.beginRun({
+        targetFunction: RemoteParent,
+        executionId: Protocol.ExecutionId.make("engine-remote-fanout-1"),
+        args: [0],
+      });
       const root = yield* acquiredRoot(handle.id);
       const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(Predicate.isTagged(outcome, "Suspended")).toBe(true);
@@ -311,14 +327,22 @@ describe("ExecutionEngine", () => {
           RemoteParent: () =>
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              yield* ctx.beginRpc(RemoteChild, [1], { id: Protocol.PromiseId.make("engine-explicit-child") });
+              yield* ctx.beginRpc({
+                target: RemoteChild,
+                args: [1],
+                options: { id: Protocol.PromiseId.make("engine-explicit-child") },
+              });
               return "ready";
             }),
         }),
       );
       const registry = yield* remoteGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(RemoteParent, Protocol.ExecutionId.make("engine-remote-explicit-1"), [0]);
+      const handle = yield* client.beginRun({
+        targetFunction: RemoteParent,
+        executionId: Protocol.ExecutionId.make("engine-remote-explicit-1"),
+        args: [0],
+      });
       const root = yield* acquiredRoot(handle.id);
       const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(Predicate.isTagged(outcome, "Suspended")).toBe(true);
@@ -344,15 +368,18 @@ describe("ExecutionEngine", () => {
           RemoteParent: () =>
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              yield* ctx.detached(RemoteChild, [1]);
+              yield* ctx.detached({ target: RemoteChild, args: [1] });
               return "detached-parent";
             }),
         }),
       );
       const registry = yield* remoteGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(RemoteParent, Protocol.ExecutionId.make("engine-remote-detached-1"), [0], {
-        timeout: Duration.seconds(30),
+      const handle = yield* client.beginRun({
+        targetFunction: RemoteParent,
+        executionId: Protocol.ExecutionId.make("engine-remote-detached-1"),
+        args: [0],
+        options: { timeout: Duration.seconds(30) },
       });
       const root = yield* acquiredRoot(handle.id);
       const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
@@ -383,8 +410,8 @@ describe("ExecutionEngine", () => {
           ExternalWorkflow: () =>
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              const approval = yield* ctx.promise(Approval, { timeout: Duration.hours(1) });
-              const published = yield* ctx.run(Effect.succeed(approval.id));
+              const approval = yield* ctx.promise({ declaration: Approval, options: { timeout: Duration.hours(1) } });
+              const published = yield* ctx.run({ effect: Effect.succeed(approval.id) });
               const result = yield* approval.await;
               if (!Predicate.isString(published)) {
                 return yield* Effect.die("published id was not a string");
@@ -395,7 +422,11 @@ describe("ExecutionEngine", () => {
       );
       const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-1"), ["ok"]);
+      const handle = yield* client.beginRun({
+        targetFunction: ExternalWorkflow,
+        executionId: Protocol.ExecutionId.make("engine-external-1"),
+        args: ["ok"],
+      });
       const root = yield* acquiredRoot(handle.id);
       const suspended = yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(Predicate.isTagged(suspended, "Suspended")).toBe(true);
@@ -403,8 +434,10 @@ describe("ExecutionEngine", () => {
         expect(suspended.awaited).toEqual(["engine-external-1.approval"]);
       }
 
-      yield* client.resolve(Approval, Approval.id(Protocol.ExecutionId.make("engine-external-1")), {
-        approvedBy: "erik",
+      yield* client.resolve({
+        declaration: Approval,
+        id: Approval.id(Protocol.ExecutionId.make("engine-external-1")),
+        value: { approvedBy: "erik" },
       });
       const state = yield* snap();
       const settled = state.promises.find((promise) => promise.id === "engine-external-1.approval");
@@ -414,7 +447,7 @@ describe("ExecutionEngine", () => {
       const done = yield* engine.execute({ task: root.task, promise: root.promise, registry, preload: [settled] });
       expect(Predicate.isTagged(done, "Done")).toBe(true);
 
-      const completed = yield* client.get(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-1"));
+      const completed = yield* client.get({ fn: ExternalWorkflow, id: Protocol.ExecutionId.make("engine-external-1") });
       const exit = yield* completed.await.pipe(Effect.exit);
       expect(Exit.isSuccess(exit)).toBe(true);
       if (Exit.isSuccess(exit)) {
@@ -434,7 +467,7 @@ describe("ExecutionEngine", () => {
           ExternalWorkflow: () =>
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              const approval = yield* ctx.promise(Approval);
+              const approval = yield* ctx.promise({ declaration: Approval });
               const result = yield* approval.await.pipe(
                 Effect.catch((error) => (isApprovalDenied(error) ? Effect.succeed(error.reason) : Effect.fail(error))),
               );
@@ -447,23 +480,28 @@ describe("ExecutionEngine", () => {
       );
       const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-reject-1"), [
-        "ok",
-      ]);
+      const handle = yield* client.beginRun({
+        targetFunction: ExternalWorkflow,
+        executionId: Protocol.ExecutionId.make("engine-external-reject-1"),
+        args: ["ok"],
+      });
       const root = yield* acquiredRoot(handle.id);
       yield* engine.execute({ task: root.task, promise: root.promise, registry });
-      yield* client.reject(
-        Approval,
-        Approval.id(Protocol.ExecutionId.make("engine-external-reject-1")),
-        new ApprovalDenied({ reason: "nope" }),
-      );
+      yield* client.reject({
+        declaration: Approval,
+        id: Approval.id(Protocol.ExecutionId.make("engine-external-reject-1")),
+        error: new ApprovalDenied({ reason: "nope" }),
+      });
       const state = yield* snap();
       const settled = state.promises.find((promise) => promise.id === "engine-external-reject-1.approval");
       if (Predicate.isUndefined(settled)) {
         return yield* Effect.die("approval promise missing");
       }
       yield* engine.execute({ task: root.task, promise: root.promise, registry, preload: [settled] });
-      const completed = yield* client.get(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-reject-1"));
+      const completed = yield* client.get({
+        fn: ExternalWorkflow,
+        id: Protocol.ExecutionId.make("engine-external-reject-1"),
+      });
       expect(yield* completed.await).toBe("nope");
     }).pipe(Effect.provide(layer)),
   );
@@ -479,7 +517,10 @@ describe("ExecutionEngine", () => {
           ExternalWorkflow: () =>
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              const approval = yield* ctx.promise(Approval, { timeout: Duration.minutes(30) });
+              const approval = yield* ctx.promise({
+                declaration: Approval,
+                options: { timeout: Duration.minutes(30) },
+              });
               const result = yield* approval.await.pipe(
                 Effect.catch((error) =>
                   isDurablePromiseTimedOut(error) ? Effect.succeed(`timed-out:${error.id}`) : Effect.fail(error),
@@ -494,9 +535,11 @@ describe("ExecutionEngine", () => {
       );
       const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-timeout-1"), [
-        "ok",
-      ]);
+      const handle = yield* client.beginRun({
+        targetFunction: ExternalWorkflow,
+        executionId: Protocol.ExecutionId.make("engine-external-timeout-1"),
+        args: ["ok"],
+      });
       const root = yield* acquiredRoot(handle.id);
       yield* engine.execute({ task: root.task, promise: root.promise, registry });
       const state = yield* snap();
@@ -530,17 +573,19 @@ describe("ExecutionEngine", () => {
           ExternalWorkflow: () =>
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              yield* ctx.run(Effect.succeed("before"));
-              const approval = yield* ctx.promise(Approval);
+              yield* ctx.run({ effect: Effect.succeed("before") });
+              const approval = yield* ctx.promise({ declaration: Approval });
               return approval.id;
             }),
         }),
       );
       const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-stable-1"), [
-        "ok",
-      ]);
+      const handle = yield* client.beginRun({
+        targetFunction: ExternalWorkflow,
+        executionId: Protocol.ExecutionId.make("engine-external-stable-1"),
+        args: ["ok"],
+      });
       const root = yield* acquiredRoot(handle.id);
       const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(Predicate.isTagged(outcome, "Suspended")).toBe(true);
@@ -562,7 +607,7 @@ describe("ExecutionEngine", () => {
             Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
               const observed = yield* ctx.now;
-              const approval = yield* ctx.promise(Approval);
+              const approval = yield* ctx.promise({ declaration: Approval });
               yield* approval.await;
               return DateTime.toEpochMillis(observed);
             }),
@@ -571,7 +616,11 @@ describe("ExecutionEngine", () => {
       const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
       yield* TestClock.setTime(1_000);
-      const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-now-1"), ["ok"]);
+      const handle = yield* client.beginRun({
+        targetFunction: ExternalWorkflow,
+        executionId: Protocol.ExecutionId.make("engine-now-1"),
+        args: ["ok"],
+      });
       const root = yield* acquiredRoot(handle.id);
       const suspended = yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(Predicate.isTagged(suspended, "Suspended")).toBe(true);
@@ -582,8 +631,10 @@ describe("ExecutionEngine", () => {
       expect(yield* codec.decode(recordedNow?.value ?? Protocol.emptyValue)).toBe(1_000);
 
       yield* TestClock.setTime(99_000);
-      yield* client.resolve(Approval, Approval.id(Protocol.ExecutionId.make("engine-now-1")), {
-        approvedBy: "erik",
+      yield* client.resolve({
+        declaration: Approval,
+        id: Approval.id(Protocol.ExecutionId.make("engine-now-1")),
+        value: { approvedBy: "erik" },
       });
       const replayState = yield* snap();
       const approval = replayState.promises.find((promise) => promise.id === "engine-now-1.approval");
@@ -609,14 +660,18 @@ describe("ExecutionEngine", () => {
             Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
               const observed = yield* ctx.random;
-              yield* ctx.run(Effect.succeed("after-random"));
+              yield* ctx.run({ effect: Effect.succeed("after-random") });
               return observed;
             }),
         }),
       );
       const registry = yield* workflowGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(Workflow, Protocol.ExecutionId.make("engine-random-1"), [0]);
+      const handle = yield* client.beginRun({
+        targetFunction: Workflow,
+        executionId: Protocol.ExecutionId.make("engine-random-1"),
+        args: [0],
+      });
       const root = yield* acquiredRoot(handle.id);
       const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(Predicate.isTagged(outcome, "Done")).toBe(true);
@@ -645,23 +700,26 @@ describe("ExecutionEngine", () => {
           ExternalWorkflow: () =>
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              yield* ctx.promise(Approval);
-              yield* ctx.promise(Approval);
+              yield* ctx.promise({ declaration: Approval });
+              yield* ctx.promise({ declaration: Approval });
               return "unreachable";
             }),
         }),
       );
       const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(
-        ExternalWorkflow,
-        Protocol.ExecutionId.make("engine-external-duplicate-1"),
-        ["ok"],
-      );
+      const handle = yield* client.beginRun({
+        targetFunction: ExternalWorkflow,
+        executionId: Protocol.ExecutionId.make("engine-external-duplicate-1"),
+        args: ["ok"],
+      });
       const root = yield* acquiredRoot(handle.id);
       const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(Predicate.isTagged(outcome, "Done")).toBe(true);
-      const completed = yield* client.get(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-duplicate-1"));
+      const completed = yield* client.get({
+        fn: ExternalWorkflow,
+        id: Protocol.ExecutionId.make("engine-external-duplicate-1"),
+      });
       const exit = yield* completed.await.pipe(Effect.exit);
       expect(Exit.isFailure(exit)).toBe(true);
     }).pipe(Effect.provide(layer)),
@@ -678,7 +736,7 @@ describe("ExecutionEngine", () => {
           ExternalWorkflow: () =>
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
-              const approval = yield* ctx.promise(Approval);
+              const approval = yield* ctx.promise({ declaration: Approval });
               const value = yield* approval.await;
               return value.approvedBy;
             }),
@@ -686,11 +744,11 @@ describe("ExecutionEngine", () => {
       );
       const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(
-        ExternalWorkflow,
-        Protocol.ExecutionId.make("engine-external-malformed-1"),
-        ["ok"],
-      );
+      const handle = yield* client.beginRun({
+        targetFunction: ExternalWorkflow,
+        executionId: Protocol.ExecutionId.make("engine-external-malformed-1"),
+        args: ["ok"],
+      });
       const root = yield* acquiredRoot(handle.id);
       yield* engine.execute({ task: root.task, promise: root.promise, registry });
       const settled = yield* promises.settle({
@@ -699,7 +757,10 @@ describe("ExecutionEngine", () => {
         value: yield* codec.encode({ wrong: true }),
       });
       yield* engine.execute({ task: root.task, promise: root.promise, registry, preload: [settled] });
-      const completed = yield* client.get(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-malformed-1"));
+      const completed = yield* client.get({
+        fn: ExternalWorkflow,
+        id: Protocol.ExecutionId.make("engine-external-malformed-1"),
+      });
       const exit = yield* completed.await.pipe(Effect.exit);
       expect(Exit.isFailure(exit)).toBe(true);
     }).pipe(Effect.provide(layer)),
@@ -717,23 +778,27 @@ describe("ExecutionEngine", () => {
             Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
               return Number(
-                yield* ctx.run(
-                  Effect.gen(function* () {
+                yield* ctx.run({
+                  effect: Effect.gen(function* () {
                     calls = calls + 1;
                     if (calls < 3) {
                       return yield* new CardDeclined({ code: "retry" });
                     }
                     return ctx.info.attempt;
                   }),
-                  { retryPolicy: RetryPolicy.exponential({ delay: Duration.millis(0), maxRetries: 3 }) },
-                ),
+                  options: { retryPolicy: RetryPolicy.exponential({ delay: Duration.millis(0), maxRetries: 3 }) },
+                }),
               );
             }),
         }),
       );
       const registry = yield* retryGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(RetryWorkflow, Protocol.ExecutionId.make("engine-retry-1"), [0]);
+      const handle = yield* client.beginRun({
+        targetFunction: RetryWorkflow,
+        executionId: Protocol.ExecutionId.make("engine-retry-1"),
+        args: [0],
+      });
       const root = yield* acquiredRoot(handle.id);
       const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(Predicate.isTagged(outcome, "Done")).toBe(true);
@@ -755,16 +820,16 @@ describe("ExecutionEngine", () => {
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
               const result = yield* ctx
-                .run(
-                  Effect.gen(function* () {
+                .run({
+                  effect: Effect.gen(function* () {
                     calls = calls + 1;
                     return yield* new CardDeclined({ code: "stop" });
                   }),
-                  {
+                  options: {
                     retryPolicy: RetryPolicy.constant({ delay: Duration.seconds(1), maxRetries: 5 }),
                     nonRetryableErrors: [CardDeclined],
                   },
-                )
+                })
                 .pipe(Effect.exit);
               return Exit.isFailure(result) ? "stopped" : "unexpected";
             }),
@@ -772,11 +837,11 @@ describe("ExecutionEngine", () => {
       );
       const registry = yield* retryGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(
-        RetryWorkflow,
-        Protocol.ExecutionId.make("engine-retry-nonretryable-1"),
-        [0],
-      );
+      const handle = yield* client.beginRun({
+        targetFunction: RetryWorkflow,
+        executionId: Protocol.ExecutionId.make("engine-retry-nonretryable-1"),
+        args: [0],
+      });
       const root = yield* acquiredRoot(handle.id);
       yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(calls).toBe(1);
@@ -794,13 +859,13 @@ describe("ExecutionEngine", () => {
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
               const result = yield* ctx
-                .run(
-                  Effect.gen(function* () {
+                .run({
+                  effect: Effect.gen(function* () {
                     calls = calls + 1;
                     return yield* Effect.fail("retryable");
                   }),
-                  { retryPolicy: RetryPolicy.constant({ delay: Duration.seconds(10), maxRetries: 5 }) },
-                )
+                  options: { retryPolicy: RetryPolicy.constant({ delay: Duration.seconds(10), maxRetries: 5 }) },
+                })
                 .pipe(Effect.exit);
               return Exit.isFailure(result) ? "bounded" : "unexpected";
             }),
@@ -808,8 +873,11 @@ describe("ExecutionEngine", () => {
       );
       const registry = yield* retryGroup.registry.pipe(Effect.provide(handlers));
 
-      const handle = yield* client.beginRun(RetryWorkflow, Protocol.ExecutionId.make("engine-retry-timeout-1"), [0], {
-        timeout: Duration.seconds(5),
+      const handle = yield* client.beginRun({
+        targetFunction: RetryWorkflow,
+        executionId: Protocol.ExecutionId.make("engine-retry-timeout-1"),
+        args: [0],
+        options: { timeout: Duration.seconds(5) },
       });
       const root = yield* acquiredRoot(handle.id);
       yield* engine.execute({ task: root.task, promise: root.promise, registry });

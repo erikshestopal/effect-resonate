@@ -8,13 +8,9 @@ import * as Resonate from "../src/Resonate.ts";
 import { ResonateContext } from "../src/ResonateContext.ts";
 import { ResonateTest, restartWorker, snapshot } from "../src/testing.ts";
 
-const GraphRoot = Resonate.function("GraphRoot", {
-  payload: Schema.Number,
-});
+const GraphRoot = Resonate.function({ name: "GraphRoot", payload: Schema.Number });
 
-const GraphChild = Resonate.function("GraphChild", {
-  payload: Schema.Number,
-});
+const GraphChild = Resonate.function({ name: "GraphChild", payload: Schema.Number });
 
 const GraphFns = Resonate.group(GraphRoot, GraphChild);
 
@@ -23,10 +19,10 @@ const handlers = GraphFns.toLayer(
     GraphRoot: (value) =>
       Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
         const ctx = yield* ResonateContext;
-        yield* ctx.run(Effect.succeed(Number(value) + 1));
-        const local = yield* ctx.beginRun(Effect.succeed(Number(value) + 2));
-        const remote = yield* ctx.beginRpc(GraphChild, [Number(value) + 3]);
-        yield* ctx.detached(GraphChild, [Number(value) + 4]);
+        yield* ctx.run({ effect: Effect.succeed(Number(value) + 1) });
+        const local = yield* ctx.beginRun({ effect: Effect.succeed(Number(value) + 2) });
+        const remote = yield* ctx.beginRpc({ target: GraphChild, args: [Number(value) + 3] });
+        yield* ctx.detached({ target: GraphChild, args: [Number(value) + 4] });
         yield* ctx.sleep(Duration.seconds(60));
         const values = yield* ctx.all([local.await, remote.await]);
         return Number(values[0]) + Number(values[1]);
@@ -43,7 +39,11 @@ describe("graph parity", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const codec = yield* currentCodec;
-      const handle = yield* client.beginRpc(GraphRoot, Protocol.ExecutionId.make("graph-local-1"), [1]);
+      const handle = yield* client.beginRpc({
+        targetFunction: GraphRoot,
+        executionId: Protocol.ExecutionId.make("graph-local-1"),
+        args: [1],
+      });
       yield* TestClock.adjust(Duration.minutes(1));
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
@@ -80,14 +80,18 @@ describe("graph parity", () => {
         args: [4],
         version: 1,
       });
-    }).pipe(Effect.provide(ResonateTest.layer(GraphFns, handlers))),
+    }).pipe(Effect.provide(ResonateTest.layer({ group: GraphFns, handlers: handlers }))),
   );
 
   it.effect("keeps the graph byte-stable after worker restart replay", () =>
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const promises = yield* DurablePromises;
-      const handle = yield* client.beginRpc(GraphRoot, Protocol.ExecutionId.make("graph-replay-1"), [1]);
+      const handle = yield* client.beginRpc({
+        targetFunction: GraphRoot,
+        executionId: Protocol.ExecutionId.make("graph-replay-1"),
+        args: [1],
+      });
       yield* Effect.yieldNow;
       yield* Effect.yieldNow;
       const before = yield* snapshot;
@@ -118,7 +122,7 @@ describe("graph parity", () => {
         "graph-replay-1.4",
         "graph-replay-1.d0f956885dab743",
       ]);
-    }).pipe(Effect.provide(ResonateTest.layer(GraphFns, handlers))),
+    }).pipe(Effect.provide(ResonateTest.layer({ group: GraphFns, handlers: handlers }))),
   );
 
   it("has the resonate tree CLI available for shipped-server graph checks", async () => {

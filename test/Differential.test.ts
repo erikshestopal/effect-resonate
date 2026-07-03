@@ -76,7 +76,9 @@ const scenario = Effect.fn("Differential.scenario")(function* (prefix: string) {
       data: {
         ...promiseCreateData(taskId),
         tags: Protocol.Tags.make({
-          reserved: { "resonate:target": Protocol.TargetAddress.pollAny(Protocol.WorkerGroup.make("differential")) },
+          reserved: {
+            "resonate:target": Protocol.TargetAddress.pollAny({ group: Protocol.WorkerGroup.make("differential") }),
+          },
           unrecognized: {},
           user: {},
         }),

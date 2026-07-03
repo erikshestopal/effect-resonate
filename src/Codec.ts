@@ -193,7 +193,10 @@ export const currentCodec: Effect.Effect<ResonateCodecService> = Effect.serviceO
 
 export const schemaHeaderKey = "resonate:schema";
 
-export const withSchemaHeader = (value: Protocol.Value, schemaName: string): Protocol.Value => ({
-  ...value,
-  headers: { ...value.headers, [schemaHeaderKey]: schemaName },
+export const withSchemaHeader = (options: {
+  readonly value: Protocol.Value;
+  readonly schemaName: string;
+}): Protocol.Value => ({
+  ...options.value,
+  headers: { ...options.value.headers, [schemaHeaderKey]: options.schemaName },
 });

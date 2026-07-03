@@ -8,7 +8,7 @@ export const sampleArgs = ["workflow-1"] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-human-in-the-loop-ts --func fooWorkflow --json-args '["workflow-1"]' example-human-in-the-loop-ts-demo
 
 const Payload = Schema.String;
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -18,9 +18,11 @@ const handlers = App.toLayer(
         const ctx = yield* ResonateContext.ResonateContext;
         const results: Array<unknown> = [];
         results.push(
-          yield* ctx.run(
-            Effect.logInfo(`send approval email for ${input}`).pipe(Effect.as(`send approval email for ${input}`)),
-          ),
+          yield* ctx.run({
+            effect: Effect.logInfo(`send approval email for ${input}`).pipe(
+              Effect.as(`send approval email for ${input}`),
+            ),
+          }),
         );
         yield* ctx.sleep(Duration.millis(1));
         return { repo, functionName, results };
@@ -37,7 +39,9 @@ const worker = Layer.unwrap(
     );
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

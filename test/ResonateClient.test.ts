@@ -14,9 +14,7 @@ import { Tasks } from "../src/Task.ts";
 
 const isDebugSnapSuccess = SchemaParser.is(Protocol.DebugSnapResponse.members[0]);
 
-const Checkout = Resonate.function("Checkout", {
-  payload: Schema.Struct({ id: Schema.String }),
-});
+const Checkout = Resonate.function({ name: "Checkout", payload: Schema.Struct({ id: Schema.String }) });
 
 const baseLayer = Layer.mergeAll(
   NetworkLocal.layer({
@@ -51,8 +49,11 @@ describe("ResonateClient", () => {
       const client = yield* Resonate.ResonateClient;
       const codec = yield* currentCodec;
       const promises = yield* DurablePromises;
-      const handle = yield* client.beginRpc(Checkout, Protocol.ExecutionId.make("rpc-1"), [{ id: "order-1" }], {
-        target: Protocol.WorkerGroup.make("payments"),
+      const handle = yield* client.beginRpc({
+        targetFunction: Checkout,
+        executionId: Protocol.ExecutionId.make("rpc-1"),
+        args: [{ id: "order-1" }],
+        options: { target: Protocol.WorkerGroup.make("payments") },
       });
 
       const state = yield* snap();
@@ -74,7 +75,11 @@ describe("ResonateClient", () => {
   it.effect("beginRun creates an acquired root task with self-referential root tags", () =>
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
-      const handle = yield* client.beginRun(Checkout, Protocol.ExecutionId.make("run-1"), [{ id: "order-2" }]);
+      const handle = yield* client.beginRun({
+        targetFunction: Checkout,
+        executionId: Protocol.ExecutionId.make("run-1"),
+        args: [{ id: "order-2" }],
+      });
 
       const state = yield* snap();
       const promise = state.promises.find((promise) => promise.id === handle.id);
@@ -92,7 +97,11 @@ describe("ResonateClient", () => {
   it.effect("handle cancel settles rejected_canceled and await maps to DurablePromiseCanceled", () =>
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
-      const handle = yield* client.beginRpc(Checkout, Protocol.ExecutionId.make("cancel-1"), [{ id: "order-3" }]);
+      const handle = yield* client.beginRpc({
+        targetFunction: Checkout,
+        executionId: Protocol.ExecutionId.make("cancel-1"),
+        args: [{ id: "order-3" }],
+      });
       yield* handle.cancel;
 
       const exit = yield* handle.await.pipe(Effect.exit);
@@ -106,7 +115,11 @@ describe("ResonateClient", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const codec = yield* currentCodec;
-      const handle = yield* client.beginRpc("RemoteCheckout", Protocol.ExecutionId.make("string-rpc-1"), [1, "two"]);
+      const handle = yield* client.beginRpc({
+        targetFunction: "RemoteCheckout",
+        executionId: Protocol.ExecutionId.make("string-rpc-1"),
+        args: [1, "two"],
+      });
 
       const state = yield* snap();
       const promise = state.promises.find((promise) => promise.id === handle.id);
@@ -120,8 +133,11 @@ describe("ResonateClient", () => {
     Effect.gen(function* () {
       const client = yield* Resonate.ResonateClient;
       const codec = yield* currentCodec;
-      const handle = yield* client.beginRun(Checkout, Protocol.ExecutionId.make("retry-param-1"), [{ id: "order-4" }], {
-        retryPolicy: RetryPolicy.linear({ delay: Duration.seconds(2), maxRetries: 7 }),
+      const handle = yield* client.beginRun({
+        targetFunction: Checkout,
+        executionId: Protocol.ExecutionId.make("retry-param-1"),
+        args: [{ id: "order-4" }],
+        options: { retryPolicy: RetryPolicy.linear({ delay: Duration.seconds(2), maxRetries: 7 }) },
       });
 
       const state = yield* snap();

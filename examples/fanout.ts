@@ -8,9 +8,7 @@ const OrderEvent = Schema.Struct({
   phone: Schema.String,
 });
 
-const notifyAll = Resonate.function("notifyAll", {
-  payload: OrderEvent,
-});
+const notifyAll = Resonate.function({ name: "notifyAll", payload: OrderEvent });
 
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@default --func notifyAll --json-args '[{"orderId":"order-1","email":"ada@example.com","phone":"+15550100"}]' fanout-demo
 const App = Resonate.group(notifyAll);
@@ -20,24 +18,26 @@ const handlers = App.toLayer(
     notifyAll: (event) =>
       Effect.gen(function* (): Effect.fn.Return<ReadonlyArray<unknown>, unknown, ResonateContext.ResonateContext> {
         const ctx = yield* ResonateContext.ResonateContext;
-        const email = yield* ctx.beginRun(
-          Effect.logInfo(`email:${event.email}`).pipe(
+        const email = yield* ctx.beginRun({
+          effect: Effect.logInfo(`email:${event.email}`).pipe(
             Effect.as({ channel: "email", destination: event.email, ok: true }),
           ),
-        );
-        const sms = yield* ctx.beginRun(
-          Effect.logInfo(`sms:${event.phone}`).pipe(Effect.as({ channel: "sms", destination: event.phone, ok: true })),
-        );
-        const slack = yield* ctx.beginRun(
-          Effect.logInfo(`slack:${event.orderId}`).pipe(
+        });
+        const sms = yield* ctx.beginRun({
+          effect: Effect.logInfo(`sms:${event.phone}`).pipe(
+            Effect.as({ channel: "sms", destination: event.phone, ok: true }),
+          ),
+        });
+        const slack = yield* ctx.beginRun({
+          effect: Effect.logInfo(`slack:${event.orderId}`).pipe(
             Effect.as({ channel: "slack", destination: event.orderId, ok: true }),
           ),
-        );
-        const push = yield* ctx.beginRun(
-          Effect.logInfo(`push:${event.orderId}`).pipe(
+        });
+        const push = yield* ctx.beginRun({
+          effect: Effect.logInfo(`push:${event.orderId}`).pipe(
             Effect.as({ channel: "push", destination: event.orderId, ok: true }),
           ),
-        );
+        });
         return yield* ctx.all([email.await, sms.await, slack.await, push.await]);
       }),
   }),
@@ -50,7 +50,9 @@ const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault("fanout-worker"));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

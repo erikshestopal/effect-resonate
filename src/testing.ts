@@ -25,37 +25,37 @@ import { Schedules } from "./Schedule.ts";
 import { Tasks } from "./Task.ts";
 import * as Worker from "./Worker.ts";
 
-const hasTaskTimeout = (state: DebugState, id: Protocol.TaskId, type: 0 | 1): boolean =>
-  state.taskTimeouts.some((timeout) => timeout.id === id && timeout.type === type);
-
-const suspendedHasCallback = (state: DebugState, id: Protocol.TaskId): boolean =>
-  state.callbacks.some((callback) => callback.awaiter === id);
-
-const suspendedHasConsumedCallback = (state: DebugState, id: Protocol.TaskId): boolean =>
-  state.callbacks.some((callback) => {
-    if (callback.awaiter !== id) {
-      return false;
-    }
-    const awaited = state.promises.find((promise) => promise.id === callback.awaited);
-    return Predicate.isUndefined(awaited) || awaited.state !== "pending";
-  });
-
 export const assertInvariants = Effect.fn("assertInvariants")(function* (state: DebugState) {
   for (const task of state.tasks) {
     const promise = state.promises.find((promise) => promise.id === task.id);
     if (Predicate.isUndefined(promise)) {
       return yield* Effect.die(`Invariant failed: task ${task.id} has no promise`);
     }
-    if (task.state === "pending" && !hasTaskTimeout(state, task.id, 0)) {
+    if (
+      task.state === "pending" &&
+      !state.taskTimeouts.some((timeout) => timeout.id === task.id && timeout.type === 0)
+    ) {
       return yield* Effect.die(`Invariant failed: pending task ${task.id} has no retry timeout`);
     }
-    if (task.state === "acquired" && !hasTaskTimeout(state, task.id, 1)) {
+    if (
+      task.state === "acquired" &&
+      !state.taskTimeouts.some((timeout) => timeout.id === task.id && timeout.type === 1)
+    ) {
       return yield* Effect.die(`Invariant failed: acquired task ${task.id} has no lease`);
     }
-    if (task.state === "suspended" && !suspendedHasCallback(state, task.id)) {
+    if (task.state === "suspended" && !state.callbacks.some((callback) => callback.awaiter === task.id)) {
       return yield* Effect.die(`Invariant failed: suspended task ${task.id} has no callback`);
     }
-    if (task.state === "suspended" && suspendedHasConsumedCallback(state, task.id)) {
+    if (
+      task.state === "suspended" &&
+      state.callbacks.some((callback) => {
+        if (callback.awaiter !== task.id) {
+          return false;
+        }
+        const awaited = state.promises.find((promise) => promise.id === callback.awaited);
+        return Predicate.isUndefined(awaited) || awaited.state !== "pending";
+      })
+    ) {
       return yield* Effect.die(`Invariant failed: suspended task ${task.id} has a consumed callback`);
     }
     if (task.state === "suspended" && state.taskTimeouts.some((timeout) => timeout.id === task.id)) {
@@ -84,29 +84,30 @@ export interface TestNetworkService {
 export class TestNetwork extends Context.Service<TestNetwork, TestNetworkService>()(
   "effect-resonate/testing/TestNetwork",
 ) {
-  static layer(
-    handler: TestNetworkHandler,
-    options?: { readonly group?: string; readonly pid?: string },
-  ): Layer.Layer<TestNetwork | ResonateNetwork> {
+  static layer(options: {
+    readonly handler: TestNetworkHandler;
+    readonly group?: string;
+    readonly pid?: string;
+  }): Layer.Layer<TestNetwork | ResonateNetwork> {
     return Layer.unwrap(
       Effect.gen(function* () {
-        const group = Protocol.WorkerGroup.make(options?.group ?? "default");
-        const pid = Protocol.ProcessId.make(options?.pid ?? "test-pid");
+        const group = Protocol.WorkerGroup.make(options.group ?? "default");
+        const pid = Protocol.ProcessId.make(options.pid ?? "test-pid");
         const queue = yield* Queue.unbounded<Protocol.Message>();
         const seen = yield* Ref.make<ReadonlyArray<Protocol.Request>>([]);
 
         const network = ResonateNetwork.of({
           send: Effect.fn("TestNetwork.send")(function* (request) {
             yield* Ref.update(seen, (list) => [...list, request]);
-            const response = yield* handler(request);
+            const response = yield* options.handler(request);
             const wire = yield* Effect.orDie(Schema.encodeUnknownEffect(Protocol.ResponseFromWire)(response));
             return yield* decodeResponse(request)(wire);
           }),
           messages: Stream.fromQueue(queue),
-          match: (target) => Protocol.TargetAddress.pollAny(target),
-          unicast: Protocol.TargetAddress.pollUni(group, pid),
+          match: (target) => Protocol.TargetAddress.pollAny({ group: target }),
+          unicast: Protocol.TargetAddress.pollUni({ group, id: pid }),
 
-          anycast: (target) => Protocol.TargetAddress.pollAny(target, Option.some(pid)),
+          anycast: (target) => Protocol.TargetAddress.pollAny({ group: target, id: Option.some(pid) }),
         });
 
         const test = TestNetwork.of({
@@ -139,34 +140,34 @@ export interface ResonateTestService {
 export class ResonateTest extends Context.Service<ResonateTest, ResonateTestService>()(
   "effect-resonate/testing/ResonateTest",
 ) {
-  static layer<const Fns extends ReadonlyArray<Resonate.AnyFunction>, E = never, R = never>(
-    group: Resonate.FunctionGroup<Fns>,
-    handlers: Layer.Layer<Resonate.Handler<Fns[number]>, E, R>,
-    options?: ResonateTestOptions,
-  ) {
-    const workerGroup = options?.group ?? Protocol.WorkerGroup.make("default");
-    const workerPid = options?.pid ?? Protocol.ProcessId.make("worker-1");
-    const ttl = options?.ttl ?? Duration.seconds(30);
+  static layer<const Fns extends ReadonlyArray<Resonate.AnyFunction>, E = never, R = never>(options: {
+    readonly group: Resonate.FunctionGroup<Fns>;
+    readonly handlers: Layer.Layer<Resonate.Handler<Fns[number]>, E, R>;
+    readonly testOptions?: ResonateTestOptions;
+  }) {
+    const workerGroup = options.testOptions?.group ?? Protocol.WorkerGroup.make("default");
+    const workerPid = options.testOptions?.pid ?? Protocol.ProcessId.make("worker-1");
+    const ttl = options.testOptions?.ttl ?? Duration.seconds(30);
     const base = Layer.mergeAll(
       NetworkLocal.layer({
         group: workerGroup,
         pid: workerPid,
-        tickInterval: options?.tickInterval ?? Duration.seconds(1),
-        retryTimeout: options?.retryTimeout ?? Duration.seconds(5),
+        tickInterval: options.testOptions?.tickInterval ?? Duration.seconds(1),
+        retryTimeout: options.testOptions?.retryTimeout ?? Duration.seconds(5),
       }),
       BunCrypto.layer,
     );
-    const core = Layer.mergeAll(DurablePromises.layer, Tasks.layer, Schedules.layer, handlers).pipe(
+    const core = Layer.mergeAll(DurablePromises.layer, Tasks.layer, Schedules.layer, options.handlers).pipe(
       Layer.provideMerge(base),
     );
     const services = Layer.mergeAll(
       Resonate.ResonateClient.layer({
         group: workerGroup,
-        pid: options?.clientPid ?? Protocol.ProcessId.make("client-1"),
+        pid: options.testOptions?.clientPid ?? Protocol.ProcessId.make("client-1"),
         ttl,
       }),
     ).pipe(Layer.provideMerge(core));
-    const worker = Worker.layer(group, { group: workerGroup, pid: workerPid, ttl });
+    const worker = Worker.layer({ group: options.group, worker: { group: workerGroup, pid: workerPid, ttl } });
     const test = Layer.effect(
       ResonateTest,
       Effect.gen(function* () {

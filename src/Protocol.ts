@@ -80,20 +80,22 @@ export class TargetAddress extends Schema.Class<TargetAddress>("TargetAddress")(
   group: WorkerGroup,
   id: Schema.OptionFromOptionalKey(ProcessId),
 }) {
-  static pollAny(group: WorkerGroup, id = Option.none<ProcessId>()): TargetAddress {
-    return TargetAddress.make({ transport: "poll", cast: "any", group, id });
+  static pollAny(options: { readonly group: WorkerGroup; readonly id?: Option.Option<ProcessId> }): TargetAddress {
+    const id = options.id ?? Option.none<ProcessId>();
+    return TargetAddress.make({ transport: "poll", cast: "any", group: options.group, id });
   }
 
-  static pollUni(group: WorkerGroup, id: ProcessId): TargetAddress {
-    return TargetAddress.make({ transport: "poll", cast: "uni", group, id: Option.some(id) });
+  static pollUni(options: { readonly group: WorkerGroup; readonly id: ProcessId }): TargetAddress {
+    return TargetAddress.make({ transport: "poll", cast: "uni", group: options.group, id: Option.some(options.id) });
   }
 
-  static localAny(group: WorkerGroup, id = Option.none<ProcessId>()): TargetAddress {
-    return TargetAddress.make({ transport: "local", cast: "any", group, id });
+  static localAny(options: { readonly group: WorkerGroup; readonly id?: Option.Option<ProcessId> }): TargetAddress {
+    const id = options.id ?? Option.none<ProcessId>();
+    return TargetAddress.make({ transport: "local", cast: "any", group: options.group, id });
   }
 
-  static localUni(group: WorkerGroup, id: ProcessId): TargetAddress {
-    return TargetAddress.make({ transport: "local", cast: "uni", group, id: Option.some(id) });
+  static localUni(options: { readonly group: WorkerGroup; readonly id: ProcessId }): TargetAddress {
+    return TargetAddress.make({ transport: "local", cast: "uni", group: options.group, id: Option.some(options.id) });
   }
 
   get address(): string {

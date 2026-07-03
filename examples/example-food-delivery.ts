@@ -39,7 +39,7 @@ class DriverConnectionLost extends Schema.TaggedErrorClass<DriverConnectionLost>
   orderId: Schema.String,
 }) {}
 
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const worker = Layer.unwrap(
@@ -57,43 +57,43 @@ const worker = Layer.unwrap(
             const ctx = yield* ResonateContext.ResonateContext;
             const orderId = order.id;
 
-            yield* ctx.run(
-              Effect.gen(function* () {
+            yield* ctx.run({
+              effect: Effect.gen(function* () {
                 yield* Effect.logInfo(`[order] Placing order ${order.id} at ${order.restaurant}`);
                 yield* Effect.sleep(Duration.millis(300));
                 yield* Effect.logInfo(`[order] Order ${order.id} confirmed by restaurant`);
                 return orderId;
               }),
-            );
+            });
 
-            yield* ctx.run(
-              Effect.gen(function* () {
+            yield* ctx.run({
+              effect: Effect.gen(function* () {
                 yield* Effect.logInfo(`[kitchen] Preparing order ${orderId}`);
                 yield* Effect.sleep(Duration.millis(800));
                 yield* Effect.logInfo(`[kitchen] Order ${orderId} is ready for pickup`);
               }),
-            );
+            });
 
             const driverId = `driver-${orderId}`;
-            yield* ctx.run(
-              Effect.gen(function* () {
+            yield* ctx.run({
+              effect: Effect.gen(function* () {
                 yield* Effect.logInfo(`[dispatch] Finding driver for order ${orderId}`);
                 yield* Effect.sleep(Duration.millis(400));
                 yield* Effect.logInfo(`[dispatch] Driver ${driverId} assigned to order ${orderId}`);
                 return driverId;
               }),
-            );
+            });
 
-            yield* ctx.run(
-              Effect.gen(function* () {
+            yield* ctx.run({
+              effect: Effect.gen(function* () {
                 yield* Effect.logInfo(`[pickup] Driver ${driverId} picking up order ${orderId}`);
                 yield* Effect.sleep(Duration.millis(400));
                 yield* Effect.logInfo(`[pickup] Order ${orderId} picked up — en route to customer`);
               }),
-            );
+            });
 
-            yield* ctx.run(
-              Ref.modify(deliveryAttempts, (current) => {
+            yield* ctx.run({
+              effect: Ref.modify(deliveryAttempts, (current) => {
                 const attempt = Option.getOrElse(HashMap.get(current, orderId), () => 0) + 1;
                 return [attempt, HashMap.set(current, orderId, attempt)] as const;
               }).pipe(
@@ -110,23 +110,25 @@ const worker = Layer.unwrap(
                   }),
                 ),
               ),
-            );
+            });
 
             const completedAt = DateTime.formatIso(yield* DateTime.now);
-            yield* ctx.run(
-              Effect.gen(function* () {
+            yield* ctx.run({
+              effect: Effect.gen(function* () {
                 yield* Effect.logInfo(`[complete] Completing order ${orderId}, releasing driver ${driverId}`);
                 yield* Effect.sleep(Duration.millis(200));
                 yield* Effect.logInfo(`[complete] Order ${orderId} done at ${completedAt}`);
                 return { orderId, driverId, completedAt };
               }),
-            );
+            });
 
             return DeliveryResult.make({ status: "success", orderId, driverId, completedAt });
           }),
       }),
     );
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(5) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 

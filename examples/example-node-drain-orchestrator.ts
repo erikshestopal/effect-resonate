@@ -30,7 +30,7 @@ const Payload = Schema.Tuple([
   }),
   Schema.Struct({ pool: Schema.String }),
 ]);
-const workflow = Resonate.function(functionName, { payload: Payload });
+const workflow = Resonate.function({ name: functionName, payload: Payload });
 const App = Resonate.group(workflow);
 
 const handlers = App.toLayer(
@@ -41,9 +41,9 @@ const handlers = App.toLayer(
         const startedAt = DateTime.formatIso(yield* DateTime.now);
         const results: Array<unknown> = [];
         for (const node of [nodeSelector.pool]) {
-          yield* ctx.run(Effect.logInfo(`[Drain] Cordoning node ${node}`));
-          yield* ctx.run(Effect.logInfo(`[Drain] Getting pods on node ${node}`));
-          yield* ctx.run(Effect.logInfo(`[Drain] Evicting pods on ${node}`));
+          yield* ctx.run({ effect: Effect.logInfo(`[Drain] Cordoning node ${node}`) });
+          yield* ctx.run({ effect: Effect.logInfo(`[Drain] Getting pods on node ${node}`) });
+          yield* ctx.run({ effect: Effect.logInfo(`[Drain] Evicting pods on ${node}`) });
           results.push({
             node,
             success: options.force || node.length > 0,
@@ -51,7 +51,7 @@ const handlers = App.toLayer(
             completedAt: DateTime.formatIso(yield* DateTime.now),
             podsEvicted: 0,
           });
-          yield* ctx.run(Effect.logInfo(`[Drain] Uncordoning node ${node}`));
+          yield* ctx.run({ effect: Effect.logInfo(`[Drain] Uncordoning node ${node}`) });
         }
         return {
           operationId,
@@ -71,7 +71,9 @@ const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault(`${repo}-worker`));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp(App, { url, group, pid, ttl: Duration.seconds(30) }).pipe(Layer.provideMerge(handlers));
+    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(30) } }).pipe(
+      Layer.provideMerge(handlers),
+    );
   }),
 );
 
