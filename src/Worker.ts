@@ -43,9 +43,6 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
       const heartbeatEvery = Duration.millis(Math.max(1, Math.floor(Duration.toMillis(ttl) / 2)));
       const held = yield* Ref.make(HashMap.empty<Protocol.TaskId, HeldTask>());
 
-      const addHeld = (task: HeldTask) => Ref.update(held, HashMap.set(task.id, task));
-      const removeHeld = (id: Protocol.TaskId) => Ref.update(held, HashMap.remove(id));
-
       const heartbeat = Effect.gen(function* () {
         const current = yield* Ref.get(held);
         yield* tasks.heartbeat({ pid, tasks: HashMap.toValues(current) }).pipe(Effect.catchCause(() => Effect.void));
@@ -113,11 +110,14 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
         if (acquired.task.state !== "acquired") {
           return;
         }
-        yield* addHeld({ id: acquired.task.id, version: acquired.task.version });
+        yield* Ref.update(
+          held,
+          HashMap.set(acquired.task.id, { id: acquired.task.id, version: acquired.task.version }),
+        );
         const exit = yield* executeUntilBlocked(acquired.task, acquired.promise, registry, acquired.preload).pipe(
           Effect.exit,
         );
-        yield* removeHeld(acquired.task.id);
+        yield* Ref.update(held, HashMap.remove(acquired.task.id));
         if (Exit.isFailure(exit)) {
           yield* tasks
             .release(
