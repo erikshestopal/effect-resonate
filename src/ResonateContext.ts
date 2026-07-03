@@ -10,6 +10,7 @@ import {
   Layer,
   Option,
   Predicate,
+  Random,
   Result,
   Schema,
   SchemaParser,
@@ -164,6 +165,8 @@ export interface ResonateContextService {
   readonly all: <const Effects extends ReadonlyArray<Effect.Effect<unknown, unknown>>>(
     effects: Effects,
   ) => Effect.Effect<ReadonlyArray<unknown>, unknown>;
+  readonly now: Effect.Effect<DateTime.Utc, unknown>;
+  readonly random: Effect.Effect<number, unknown>;
   readonly sleep: (duration: Duration.Input) => Effect.Effect<void, unknown>;
   readonly sleepUntil: (instant: DateTime.Utc) => Effect.Effect<void, unknown>;
   readonly beginRpc: {
@@ -690,6 +693,15 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           return yield* handle.await;
         });
 
+        const now: ResonateContextService["now"] = run(Clock.currentTimeMillis).pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Finite)),
+          Effect.map(timestamp),
+        );
+
+        const random: ResonateContextService["random"] = run(Random.next).pipe(
+          Effect.flatMap(Schema.decodeUnknownEffect(Schema.Finite)),
+        );
+
         const sleepUntil: ResonateContextService["sleepUntil"] = Effect.fn("ResonateContext.sleepUntil")(
           function* (instant) {
             const promise = yield* createSleep(state, instant);
@@ -773,6 +785,8 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             },
             run,
             beginRun,
+            now,
+            random,
             sleep,
             sleepUntil,
             beginRpc,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Exit, Layer, Option, Ref, Schema } from "effect";
+import { DateTime, Effect, Exit, Layer, Option, Ref, Schema } from "effect";
 import * as Resonate from "../src/Resonate.ts";
 import { ResonateContext } from "../src/ResonateContext.ts";
 import * as Protocol from "../src/Protocol.ts";
@@ -35,6 +35,8 @@ const contextLayer = Layer.succeed(
         cancel: Effect.void,
       }),
     all: (effects) => Effect.forEach(effects, (effect) => effect),
+    now: Effect.succeed(DateTime.makeUnsafe(0)),
+    random: Effect.succeed(0),
     sleep: () => Effect.void,
     sleepUntil: () => Effect.void,
     beginRpc: () =>

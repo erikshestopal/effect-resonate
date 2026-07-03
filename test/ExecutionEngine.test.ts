@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import { DateTime, Duration, Effect, Exit, Layer, Option, Predicate, Schema, SchemaParser } from "effect";
+import { TestClock } from "effect/testing";
 import { ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import { DurablePromiseTimedOut } from "../src/Errors.ts";
@@ -538,6 +539,92 @@ describe("ExecutionEngine", () => {
       const state = yield* snap();
       expect(state.promises.some((promise) => promise.id === "engine-external-stable-1.0")).toBe(true);
       expect(state.promises.some((promise) => promise.id === "engine-external-stable-1.approval")).toBe(true);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("records ctx.now once and replays the same instant after clock movement", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const engine = yield* ExecutionEngine;
+      const promises = yield* DurablePromises;
+      const codec = yield* ResonateCodec;
+      const handlers = externalGroup.toLayer(
+        externalGroup.of({
+          ExternalWorkflow: () =>
+            Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
+              const ctx = yield* ResonateContext;
+              const observed = yield* ctx.now;
+              const approval = yield* ctx.promise(Approval);
+              yield* approval.await;
+              return DateTime.toEpochMillis(observed);
+            }),
+        }),
+      );
+      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+
+      yield* TestClock.setTime(1_000);
+      const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-now-1"), ["ok"]);
+      const root = yield* acquiredRoot(handle.id);
+      const suspended = yield* engine.execute({ task: root.task, promise: root.promise, registry });
+      expect(Predicate.isTagged(suspended, "Suspended")).toBe(true);
+
+      const state = yield* snap();
+      const recordedNow = state.promises.find((promise) => promise.id === "engine-now-1.0");
+      expect(recordedNow?.state).toBe("resolved");
+      expect(yield* codec.decode(recordedNow?.value ?? Protocol.emptyValue)).toBe(1_000);
+
+      yield* TestClock.setTime(99_000);
+      yield* client.resolve(Approval, Approval.id(Protocol.ExecutionId.make("engine-now-1")), {
+        approvedBy: "erik",
+      });
+      const replayState = yield* snap();
+      const approval = replayState.promises.find((promise) => promise.id === "engine-now-1.approval");
+      if (Predicate.isUndefined(approval) || Predicate.isUndefined(recordedNow)) {
+        return yield* Effect.die("recorded promises missing");
+      }
+      yield* engine.execute({ task: root.task, promise: root.promise, registry, preload: [recordedNow, approval] });
+
+      const completed = yield* promises.get(handle.id);
+      expect(completed.state).toBe("resolved");
+      expect(yield* codec.decode(completed.value)).toBe(1_000);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("records ctx.random as a local durable step and consumes the sequence slot", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const engine = yield* ExecutionEngine;
+      const codec = yield* ResonateCodec;
+      const handlers = workflowGroup.toLayer(
+        workflowGroup.of({
+          Workflow: () =>
+            Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
+              const ctx = yield* ResonateContext;
+              const observed = yield* ctx.random;
+              yield* ctx.run(Effect.succeed("after-random"));
+              return observed;
+            }),
+        }),
+      );
+      const registry = yield* workflowGroup.registry().pipe(Effect.provide(handlers));
+
+      const handle = yield* client.beginRun(Workflow, Protocol.ExecutionId.make("engine-random-1"), [0]);
+      const root = yield* acquiredRoot(handle.id);
+      const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
+      expect(Predicate.isTagged(outcome, "Done")).toBe(true);
+
+      const state = yield* snap();
+      const recordedRandom = state.promises.find((promise) => promise.id === "engine-random-1.0");
+      const nextStep = state.promises.find((promise) => promise.id === "engine-random-1.1");
+      const value = yield* codec.decode(recordedRandom?.value ?? Protocol.emptyValue);
+      expect(recordedRandom?.state).toBe("resolved");
+      expect(nextStep?.state).toBe("resolved");
+      expect(typeof value).toBe("number");
+      if (!Predicate.isNumber(value)) {
+        return yield* Effect.die("recorded random was not numeric");
+      }
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(1);
     }).pipe(Effect.provide(layer)),
   );
 

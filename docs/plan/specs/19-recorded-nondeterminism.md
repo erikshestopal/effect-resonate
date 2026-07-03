@@ -48,3 +48,7 @@ Time and randomness as durable steps, replay-identical — the native
 ## Acceptance
 
 - `vp run check` green.
+
+## Implementation notes
+
+- Done in spec 19: `ResonateContext` exposes `ctx.now` and `ctx.random`; both route through the existing local durable step machinery so replay decodes the recorded value instead of re-reading `Clock` or `Random`. `ctx.now` records native-compatible epoch milliseconds and returns `DateTime.Utc`; `ctx.random` records the native-compatible numeric float. Tests cover replay after clock movement, wire values, and sequence slot consumption.
