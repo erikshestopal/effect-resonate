@@ -1,3 +1,11 @@
+/**
+ * In-memory implementation of the Resonate network service.
+ *
+ * This module is useful for deterministic local execution, tests, and examples
+ * that do not need to talk to a shipped Resonate server.
+ *
+ * @since 0.0.0
+ */
 import {
   Cron,
   DateTime,
@@ -177,6 +185,12 @@ interface ServerState {
   readonly scheduleTimeouts: HashMap.HashMap<Protocol.ScheduleId, DateTime.Utc>;
   readonly outbox: ReadonlyArray<OutboxEntry>;
 }
+/**
+ * Snapshot of the local in-memory server state.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export type DebugState = (typeof Protocol.DebugSnapResponse.members)[0]["Type"]["data"];
 const initialState: ServerState = {
   promises: HashMap.empty(),
@@ -2004,12 +2018,24 @@ const apply = ({
     }),
   );
 };
+/**
+ * Options for the in-memory network implementation.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export interface NetworkLocalOptions {
   readonly group?: string;
   readonly pid?: string;
   readonly retryTimeout?: Duration.Duration;
   readonly tickInterval?: Duration.Duration;
 }
+/**
+ * Builds an in-memory Resonate network layer.
+ *
+ * @category layers
+ * @since 0.0.0
+ */
 export const layer = (options?: NetworkLocalOptions): Layer.Layer<ResonateNetwork> =>
   Layer.effect(
     ResonateNetwork,

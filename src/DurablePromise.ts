@@ -1,3 +1,11 @@
+/**
+ * Low-level client service for Resonate durable promise protocol endpoints.
+ *
+ * Most applications should use {@link Resonate.ResonateClient}; this module is
+ * useful for implementing clients, workers, and protocol-level integrations.
+ *
+ * @since 0.0.0
+ */
 import { Context, Crypto, Duration, Effect, Filter, Layer, Option, Schedule, SchemaParser, Stream } from "effect";
 import {
   InvalidTarget,
@@ -30,6 +38,12 @@ const promiseError = (options: {
   return new InvalidTarget({ message: String(message) });
 };
 
+/**
+ * Service interface for durable promise operations.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export interface DurablePromisesService {
   readonly get: (
     id: Protocol.PromiseId,
@@ -51,6 +65,12 @@ export interface DurablePromisesService {
   ) => Effect.Effect<Protocol.PromiseSettled, ResonateProtocolError | TransportError>;
 }
 
+/**
+ * Protocol client service for durable promises.
+ *
+ * @category services
+ * @since 0.0.0
+ */
 export class DurablePromises extends Context.Service<DurablePromises, DurablePromisesService>()(
   "effect-resonate/DurablePromises",
 ) {

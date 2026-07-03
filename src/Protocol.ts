@@ -1,6 +1,21 @@
+/**
+ * Schema-first Resonate protocol model and wire codecs.
+ *
+ * This module owns the branded identifiers, protocol records, request and
+ * response schemas, message schemas, target address parsing, and wire
+ * transformations used by the SDK network implementations.
+ *
+ * @since 0.0.0
+ */
 import type { Duration } from "effect";
 import { DateTime, Option, Predicate, Schema, SchemaParser, SchemaTransformation } from "effect";
 
+/**
+ * Durable promise identifier.
+ *
+ * @category identifiers
+ * @since 0.0.0
+ */
 export const PromiseId = Schema.NonEmptyString.pipe(Schema.brand("PromiseId"));
 export type PromiseId = typeof PromiseId.Type;
 
@@ -73,6 +88,12 @@ export type Value = typeof Value.Type;
 
 export const emptyValue: Value = {};
 
+/**
+ * Address of a worker target in either poll or local transport.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export class TargetAddress extends Schema.Class<TargetAddress>("TargetAddress")({
   transport: Schema.Literals(["poll", "local"]),
 
@@ -199,6 +220,12 @@ export const ReservedTags = Schema.Struct({
 });
 export type ReservedTags = typeof ReservedTags.Type;
 
+/**
+ * Structured representation of user, reserved, and unrecognized tags.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export class Tags extends Schema.Class<Tags>("Tags")({
   reserved: ReservedTags,
 
@@ -267,6 +294,12 @@ export const PromiseState = Schema.Literals([
 ]);
 export type PromiseState = typeof PromiseState.Type;
 
+/**
+ * Settled durable promise record.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export class PromiseSettled extends Schema.Class<PromiseSettled>("PromiseSettled")({
   state: PromiseSettledState,
   id: PromiseId,
@@ -279,6 +312,12 @@ export class PromiseSettled extends Schema.Class<PromiseSettled>("PromiseSettled
   settledAt: Schema.OptionFromOptionalKey(Timestamp),
 }) {}
 
+/**
+ * Pending durable promise record.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export class PromisePending extends Schema.Class<PromisePending>("PromisePending")({
   state: Schema.tag("pending"),
   id: PromiseId,
@@ -317,6 +356,12 @@ export const PromiseRecord = PromiseRecordFromWire.check(
 );
 export type PromiseRecord = typeof PromiseRecord.Type;
 
+/**
+ * Returns the lineage origin for a promise, falling back to the promise id.
+ *
+ * @category combinators
+ * @since 0.0.0
+ */
 export const promiseOrigin = (promise: PromiseRecord): PromiseId =>
   promise.tags.reserved["resonate:origin"] ?? promise.id;
 
@@ -408,6 +453,12 @@ export const UnblockMessage = Schema.Struct({
 });
 export type UnblockMessage = typeof UnblockMessage.Type;
 
+/**
+ * Tagged union of worker messages emitted by a Resonate network.
+ *
+ * @category schemas
+ * @since 0.0.0
+ */
 export const Message = Schema.Union([ExecuteMessage, UnblockMessage]).pipe(Schema.toTaggedUnion("kind"));
 export type Message = typeof Message.Type;
 
@@ -693,6 +744,12 @@ export type RequestKind = keyof typeof RequestSchemas;
 
 export type Request<K extends RequestKind = RequestKind> = (typeof RequestSchemas)[K]["Type"];
 
+/**
+ * Codec for all Resonate protocol requests.
+ *
+ * @category schemas
+ * @since 0.0.0
+ */
 export const RequestFromWire = Schema.Union([
   PromiseGetRequest,
   PromiseCreateRequest,
@@ -1185,6 +1242,12 @@ export const ResponseSchemas = {
 
 export type Response<K extends RequestKind = RequestKind> = (typeof ResponseSchemas)[K]["Type"];
 
+/**
+ * Codec for all Resonate protocol responses.
+ *
+ * @category schemas
+ * @since 0.0.0
+ */
 export const ResponseFromWire = Schema.Union([
   PromiseGetResponse,
   PromiseCreateResponse,

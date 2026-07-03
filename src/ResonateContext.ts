@@ -1,3 +1,12 @@
+/**
+ * Durable execution context used inside Resonate function handlers.
+ *
+ * The context records local steps, durable sleeps, child invocations, detached
+ * work, and external promises as protocol operations so execution can suspend
+ * and replay deterministically.
+ *
+ * @since 0.0.0
+ */
 import {
   Clock,
   Context,
@@ -40,6 +49,12 @@ const InvocationParam = Schema.Struct({
   retry: Schema.optionalKey(RetryPolicy.RetryPolicyFromWire),
 });
 
+/**
+ * Options shared by durable context operations.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export interface ContextOptions {
   readonly id?: Protocol.PromiseId;
   readonly target?: Protocol.WorkerGroup;
@@ -61,6 +76,12 @@ export interface ContextInfo {
   readonly version: Protocol.TaskVersion;
 }
 
+/**
+ * Handle returned for durable work created from inside a handler.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export interface LocalDurableHandle<A = unknown, E = unknown> {
   readonly id: Protocol.PromiseId;
   readonly await: Effect.Effect<A, E>;
@@ -229,6 +250,12 @@ export interface ResonateContextService {
   readonly panic: (message: string) => Effect.Effect<never, DurablePanic>;
 }
 
+/**
+ * Service available inside a registered handler for durable operations.
+ *
+ * @category services
+ * @since 0.0.0
+ */
 export class ResonateContext extends Context.Service<ResonateContext, ResonateContextService>()(
   "effect-resonate/Context",
 ) {}
@@ -237,6 +264,12 @@ export interface ExecutionEngineService {
   readonly execute: (options: ExecuteOptions) => Effect.Effect<EngineOutcome, unknown>;
 }
 
+/**
+ * Internal execution engine that interprets handler effects into task outcomes.
+ *
+ * @category services
+ * @since 0.0.0
+ */
 export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionEngineService>()(
   "effect-resonate/ExecutionEngine",
 ) {

@@ -1,3 +1,11 @@
+/**
+ * Low-level client service for Resonate durable schedule protocol endpoints.
+ *
+ * Most applications define schedules through the high-level `Resonate.schedule`
+ * API; this module exposes the underlying protocol service.
+ *
+ * @since 0.0.0
+ */
 import { Context, Crypto, Effect, Layer, SchemaParser } from "effect";
 import { InvalidTarget, ScheduleNotFound, type ResonateProtocolError, type TransportError } from "./Errors.ts";
 import { ResonateNetwork } from "./network/network.ts";
@@ -19,6 +27,12 @@ const scheduleError = (options: {
   return new InvalidTarget({ message: String(message) });
 };
 
+/**
+ * Service interface for schedule protocol operations.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export interface SchedulesService {
   readonly get: (
     id: Protocol.ScheduleId,
@@ -29,6 +43,12 @@ export interface SchedulesService {
   readonly delete: (id: Protocol.ScheduleId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
 }
 
+/**
+ * Protocol client service for durable schedules.
+ *
+ * @category services
+ * @since 0.0.0
+ */
 export class Schedules extends Context.Service<Schedules, SchedulesService>()("effect-resonate/Schedules") {
   static readonly layer: Layer.Layer<Schedules, never, ResonateNetwork | Crypto.Crypto> = Layer.effect(
     Schedules,

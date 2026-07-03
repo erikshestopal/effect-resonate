@@ -1,3 +1,29 @@
+/**
+ * Worker layers for executing registered Resonate function handlers.
+ *
+ * Workers subscribe to protocol messages from a {@link ResonateNetwork}, acquire
+ * tasks, execute the matching handler through the execution engine, heartbeat
+ * held tasks, and suspend tasks that are blocked on durable children.
+ *
+ * @example
+ * ```ts
+ * import { Duration, Layer } from "effect"
+ * import * as BunCrypto from "@effect/platform-bun/BunCrypto"
+ * import * as BunHttpClient from "@effect/platform-bun/BunHttpClient"
+ * import { Worker } from "effect-resonate"
+ *
+ * const worker = Worker.layerHttp({
+ *   group: App,
+ *   http: { url: "http://127.0.0.1:8001", group: "default", ttl: Duration.seconds(30) }
+ * }).pipe(
+ *   Layer.provideMerge(handlers),
+ *   Layer.provideMerge(BunHttpClient.layer),
+ *   Layer.provideMerge(BunCrypto.layer)
+ * )
+ * ```
+ *
+ * @since 0.0.0
+ */
 import {
   Cause,
   Crypto,
@@ -38,6 +64,12 @@ interface HeldTask {
 
 type WorkerRequirements<F extends AnyFunction> = ResonateNetwork | Crypto.Crypto | Handler<F>;
 
+/**
+ * Builds a worker layer against an already-provided network service.
+ *
+ * @category layers
+ * @since 0.0.0
+ */
 export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
   readonly group: FunctionGroup<Fns>;
   readonly worker: WorkerConfig;
@@ -140,6 +172,15 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
     }),
   ).pipe(Layer.provideMerge(ExecutionEngine.layer.pipe(Layer.provideMerge(Tasks.layer))));
 
+/**
+ * Builds a worker layer backed by the HTTP network implementation.
+ *
+ * This layer stays runtime-neutral: callers provide the concrete Effect
+ * `HttpClient` and `Crypto` implementations for Bun, Node, or another runtime.
+ *
+ * @category layers
+ * @since 0.0.0
+ */
 export const layerHttp = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
   readonly group: FunctionGroup<Fns>;
   readonly http: HttpWorkerConfig;

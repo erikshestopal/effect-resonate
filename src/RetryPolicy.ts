@@ -1,3 +1,25 @@
+/**
+ * Retry policy data model used by Resonate function invocations.
+ *
+ * Policies are represented as Schema classes and include codecs for the native
+ * Resonate wire representation. Use the free constructors to build domain
+ * values and {@link next} to compute the delay for a given attempt.
+ *
+ * @example
+ * ```ts
+ * import { Duration } from "effect"
+ * import { RetryPolicy } from "effect-resonate"
+ *
+ * const policy = RetryPolicy.exponential({
+ *   delay: Duration.seconds(1),
+ *   factor: 2,
+ *   maxRetries: 5,
+ *   maxDelay: Duration.seconds(30)
+ * })
+ * ```
+ *
+ * @since 0.0.0
+ */
 import { Duration, Schema, SchemaTransformation } from "effect";
 
 const Millis = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0));
@@ -27,15 +49,33 @@ export class Never extends Schema.Class<Never>("RetryPolicy/Never")({
   _tag: Schema.tag("Never"),
 }) {}
 
+/**
+ * Tagged union schema for retry policy domain values.
+ *
+ * @category schemas
+ * @since 0.0.0
+ */
 export const RetryPolicy = Schema.Union([Constant, Exponential, Linear, Never]).pipe(Schema.toTaggedUnion("_tag"));
 export type RetryPolicy = typeof RetryPolicy.Type;
 
+/**
+ * Creates a constant-delay retry policy.
+ *
+ * @category constructors
+ * @since 0.0.0
+ */
 export const constant = (options?: { readonly delay?: Duration.Input; readonly maxRetries?: number }): Constant =>
   Constant.make({
     delay: Duration.toMillis(options?.delay ?? Duration.seconds(1)),
     maxRetries: options?.maxRetries ?? Number.MAX_SAFE_INTEGER,
   });
 
+/**
+ * Creates an exponential-backoff retry policy.
+ *
+ * @category constructors
+ * @since 0.0.0
+ */
 export const exponential = (options?: {
   readonly delay?: Duration.Input;
   readonly factor?: number;
@@ -49,12 +89,24 @@ export const exponential = (options?: {
     maxDelay: Duration.toMillis(options?.maxDelay ?? Duration.seconds(30)),
   });
 
+/**
+ * Creates a linear-backoff retry policy.
+ *
+ * @category constructors
+ * @since 0.0.0
+ */
 export const linear = (options?: { readonly delay?: Duration.Input; readonly maxRetries?: number }): Linear =>
   Linear.make({
     delay: Duration.toMillis(options?.delay ?? Duration.seconds(1)),
     maxRetries: options?.maxRetries ?? Number.MAX_SAFE_INTEGER,
   });
 
+/**
+ * Creates a policy that only permits the initial attempt.
+ *
+ * @category constructors
+ * @since 0.0.0
+ */
 export const never = (): Never => Never.make({});
 
 const ConstantWire = Schema.Struct({
@@ -128,6 +180,12 @@ const NeverFromWire = NeverWire.pipe(
   ),
 );
 
+/**
+ * Codec for the Resonate wire representation of retry policies.
+ *
+ * @category schemas
+ * @since 0.0.0
+ */
 export const RetryPolicyFromWire = Schema.Union([ConstantFromWire, ExponentialFromWire, LinearFromWire, NeverFromWire]);
 
 const budget = RetryPolicy.match({
@@ -137,6 +195,12 @@ const budget = RetryPolicy.match({
   Never: () => 0,
 });
 
+/**
+ * Computes the delay in milliseconds for an attempt, or `null` when exhausted.
+ *
+ * @category combinators
+ * @since 0.0.0
+ */
 export const next = (policy: RetryPolicy, attempt: number): number | null =>
   attempt === 0
     ? 0

@@ -1,3 +1,33 @@
+/**
+ * High-level API for defining and invoking durable Resonate functions.
+ *
+ * This module contains the public authoring surface: define typed function
+ * declarations with {@link function}, group them into handler registries with
+ * {@link group}, create schedules and external promises, and use
+ * {@link ResonateClient} to start, await, resolve, reject, or cancel durable
+ * executions.
+ *
+ * @example
+ * ```ts
+ * import { Effect, Schema } from "effect"
+ * import { Resonate } from "effect-resonate"
+ *
+ * const greet = Resonate.function({
+ *   name: "greet",
+ *   payload: Schema.String
+ * })
+ *
+ * const App = Resonate.group(greet)
+ *
+ * const handlers = App.toLayer(
+ *   App.of({
+ *     greet: (name) => Effect.succeed(`Hello, ${name}!`)
+ *   })
+ * )
+ * ```
+ *
+ * @since 0.0.0
+ */
 import {
   Clock,
   Context,
@@ -26,10 +56,25 @@ import { Tasks } from "./Task.ts";
 
 export * as Worker from "./Worker.ts";
 
+/**
+ * Builds the HTTP network layer for a Resonate server.
+ *
+ * The layer requires an Effect `HttpClient` implementation from the application
+ * runtime, such as Bun, Node, or another platform package.
+ *
+ * @category layers
+ * @since 0.0.0
+ */
 export const layerHttp = (
   options: NetworkHttp.NetworkHttpOptions,
 ): Layer.Layer<ResonateNetwork, never, HttpClient.HttpClient> => NetworkHttp.layer(options);
 
+/**
+ * Describes a durable function name, payload schema, and version.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export interface Definition<Name extends string, Payload extends Schema.Codec<unknown, unknown, never, never>> {
   readonly name: Name;
   readonly payload: Payload;
@@ -140,6 +185,23 @@ const functionGroupToContext = <
   return Effect.as(makeRegistry(items), context);
 };
 
+/**
+ * Defines a versioned durable function and its argument schema.
+ *
+ * @example
+ * ```ts
+ * import { Schema } from "effect"
+ * import { Resonate } from "effect-resonate"
+ *
+ * const chargeCard = Resonate.function({
+ *   name: "chargeCard",
+ *   payload: Schema.Struct({ orderId: Schema.String })
+ * })
+ * ```
+ *
+ * @category constructors
+ * @since 0.0.0
+ */
 export const defineFunction = <
   const Name extends string,
   Payload extends Schema.Codec<unknown, unknown, never, never>,
@@ -155,6 +217,12 @@ export const defineFunction = <
 
 export { defineFunction as function };
 
+/**
+ * Groups durable function definitions into a typed handler registry.
+ *
+ * @category constructors
+ * @since 0.0.0
+ */
 export const group = <const Fns extends ReadonlyArray<AnyFunction>>(...fns: Fns): FunctionGroup<Fns> => ({
   ...Pipeable.Prototype,
   [FunctionGroupTypeId]: FunctionGroupTypeId,
@@ -255,6 +323,12 @@ const fiveFieldCronExpression = (cron: Cron.Cron): Effect.Effect<string, never> 
   );
 };
 
+/**
+ * Defines a durable schedule for invoking a function on a cron expression.
+ *
+ * @category constructors
+ * @since 0.0.0
+ */
 export const schedule = <F extends AnyFunction>(options: ScheduleOptions<F>): ScheduleValue<F> => {
   const timeout = options.timeout ?? Duration.hours(24);
   const tags = options.tags ?? Protocol.emptyTags;
@@ -352,6 +426,12 @@ export type PromiseSuccess<P extends PromiseDeclaration> = P["success"]["Type"];
 export type PromiseFailure<P extends PromiseDeclaration> =
   P["error"] extends Schema.Codec<unknown, unknown, never, never> ? P["error"]["Type"] : never;
 
+/**
+ * Defines an externally resolvable durable promise.
+ *
+ * @category constructors
+ * @since 0.0.0
+ */
 export function promise<
   const Name extends string,
   Success extends Schema.Codec<unknown, unknown, never, never>,
@@ -455,6 +535,12 @@ export interface ResonateClientService {
   readonly cancel: (id: Protocol.PromiseId) => Effect.Effect<void, unknown>;
 }
 
+/**
+ * Client service for starting, awaiting, resolving, and inspecting durable work.
+ *
+ * @category services
+ * @since 0.0.0
+ */
 export class ResonateClient extends Context.Service<ResonateClient, ResonateClientService>()("effect-resonate/Client") {
   static layer(options?: ResonateClientOptions): Layer.Layer<ResonateClient, never, ResonateNetwork | Crypto.Crypto> {
     return Layer.effect(

@@ -1,3 +1,13 @@
+/**
+ * Payload encoding and optional encryption for durable values.
+ *
+ * The default codec stores native JavaScript values as Resonate protocol values
+ * while preserving Error instances, infinities, undefined, and other values
+ * needed by durable replay. Applications can provide {@link ResonateCodec} or
+ * {@link ResonateEncryptor} to customize serialization or encryption.
+ *
+ * @since 0.0.0
+ */
 import { Context, Effect, Layer, Option, Predicate, Schema, SchemaParser, SchemaTransformation } from "effect";
 import { EncodingError } from "./Errors.ts";
 import type * as Protocol from "./Protocol.ts";
@@ -124,6 +134,12 @@ const DefinedValue = ValueWithData.pipe(
   ),
 );
 
+/**
+ * Codec between JavaScript values and Resonate protocol values.
+ *
+ * @category schemas
+ * @since 0.0.0
+ */
 export const ValueFromUnknown = Schema.Union([UndefinedFromEmptyValue, DefinedValue]);
 
 export interface ResonateEncryptorService {
@@ -131,6 +147,12 @@ export interface ResonateEncryptorService {
   readonly decrypt: (value: Protocol.Value) => Effect.Effect<Protocol.Value, EncodingError>;
 }
 
+/**
+ * Optional encryption service applied by the JSON codec layer.
+ *
+ * @category services
+ * @since 0.0.0
+ */
 export class ResonateEncryptor extends Context.Service<ResonateEncryptor, ResonateEncryptorService>()(
   "effect-resonate/Encryptor",
 ) {
@@ -145,6 +167,12 @@ export class ResonateEncryptor extends Context.Service<ResonateEncryptor, Resona
   );
 }
 
+/**
+ * Resolves the configured encryptor or the no-op encryptor when absent.
+ *
+ * @category services
+ * @since 0.0.0
+ */
 export const currentEncryptor: Effect.Effect<ResonateEncryptorService> = Effect.serviceOption(ResonateEncryptor).pipe(
   Effect.map(Option.getOrElse(() => ResonateEncryptor.serviceNoop)),
 );
@@ -176,6 +204,12 @@ const jsonCodec = (encryptor: Effect.Effect<ResonateEncryptorService>): Resonate
   }),
 });
 
+/**
+ * Service responsible for encoding and decoding durable payloads.
+ *
+ * @category services
+ * @since 0.0.0
+ */
 export class ResonateCodec extends Context.Service<ResonateCodec, ResonateCodecService>()("effect-resonate/Codec") {
   static readonly serviceJson = ResonateCodec.of(jsonCodec(currentEncryptor));
 
@@ -187,12 +221,30 @@ export class ResonateCodec extends Context.Service<ResonateCodec, ResonateCodecS
   );
 }
 
+/**
+ * Resolves the configured codec or the default JSON codec when absent.
+ *
+ * @category services
+ * @since 0.0.0
+ */
 export const currentCodec: Effect.Effect<ResonateCodecService> = Effect.serviceOption(ResonateCodec).pipe(
   Effect.map(Option.getOrElse(() => ResonateCodec.serviceJson)),
 );
 
+/**
+ * Protocol value header used to record the logical payload schema.
+ *
+ * @category constants
+ * @since 0.0.0
+ */
 export const schemaHeaderKey = "resonate:schema";
 
+/**
+ * Adds a schema name header to an encoded protocol value.
+ *
+ * @category combinators
+ * @since 0.0.0
+ */
 export const withSchemaHeader = (options: {
   readonly value: Protocol.Value;
   readonly schemaName: string;

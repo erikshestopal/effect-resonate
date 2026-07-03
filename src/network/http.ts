@@ -1,9 +1,23 @@
+/**
+ * HTTP implementation of the Resonate network service.
+ *
+ * The layer uses Effect's abstract `HttpClient` service and therefore stays
+ * independent of Bun, Node, or any specific runtime implementation.
+ *
+ * @since 0.0.0
+ */
 import { Duration, Effect, Filter, Layer, Option, Schedule, Schema, Stream } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { TransportError } from "../Errors.ts";
 import * as Protocol from "../Protocol.ts";
 import { decodeResponse, encodeRequest, ResonateNetwork } from "./network.ts";
 
+/**
+ * Options for connecting to a Resonate server over HTTP.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export interface NetworkHttpOptions {
   readonly url: string;
   readonly group?: string;
@@ -13,6 +27,12 @@ export interface NetworkHttpOptions {
 
 const protocolStatuses = new Set([200, 300, 404, 409, 422, 501]);
 
+/**
+ * Builds a network service backed by the Resonate HTTP API and SSE stream.
+ *
+ * @category layers
+ * @since 0.0.0
+ */
 export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork, never, HttpClient.HttpClient> =>
   Layer.effect(
     ResonateNetwork,

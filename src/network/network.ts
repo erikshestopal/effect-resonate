@@ -1,3 +1,12 @@
+/**
+ * Runtime-neutral network abstraction for the Resonate protocol.
+ *
+ * Implementations send request/response protocol messages and expose the worker
+ * message stream used by {@link Worker.layer}. HTTP and local in-memory
+ * implementations both provide this service.
+ *
+ * @since 0.0.0
+ */
 import type { Stream } from "effect";
 import { Context, Effect, Schema } from "effect";
 import { TransportError } from "../Errors.ts";
@@ -15,13 +24,31 @@ export interface ResonateNetworkService {
   readonly anycast: (group: Protocol.WorkerGroup) => Protocol.TargetAddress;
 }
 
+/**
+ * Service for sending protocol requests and consuming worker messages.
+ *
+ * @category services
+ * @since 0.0.0
+ */
 export class ResonateNetwork extends Context.Service<ResonateNetwork, ResonateNetworkService>()(
   "effect-resonate/Network",
 ) {}
 
+/**
+ * Encodes a protocol request to its wire shape.
+ *
+ * @category encoding
+ * @since 0.0.0
+ */
 export const encodeRequest = <K extends Protocol.RequestKind>(request: Protocol.Request<K>): Effect.Effect<unknown> =>
   Effect.orDie(Schema.encodeUnknownEffect(Protocol.RequestFromWire)(request));
 
+/**
+ * Decodes and validates a response for the matching request envelope.
+ *
+ * @category encoding
+ * @since 0.0.0
+ */
 export const decodeResponse =
   <K extends Protocol.RequestKind>(request: Protocol.Request<K>) =>
   (input: unknown): Effect.Effect<Protocol.Response<K>, TransportError> =>

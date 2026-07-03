@@ -1,3 +1,11 @@
+/**
+ * Low-level client service for Resonate task protocol endpoints.
+ *
+ * Workers use this service to create, acquire, release, suspend, fulfill, fence,
+ * and heartbeat tasks while executing durable functions.
+ *
+ * @since 0.0.0
+ */
 import { Context, Crypto, Effect, Layer, Schema, SchemaParser } from "effect";
 import {
   InvalidTarget,
@@ -9,12 +17,24 @@ import {
 import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
 
+/**
+ * Result returned when creating a task through the protocol service.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export interface TaskCreateResult {
   readonly promise: Protocol.PromiseRecord;
   readonly task?: Protocol.TaskRecord;
   readonly preload: ReadonlyArray<Protocol.PromiseRecord>;
 }
 
+/**
+ * Result returned when acquiring a task for execution.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export interface TaskClaimResult {
   readonly task: Protocol.TaskRecord;
   readonly promise: Protocol.PromiseRecord;
@@ -69,6 +89,12 @@ const taskError = (options: {
   return new InvalidTarget({ message: String(message) });
 };
 
+/**
+ * Service interface for task protocol operations.
+ *
+ * @category models
+ * @since 0.0.0
+ */
 export interface TasksService {
   readonly get: (id: Protocol.TaskId) => Effect.Effect<Protocol.TaskRecord, ResonateProtocolError | TransportError>;
   readonly create: (
@@ -101,6 +127,12 @@ export interface TasksService {
   ) => Effect.Effect<void, ResonateProtocolError | TransportError>;
 }
 
+/**
+ * Protocol client service for worker task operations.
+ *
+ * @category services
+ * @since 0.0.0
+ */
 export class Tasks extends Context.Service<Tasks, TasksService>()("effect-resonate/Tasks") {
   static readonly layer: Layer.Layer<Tasks, never, ResonateNetwork | Crypto.Crypto> = Layer.effect(
     Tasks,
