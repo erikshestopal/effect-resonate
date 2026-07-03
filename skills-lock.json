@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "skills": {
+    "code-review": {
+      "source": "dmmulroy/skills",
+      "sourceType": "github",
+      "skillPath": "code-review/SKILL.md",
+      "computedHash": "a7c259c67fe183886f64c2277dad8e0473798079d38f82a28e51fe7ea52dbfb5"
+    },
+    "coding-standards": {
+      "source": "dmmulroy/skills",
+      "sourceType": "github",
+      "skillPath": "coding-standards/SKILL.md",
+      "computedHash": "122db50f1e47dab30853d4b8be20befba7ea8e1bbb9330a1013225651c7ffb69"
+    },
+    "grill-me": {
+      "source": "dmmulroy/skills",
+      "sourceType": "github",
+      "skillPath": "grill-me/SKILL.md",
+      "computedHash": "f321507f77702a54af1db66549ec1685fc625390d06c57d7949cdcda8eb1b5c7"
+    },
+    "grill-with-docs": {
+      "source": "dmmulroy/skills",
+      "sourceType": "github",
+      "skillPath": "grill-with-docs/SKILL.md",
+      "computedHash": "5ae7fde2b8ed0d8c91448389f9d79555d3704a20e5335081e42caf46e8f58284"
+    },
+    "grilling": {
+      "source": "dmmulroy/skills",
+      "sourceType": "github",
+      "skillPath": "grilling/SKILL.md",
+      "computedHash": "ef685a6fa0bbe73b05bbd8dc1ec97258191587f07c6aa7dbc9006675ceb8f90f"
+    },
+    "improve-codebase-architecture": {
+      "source": "dmmulroy/skills",
+      "sourceType": "github",
+      "skillPath": "improve-codebase-architecture/SKILL.md",
+      "computedHash": "78d7094e50f32d6c8aa500785ca3c0d0f114f573da1ccba889751a195738475b"
+    },
+    "tdd": {
+      "source": "dmmulroy/skills",
+      "sourceType": "github",
+      "skillPath": "tdd/SKILL.md",
+      "computedHash": "db37d2b2e1608c16fe669c0a0adae06c4ad225015b99b69ae070ec3a01496422"
+    },
+    "tech-spec": {
+      "source": "dmmulroy/skills",
+      "sourceType": "github",
+      "skillPath": "tech-spec/SKILL.md",
+      "computedHash": "1c42b0897413e75757972debe91e1ee78ac7596a2716aa4fc4479934b3de817b"
+    }
+  }
+}

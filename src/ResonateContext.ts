@@ -123,11 +123,6 @@ const requestHead = (corrId: string): Protocol.RequestHead =>
     version: Protocol.protocolVersion,
   });
 
-const doneOutcome = (promise: Protocol.PromiseRecord): EngineOutcome => new EngineDone({ promise });
-
-const suspendedOutcome = (awaited: ReadonlyArray<Protocol.PromiseId>): EngineOutcome =>
-  new EngineSuspended({ awaited });
-
 const isExternalPromise = (promise: Protocol.PromiseRecord): boolean =>
   Predicate.isNotUndefined(promise.tags.reserved["resonate:target"]) ||
   Predicate.isNotUndefined(promise.tags.reserved["resonate:timer"]);
@@ -603,7 +598,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         addPreload(state, options.preload ?? []);
 
         if (options.promise.state !== "pending") {
-          return doneOutcome(options.promise);
+          return new EngineDone({ promise: options.promise });
         }
 
         const invocation = yield* codec
@@ -630,13 +625,13 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         yield* drainChildren(state);
         if (Exit.isSuccess(exit)) {
           if (Predicate.isTagged(exit.value, "SuspendedExecution")) {
-            return suspendedOutcome([...new Set(exit.value.awaited)]);
+            return new EngineSuspended({ awaited: [...new Set(exit.value.awaited)] });
           }
           const promise = yield* fulfillRoot(state, Exit.succeed(exit.value.value));
-          return doneOutcome(promise);
+          return new EngineDone({ promise });
         }
         const promise = yield* fulfillRoot(state, exit);
-        return doneOutcome(promise);
+        return new EngineDone({ promise });
       });
 
       return ExecutionEngine.of({ execute });

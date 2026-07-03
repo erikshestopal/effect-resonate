@@ -17,8 +17,6 @@ interface HeldTask {
   readonly version: Protocol.TaskVersion;
 }
 
-const heldKey = (id: Protocol.TaskId): string => id;
-
 export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
   group: FunctionGroup<Fns>,
   config: WorkerConfig,
@@ -39,11 +37,11 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
       const heartbeatEvery = Duration.millis(Math.max(1, Math.floor(Duration.toMillis(ttl) / 2)));
       const held = yield* Ref.make(new Map<string, HeldTask>());
 
-      const addHeld = (task: HeldTask) => Ref.update(held, (current) => new Map(current).set(heldKey(task.id), task));
+      const addHeld = (task: HeldTask) => Ref.update(held, (current) => new Map(current).set(task.id, task));
       const removeHeld = (id: Protocol.TaskId) =>
         Ref.update(held, (current) => {
           const next = new Map(current);
-          next.delete(heldKey(id));
+          next.delete(id);
           return next;
         });
 
