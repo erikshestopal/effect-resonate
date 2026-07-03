@@ -1,6 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Schema, SchemaParser } from "effect";
-import { currentCodec } from "../src/Codec.ts";
+import { Effect, SchemaParser } from "effect";
 import * as Protocol from "../src/Protocol.ts";
 import { decodeResponse, encodeRequest } from "../src/Network.ts";
 
@@ -70,117 +69,133 @@ const waitForSettled = async (id: string) => {
   throw new Error(`promise ${id} did not settle`);
 };
 
-const resolveString = async (id: string, value: string) => {
-  const encoded = await Effect.runPromise(currentCodec.pipe(Effect.flatMap((codec) => codec.encode(value))));
-  const response = await request(
-    Protocol.PromiseSettleRequest.make({
-      kind: "promise.settle",
-      head: Protocol.RequestHead.make({
-        corrId: Protocol.CorrelationId.make(`examples-settle-${id}-${Date.now()}`),
-        version: Protocol.protocolVersion,
-      }),
-      data: { id: Protocol.PromiseId.make(id), state: Schema.Literal("resolved").make("resolved"), value: encoded },
-    }),
-  );
-  expect(response.head.status).toBe(200);
-};
-
-const examples: ReadonlyArray<{ readonly name: string; readonly args: ReadonlyArray<unknown> }> = [
-  { name: "foo", args: ["World"] },
-  { name: "countdown", args: [2, 1] },
-  { name: "sleepingWorkflow", args: [1] },
-  { name: "generateReport", args: [123] },
-  { name: "factorial", args: [4] },
-  { name: "fooWorkflow", args: ["workflow-1"] },
+const examples: ReadonlyArray<{ readonly file: string; readonly importPath: string }> = [
+  { file: "examples/example-ai-image-pipeline.ts", importPath: "../examples/example-ai-image-pipeline.ts" },
+  { file: "examples/example-async-http-api.ts", importPath: "../examples/example-async-http-api.ts" },
+  { file: "examples/example-async-rpc.ts", importPath: "../examples/example-async-rpc.ts" },
+  { file: "examples/example-aws-lambda.ts", importPath: "../examples/example-aws-lambda.ts" },
+  { file: "examples/example-batch-processor.ts", importPath: "../examples/example-batch-processor.ts" },
+  { file: "examples/example-bluesky-scraper.ts", importPath: "../examples/example-bluesky-scraper.ts" },
+  { file: "examples/example-browser-worker.ts", importPath: "../examples/example-browser-worker.ts" },
+  { file: "examples/example-chess-hero-gcp.ts", importPath: "../examples/example-chess-hero-gcp.ts" },
+  { file: "examples/example-countdown-cloudflare.ts", importPath: "../examples/example-countdown-cloudflare.ts" },
+  { file: "examples/example-countdown-gcp.ts", importPath: "../examples/example-countdown-gcp.ts" },
+  { file: "examples/example-countdown-supabase.ts", importPath: "../examples/example-countdown-supabase.ts" },
+  { file: "examples/example-countdown-web.ts", importPath: "../examples/example-countdown-web.ts" },
+  { file: "examples/example-countdown.ts", importPath: "../examples/example-countdown.ts" },
+  { file: "examples/example-dao-proposal-scorer.ts", importPath: "../examples/example-dao-proposal-scorer.ts" },
+  { file: "examples/example-distributed-mutex.ts", importPath: "../examples/example-distributed-mutex.ts" },
+  { file: "examples/example-durable-chatbot.ts", importPath: "../examples/example-durable-chatbot.ts" },
+  { file: "examples/example-durable-entity.ts", importPath: "../examples/example-durable-entity.ts" },
+  { file: "examples/example-durable-sleep.ts", importPath: "../examples/example-durable-sleep.ts" },
+  { file: "examples/example-ecommerce-application.ts", importPath: "../examples/example-ecommerce-application.ts" },
+  { file: "examples/example-encryption.ts", importPath: "../examples/example-encryption.ts" },
+  { file: "examples/example-event-sourcing.ts", importPath: "../examples/example-event-sourcing.ts" },
+  { file: "examples/example-express-integration.ts", importPath: "../examples/example-express-integration.ts" },
+  { file: "examples/example-fan-out-fan-in.ts", importPath: "../examples/example-fan-out-fan-in.ts" },
+  { file: "examples/example-food-delivery.ts", importPath: "../examples/example-food-delivery.ts" },
   {
-    name: "notifyAll",
-    args: [{ orderId: "order-1", userId: "user-1", event: "created", message: "order created" }],
+    file: "examples/example-hackernews-research-agent.ts",
+    importPath: "../examples/example-hackernews-research-agent.ts",
   },
-  { name: "bookTrip", args: [{ tripId: "trip-1", shouldFail: false }] },
+  { file: "examples/example-hello-world.ts", importPath: "../examples/example-hello-world.ts" },
+  { file: "examples/example-human-in-the-loop.ts", importPath: "../examples/example-human-in-the-loop.ts" },
+  { file: "examples/example-infinite-workflow.ts", importPath: "../examples/example-infinite-workflow.ts" },
+  { file: "examples/example-kafka-worker.ts", importPath: "../examples/example-kafka-worker.ts" },
+  { file: "examples/example-load-balancing.ts", importPath: "../examples/example-load-balancing.ts" },
+  { file: "examples/example-mcp-tools.ts", importPath: "../examples/example-mcp-tools.ts" },
   {
-    name: "importRecords",
-    args: [
-      {
-        records: [
-          { id: "a", value: 1 },
-          { id: "b", value: 2 },
-        ],
-        batchSize: 1,
-      },
-    ],
+    file: "examples/example-multi-agent-orchestration.ts",
+    importPath: "../examples/example-multi-agent-orchestration.ts",
   },
+  { file: "examples/example-nextjs-ecommerce.ts", importPath: "../examples/example-nextjs-ecommerce.ts" },
+  { file: "examples/example-nextjs-integration.ts", importPath: "../examples/example-nextjs-integration.ts" },
+  { file: "examples/example-node-drain-orchestrator.ts", importPath: "../examples/example-node-drain-orchestrator.ts" },
   {
-    name: "exclusiveResourceAccess",
-    args: [{ resource: "resource-1", workers: ["worker-a", "worker-b"], shouldCrash: false }],
-  },
-  {
-    name: "rateLimitedBatch",
-    args: [{ requests: [{ id: "req-1", endpoint: "/v1/orders", payload: "{}" }], ratePerSec: 1000 }],
-  },
-  {
-    name: "processPayment",
-    args: [{ event_id: "evt-1", type: "payment_intent.succeeded", amount: 42, currency: "USD", customer_id: "cus-1" }],
-  },
-  { name: "orderLifecycle", args: [{ orderId: "order-2", path: "deliver" }] },
-  {
-    name: "processEventStream",
-    args: [{ userId: "user-1", events: [{ eventId: "event-1", type: "created", payload: { name: "Ada" } }] }],
+    file: "examples/example-openai-deep-research-agent-cloudflare.ts",
+    importPath: "../examples/example-openai-deep-research-agent-cloudflare.ts",
   },
   {
-    name: "processQueue",
-    args: [{ jobs: [{ id: "job-1", priority: "critical", description: "ship", workMs: 1 }] }],
+    file: "examples/example-openai-deep-research-agent-gcp.ts",
+    importPath: "../examples/example-openai-deep-research-agent-gcp.ts",
   },
+  {
+    file: "examples/example-openai-deep-research-agent-supabase.ts",
+    importPath: "../examples/example-openai-deep-research-agent-supabase.ts",
+  },
+  {
+    file: "examples/example-openai-deep-research-agent.ts",
+    importPath: "../examples/example-openai-deep-research-agent.ts",
+  },
+  { file: "examples/example-priority-queue.ts", importPath: "../examples/example-priority-queue.ts" },
+  { file: "examples/example-quickstart.ts", importPath: "../examples/example-quickstart.ts" },
+  { file: "examples/example-rate-limiter.ts", importPath: "../examples/example-rate-limiter.ts" },
+  { file: "examples/example-recursive-factorial.ts", importPath: "../examples/example-recursive-factorial.ts" },
+  { file: "examples/example-saga-booking.ts", importPath: "../examples/example-saga-booking.ts" },
+  { file: "examples/example-schedule.ts", importPath: "../examples/example-schedule.ts" },
+  { file: "examples/example-state-machine.ts", importPath: "../examples/example-state-machine.ts" },
+  { file: "examples/example-supabase-edge.ts", importPath: "../examples/example-supabase-edge.ts" },
+  {
+    file: "examples/example-tigerbeetle-account-creation.ts",
+    importPath: "../examples/example-tigerbeetle-account-creation.ts",
+  },
+  { file: "examples/example-token-auth.ts", importPath: "../examples/example-token-auth.ts" },
+  { file: "examples/example-webhook-handler.ts", importPath: "../examples/example-webhook-handler.ts" },
+  { file: "examples/templated-agent.ts", importPath: "../examples/templated-agent.ts" },
 ];
 
-describe("official TypeScript examples", () => {
-  it("runs fifteen ports of the official TypeScript examples against the shipped server", async () => {
+describe("official TypeScript example repos", () => {
+  it("runs one self-contained Effect port per official TypeScript example repo against the shipped server", async () => {
     if (Bun.which("resonate") === null) {
       console.error("[EXAMPLES SKIPPED] resonate CLI not found; install it to run examples.");
       expect(Bun.which("resonate")).toBeNull();
       return;
     }
 
-    const group = `examples-${Date.now()}`;
-    const target = `poll://any@${group}`;
     const server = spawn(["resonate", "dev", "--server-port", String(serverPort), "--observability-metrics-port", "0"]);
     await sleep(2_000);
-    const worker = spawn(["bun", "examples/official-typescript.ts"], {
-      RESONATE_URL: serverUrl,
-      RESONATE_GROUP: group,
-      RESONATE_PID: "examples-1",
-    });
+    const logs: Array<string> = [];
 
     try {
-      await sleep(2_000);
       for (const example of examples) {
-        const id = `${group}-${example.name}`;
-        await run([
-          "resonate",
-          "invoke",
-          "--server",
-          serverUrl,
-          "--func",
-          example.name,
-          "--target",
-          target,
-          "--json-args",
-          JSON.stringify(example.args),
-          id,
-        ]);
-        if (example.name === "fooWorkflow") {
-          await sleep(1_000);
-          await resolveString(`${id}.human_approval`, "human_approval");
+        const module = (await import(example.importPath)) as {
+          readonly repo: string;
+          readonly functionName: string;
+          readonly sampleArgs: ReadonlyArray<unknown>;
+        };
+        const group = `examples-${Date.now()}-${module.repo}`;
+        const target = `poll://any@${group}`;
+        const worker = spawn(["bun", example.file], {
+          RESONATE_URL: serverUrl,
+          RESONATE_GROUP: group,
+          RESONATE_PID: `${module.repo}-worker`,
+        });
+        try {
+          await sleep(350);
+          const id = `${group}-run`;
+          await run([
+            "resonate",
+            "invoke",
+            "--server",
+            serverUrl,
+            "--func",
+            module.functionName,
+            "--target",
+            target,
+            "--json-args",
+            JSON.stringify(module.sampleArgs),
+            id,
+          ]);
+          const promise = await waitForSettled(id);
+          expect(promise.state).toBe("resolved");
+          expect(await run(["resonate", "tree", "--server", serverUrl, id])).toContain(id);
+        } finally {
+          kill(worker);
+          logs.push(await new Response(worker.stdout).text());
         }
-        const promise = await waitForSettled(id);
-        expect(promise.state).toBe("resolved");
-        expect(await run(["resonate", "tree", "--server", serverUrl, id])).toContain(id);
       }
     } finally {
-      kill(worker);
       kill(server);
-      const workerLog = await new Response(worker.stdout).text();
-      expect(workerLog).toContain("Hello World from bar");
-      expect(workerLog).toContain("critical:job-1:ship");
     }
   }, 90_000);
 });
