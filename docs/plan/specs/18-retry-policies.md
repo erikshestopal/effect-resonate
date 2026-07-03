@@ -59,3 +59,7 @@ and `nonRetryableErrors` via tagged error classes.
 ## Acceptance
 
 - `vp run check` green.
+
+## Notes
+
+- Done in spec 18: retry policy constructors and wire codec, native delay math tests, invocation-param persistence, local step retry execution, `ctx.info.attempt`, schema-based non-retryable matching, and timeout-bound retry termination.

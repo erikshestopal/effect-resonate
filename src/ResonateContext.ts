@@ -18,6 +18,7 @@ import { ResonateCodec, withSchemaHeader } from "./Codec.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, EncodingError } from "./Errors.ts";
 import * as Protocol from "./Protocol.ts";
 import type { AnyFunction, PayloadArgs, PromiseDeclaration, PromiseSuccess, Registry } from "./Resonate.ts";
+import * as RetryPolicy from "./RetryPolicy.ts";
 import { Tasks } from "./Task.ts";
 
 export class DurablePanic extends Schema.TaggedErrorClass<DurablePanic>()("DurablePanic", {
@@ -34,6 +35,7 @@ const InvocationParam = Schema.Struct({
   func: Schema.String,
   args: Schema.Array(Schema.Unknown),
   version: Protocol.FunctionVersionFromWire,
+  retry: Schema.optionalKey(RetryPolicy.RetryPolicyFromWire),
 });
 
 export interface ContextOptions {
@@ -42,9 +44,12 @@ export interface ContextOptions {
   readonly timeout?: Duration.Duration;
   readonly tags?: Protocol.Tags;
   readonly version?: Protocol.FunctionVersionOrLatest;
+  readonly retryPolicy?: RetryPolicy.RetryPolicy;
+  readonly nonRetryableErrors?: ReadonlyArray<Schema.Codec<unknown, unknown, never, never>>;
 }
 
 export interface ContextInfo {
+  readonly attempt: number;
   readonly id: Protocol.PromiseId;
   readonly originId: Protocol.PromiseId;
   readonly prefixId: Protocol.PromiseId;
@@ -81,6 +86,7 @@ interface RuntimeState {
   readonly attachedRemote: Map<Protocol.PromiseId, SuspendedExecution>;
   readonly awaiting: Map<Protocol.PromiseId, SuspendedExecution>;
   readonly externalPromises: Set<string>;
+  attempt: number;
   seq: number;
 }
 
@@ -285,8 +291,16 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         name: string,
         args: ReadonlyArray<unknown>,
         version: Protocol.FunctionVersionOrLatest,
+        retry?: RetryPolicy.RetryPolicy,
       ): Effect.fn.Return<Protocol.Value, unknown> {
-        const encoded = yield* codec.encode(InvocationParam.make({ func: name, args, version }));
+        const encoded = yield* codec.encode(
+          InvocationParam.make({
+            func: name,
+            args,
+            version,
+            ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
+          }),
+        );
         return withSchemaHeader(encoded, name);
       });
 
@@ -300,6 +314,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             target,
             args,
             Predicate.isUndefined(options?.version) ? Protocol.FunctionVersion.make(1) : options.version,
+            options?.retryPolicy,
           );
         }
         const encodedArgs = yield* Schema.encodeUnknownEffect(target.payload)(args).pipe(
@@ -313,6 +328,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           target.name,
           Array.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
           options?.version ?? target.version,
+          options?.retryPolicy,
         );
       });
 
@@ -599,6 +615,36 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         };
       };
 
+      const runWithRetry = Effect.fn("ExecutionEngine.runWithRetry")(function* (
+        state: RuntimeState,
+        effect: Effect.Effect<unknown, unknown>,
+        policy: RetryPolicy.RetryPolicy,
+        nonRetryableErrors: ReadonlyArray<Schema.Codec<unknown, unknown, never, never>>,
+      ): Effect.fn.Return<Exit.Exit<unknown, unknown>> {
+        const runAttempt = Effect.fn("ExecutionEngine.runWithRetry.runAttempt")(function* (
+          attempt: number,
+        ): Effect.fn.Return<Exit.Exit<unknown, unknown>> {
+          state.attempt = attempt;
+          const result = yield* effect.pipe(Effect.result);
+          if (Result.isSuccess(result)) {
+            return Exit.succeed(result.success);
+          }
+          if (nonRetryableErrors.some((schema) => SchemaParser.is(schema)(result.failure))) {
+            return Exit.fail(result.failure);
+          }
+          const retryIn = RetryPolicy.next(policy, attempt);
+          const now = yield* Clock.currentTimeMillis;
+          if (Predicate.isNull(retryIn) || now + retryIn >= DateTime.toEpochMillis(state.timeoutAt)) {
+            return Exit.fail(result.failure);
+          }
+          if (retryIn > 0) {
+            yield* Effect.sleep(Duration.millis(retryIn));
+          }
+          return yield* runAttempt(attempt + 1);
+        });
+        return yield* runAttempt(0);
+      });
+
       const drainChildren = Effect.fn("ExecutionEngine.drainChildren")(function* (state: RuntimeState) {
         for (const child of state.children) {
           yield* Fiber.join(child.fiber).pipe(Effect.exit);
@@ -620,8 +666,12 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           if (isExternalPromise(promise)) {
             return makeHandle(state, promise, deferred);
           }
-          const fiber = yield* effect.pipe(
-            Effect.exit,
+          const fiber = yield* runWithRetry(
+            state,
+            effect,
+            options?.retryPolicy ?? RetryPolicy.exponential(),
+            options?.nonRetryableErrors ?? [],
+          ).pipe(
             Effect.flatMap((exit) => settle(state, promise.id, exit)),
             Effect.flatMap((settled) =>
               decodeSettled(settled).pipe(
@@ -710,6 +760,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           ResonateContext,
           ResonateContext.of({
             info: {
+              get attempt() {
+                return state.attempt;
+              },
               id: state.root,
               originId: state.originId,
               prefixId: state.prefixId,
@@ -769,6 +822,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           attachedRemote: new Map(),
           awaiting: new Map(),
           externalPromises: new Set(),
+          attempt: 0,
           seq: 0,
         };
         addPreload(state, options.preload ?? []);

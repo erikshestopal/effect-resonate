@@ -8,6 +8,7 @@ import { makeRequestHead, ResonateNetwork } from "../src/Network.ts";
 import * as NetworkLocal from "../src/NetworkLocal.ts";
 import * as Protocol from "../src/Protocol.ts";
 import * as Resonate from "../src/Resonate.ts";
+import * as RetryPolicy from "../src/RetryPolicy.ts";
 import { Tasks } from "../src/Task.ts";
 
 const isDebugSnapSuccess = SchemaParser.is(Protocol.DebugSnapResponse.members[0]);
@@ -115,6 +116,26 @@ describe("ResonateClient", () => {
       const invocation = yield* codec.decode(promise?.param ?? Protocol.emptyValue);
       expect(invocation).toEqual({ func: "RemoteCheckout", args: [1, "two"], version: 1 });
       expect(promise?.tags.reserved["resonate:target"]?.address).toBe("local://any@workers");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("persists retry policy in invocation params", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const codec = yield* ResonateCodec;
+      const handle = yield* client.beginRun(Checkout, Protocol.ExecutionId.make("retry-param-1"), [{ id: "order-4" }], {
+        retryPolicy: RetryPolicy.linear({ delay: Duration.seconds(2), maxRetries: 7 }),
+      });
+
+      const state = yield* snap();
+      const promise = state.promises.find((promise) => promise.id === handle.id);
+      const invocation = yield* codec.decode(promise?.param ?? Protocol.emptyValue);
+      expect(invocation).toEqual({
+        func: "Checkout",
+        args: [{ id: "order-4" }],
+        version: 1,
+        retry: RetryPolicy.linear({ delay: Duration.seconds(2), maxRetries: 7 }),
+      });
     }).pipe(Effect.provide(layer)),
   );
 });

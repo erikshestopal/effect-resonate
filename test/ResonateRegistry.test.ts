@@ -17,6 +17,7 @@ const contextLayer = Layer.succeed(
   ResonateContext,
   ResonateContext.of({
     info: {
+      attempt: 0,
       id: Protocol.PromiseId.make("test"),
       originId: Protocol.PromiseId.make("test"),
       prefixId: Protocol.PromiseId.make("test"),

@@ -6,6 +6,7 @@ import * as NetworkHttp from "./NetworkHttp.ts";
 import { ResonateNetwork } from "./Network.ts";
 import * as Protocol from "./Protocol.ts";
 import { ResonateCodec, withSchemaHeader } from "./Codec.ts";
+import * as RetryPolicy from "./RetryPolicy.ts";
 import type { ResonateContext } from "./ResonateContext.ts";
 import { Tasks } from "./Task.ts";
 
@@ -204,6 +205,7 @@ const InvocationParam = Schema.Struct({
   func: Schema.String,
   args: Schema.Array(Schema.Unknown),
   version: Protocol.FunctionVersionFromWire,
+  retry: Schema.optionalKey(RetryPolicy.RetryPolicyFromWire),
 });
 
 export interface InvocationOptions {
@@ -211,6 +213,8 @@ export interface InvocationOptions {
   readonly timeout?: Duration.Duration;
   readonly tags?: Protocol.Tags;
   readonly version?: Protocol.FunctionVersionOrLatest;
+  readonly retryPolicy?: RetryPolicy.RetryPolicy;
+  readonly nonRetryableErrors?: ReadonlyArray<Schema.Codec<unknown, unknown, never, never>>;
 }
 
 export interface DurableHandle<A = unknown, E = unknown> {
@@ -353,29 +357,16 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           name: string,
           args: ReadonlyArray<unknown>,
           version: Protocol.FunctionVersionOrLatest,
+          retry?: RetryPolicy.RetryPolicy,
         ): Effect.fn.Return<Protocol.Value, unknown> {
           const invocation = InvocationParam.make({
             func: name,
             args,
             version,
+            ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
           });
           const encoded = yield* codec.encode(invocation);
           return withSchemaHeader(encoded, name);
-        });
-
-        const encodePayload = Effect.fn("ResonateClient.encodePayload")(function* <F extends AnyFunction>(
-          fn: F,
-          args: ReadonlyArray<unknown>,
-          version: Protocol.FunctionVersionOrLatest,
-        ): Effect.fn.Return<Protocol.Value, unknown> {
-          const encodedArgs = yield* Schema.encodeUnknownEffect(fn.payload)(args).pipe(
-            Effect.catchCause(() =>
-              args.length === 1
-                ? Schema.encodeUnknownEffect(fn.payload)(args[0])
-                : Effect.die("Invalid function payload"),
-            ),
-          );
-          return yield* encodeInvocation(fn.name, Array.isArray(encodedArgs) ? encodedArgs : [encodedArgs], version);
         });
 
         const encodeTargetPayload = Effect.fn("ResonateClient.encodeTargetPayload")(function* (
@@ -388,9 +379,22 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
               target,
               args,
               Predicate.isUndefined(callOptions?.version) ? Protocol.FunctionVersion.make(1) : callOptions.version,
+              callOptions?.retryPolicy,
             );
           }
-          return yield* encodePayload(target, args, callOptions?.version ?? target.version);
+          const encodedArgs = yield* Schema.encodeUnknownEffect(target.payload)(args).pipe(
+            Effect.catchCause(() =>
+              args.length === 1
+                ? Schema.encodeUnknownEffect(target.payload)(args[0])
+                : Effect.die("Invalid function payload"),
+            ),
+          );
+          return yield* encodeInvocation(
+            target.name,
+            Array.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
+            callOptions?.version ?? target.version,
+            callOptions?.retryPolicy,
+          );
         });
 
         const rootTags = (

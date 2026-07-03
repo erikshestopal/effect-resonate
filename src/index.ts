@@ -7,6 +7,7 @@ export * as NetworkLocal from "./NetworkLocal.ts";
 export * as Protocol from "./Protocol.ts";
 export * as Resonate from "./Resonate.ts";
 export * as ResonateContext from "./ResonateContext.ts";
+export * as RetryPolicy from "./RetryPolicy.ts";
 export * as ResonateSchedule from "./Schedule.ts";
 export * as Task from "./Task.ts";
 export * as Worker from "./Worker.ts";

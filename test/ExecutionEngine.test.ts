@@ -9,6 +9,7 @@ import * as NetworkLocal from "../src/NetworkLocal.ts";
 import * as Protocol from "../src/Protocol.ts";
 import * as Resonate from "../src/Resonate.ts";
 import { ExecutionEngine, ResonateContext } from "../src/ResonateContext.ts";
+import * as RetryPolicy from "../src/RetryPolicy.ts";
 import { Tasks } from "../src/Task.ts";
 
 const isDebugSnapSuccess = SchemaParser.is(Protocol.DebugSnapResponse.members[0]);
@@ -41,9 +42,18 @@ const ExternalWorkflow = Resonate.function("ExternalWorkflow", {
   payload: Schema.String,
 });
 
+class CardDeclined extends Schema.TaggedErrorClass<CardDeclined>()("CardDeclined", {
+  code: Schema.String,
+}) {}
+
+const RetryWorkflow = Resonate.function("RetryWorkflow", {
+  payload: Schema.Number,
+});
+
 const workflowGroup = Resonate.group(Workflow);
 const remoteGroup = Resonate.group(Workflow, RemoteChild, RemoteParent);
 const externalGroup = Resonate.group(ExternalWorkflow);
+const retryGroup = Resonate.group(RetryWorkflow);
 
 const baseLayer = Layer.mergeAll(
   NetworkLocal.layer({
@@ -597,6 +607,118 @@ describe("ExecutionEngine", () => {
       const completed = yield* client.get(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-malformed-1"));
       const exit = yield* completed.await.pipe(Effect.exit);
       expect(Exit.isFailure(exit)).toBe(true);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("retries local steps with attempt visible in context", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const engine = yield* ExecutionEngine;
+      const codec = yield* ResonateCodec;
+      let calls = 0;
+      const handlers = retryGroup.toLayer(
+        retryGroup.of({
+          RetryWorkflow: () =>
+            Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
+              const ctx = yield* ResonateContext;
+              return Number(
+                yield* ctx.run(
+                  Effect.gen(function* () {
+                    calls = calls + 1;
+                    if (calls < 3) {
+                      return yield* new CardDeclined({ code: "retry" });
+                    }
+                    return ctx.info.attempt;
+                  }),
+                  { retryPolicy: RetryPolicy.exponential({ delay: Duration.millis(0), maxRetries: 3 }) },
+                ),
+              );
+            }),
+        }),
+      );
+      const registry = yield* retryGroup.registry().pipe(Effect.provide(handlers));
+
+      const handle = yield* client.beginRun(RetryWorkflow, Protocol.ExecutionId.make("engine-retry-1"), [0]);
+      const root = yield* acquiredRoot(handle.id);
+      const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
+      expect(Predicate.isTagged(outcome, "Done")).toBe(true);
+
+      const completed = yield* DurablePromises.pipe(Effect.flatMap((promises) => promises.get(handle.id)));
+      expect(yield* codec.decode(completed.value)).toBe(2);
+      expect(calls).toBe(3);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("does not retry non-retryable tagged errors", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const engine = yield* ExecutionEngine;
+      let calls = 0;
+      const handlers = retryGroup.toLayer(
+        retryGroup.of({
+          RetryWorkflow: () =>
+            Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
+              const ctx = yield* ResonateContext;
+              const result = yield* ctx
+                .run(
+                  Effect.gen(function* () {
+                    calls = calls + 1;
+                    return yield* new CardDeclined({ code: "stop" });
+                  }),
+                  {
+                    retryPolicy: RetryPolicy.constant({ delay: Duration.seconds(1), maxRetries: 5 }),
+                    nonRetryableErrors: [CardDeclined],
+                  },
+                )
+                .pipe(Effect.exit);
+              return Exit.isFailure(result) ? "stopped" : "unexpected";
+            }),
+        }),
+      );
+      const registry = yield* retryGroup.registry().pipe(Effect.provide(handlers));
+
+      const handle = yield* client.beginRun(
+        RetryWorkflow,
+        Protocol.ExecutionId.make("engine-retry-nonretryable-1"),
+        [0],
+      );
+      const root = yield* acquiredRoot(handle.id);
+      yield* engine.execute({ task: root.task, promise: root.promise, registry });
+      expect(calls).toBe(1);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("stops retrying when the next retry would exceed the root timeout", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const engine = yield* ExecutionEngine;
+      let calls = 0;
+      const handlers = retryGroup.toLayer(
+        retryGroup.of({
+          RetryWorkflow: () =>
+            Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
+              const ctx = yield* ResonateContext;
+              const result = yield* ctx
+                .run(
+                  Effect.gen(function* () {
+                    calls = calls + 1;
+                    return yield* Effect.fail("retryable");
+                  }),
+                  { retryPolicy: RetryPolicy.constant({ delay: Duration.seconds(10), maxRetries: 5 }) },
+                )
+                .pipe(Effect.exit);
+              return Exit.isFailure(result) ? "bounded" : "unexpected";
+            }),
+        }),
+      );
+      const registry = yield* retryGroup.registry().pipe(Effect.provide(handlers));
+
+      const handle = yield* client.beginRun(RetryWorkflow, Protocol.ExecutionId.make("engine-retry-timeout-1"), [0], {
+        timeout: Duration.seconds(5),
+      });
+      const root = yield* acquiredRoot(handle.id);
+      yield* engine.execute({ task: root.task, promise: root.promise, registry });
+      expect(calls).toBe(2);
     }).pipe(Effect.provide(layer)),
   );
 });
