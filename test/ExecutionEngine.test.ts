@@ -119,7 +119,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* workflowGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* workflowGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(Workflow, Protocol.ExecutionId.make("engine-root-1"), [1]);
       const root = yield* acquiredRoot(handle.id);
@@ -162,7 +162,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* workflowGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* workflowGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(Workflow, Protocol.ExecutionId.make("engine-root-2"), [0]);
       const root = yield* acquiredRoot(handle.id);
@@ -205,7 +205,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* remoteGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* remoteGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(RemoteParent, Protocol.ExecutionId.make("engine-remote-1"), [1]);
       const root = yield* acquiredRoot(handle.id);
@@ -247,7 +247,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* remoteGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* remoteGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(RemoteParent, Protocol.ExecutionId.make("engine-remote-flush-1"), [0]);
       const root = yield* acquiredRoot(handle.id);
@@ -288,7 +288,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* remoteGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* remoteGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(RemoteParent, Protocol.ExecutionId.make("engine-remote-fanout-1"), [0]);
       const root = yield* acquiredRoot(handle.id);
@@ -316,7 +316,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* remoteGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* remoteGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(RemoteParent, Protocol.ExecutionId.make("engine-remote-explicit-1"), [0]);
       const root = yield* acquiredRoot(handle.id);
@@ -349,7 +349,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* remoteGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* remoteGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(RemoteParent, Protocol.ExecutionId.make("engine-remote-detached-1"), [0], {
         timeout: Duration.seconds(30),
@@ -393,7 +393,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-1"), ["ok"]);
       const root = yield* acquiredRoot(handle.id);
@@ -445,7 +445,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-reject-1"), [
         "ok",
@@ -492,7 +492,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-timeout-1"), [
         "ok",
@@ -536,7 +536,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-external-stable-1"), [
         "ok",
@@ -568,7 +568,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
       yield* TestClock.setTime(1_000);
       const handle = yield* client.beginRun(ExternalWorkflow, Protocol.ExecutionId.make("engine-now-1"), ["ok"]);
@@ -614,7 +614,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* workflowGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* workflowGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(Workflow, Protocol.ExecutionId.make("engine-random-1"), [0]);
       const root = yield* acquiredRoot(handle.id);
@@ -651,7 +651,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(
         ExternalWorkflow,
@@ -684,7 +684,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* externalGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* externalGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(
         ExternalWorkflow,
@@ -731,7 +731,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* retryGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* retryGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(RetryWorkflow, Protocol.ExecutionId.make("engine-retry-1"), [0]);
       const root = yield* acquiredRoot(handle.id);
@@ -770,7 +770,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* retryGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* retryGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(
         RetryWorkflow,
@@ -806,7 +806,7 @@ describe("ExecutionEngine", () => {
             }),
         }),
       );
-      const registry = yield* retryGroup.registry().pipe(Effect.provide(handlers));
+      const registry = yield* retryGroup.registry.pipe(Effect.provide(handlers));
 
       const handle = yield* client.beginRun(RetryWorkflow, Protocol.ExecutionId.make("engine-retry-timeout-1"), [0], {
         timeout: Duration.seconds(5),

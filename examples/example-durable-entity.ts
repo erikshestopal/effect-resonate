@@ -13,7 +13,7 @@ const Payload = Schema.Struct({
   sessionId: Schema.String,
   userId: Schema.String,
   activities: Schema.Array(Schema.String),
-  idleTimeoutMs: Schema.Number,
+  idleTimeoutMs: Schema.Finite,
 });
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);

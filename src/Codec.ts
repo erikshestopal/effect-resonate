@@ -75,11 +75,8 @@ const ErrorFromMarker = ErrorMarker.pipe(
 
 const InfinityFromSentinel = Schema.Literals([INF, NEG_INF]).pipe(
   Schema.decodeTo(
-    Schema.Number.check(
-      Schema.makeFilter((n: number) => n === Number.POSITIVE_INFINITY || n === Number.NEGATIVE_INFINITY, {
-        title: "an infinite number",
-      }),
-    ),
+    // @effect-diagnostics-next-line schemaNumber:off
+    Schema.Number.check(Schema.makeFilter((n) => n === Number.POSITIVE_INFINITY || n === Number.NEGATIVE_INFINITY)),
     SchemaTransformation.transform({
       decode: (sentinel) => (sentinel === INF ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY),
       encode: (n) => (n === Number.POSITIVE_INFINITY ? INF : NEG_INF),

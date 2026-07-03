@@ -7,7 +7,7 @@ export const functionName = "countdown";
 export const sampleArgs = [2, 1] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-countdown-web-ts --func countdown --json-args '[2,1]' example-countdown-web-ts-demo
 
-const Payload = Schema.Tuple([Schema.Number, Schema.Number]);
+const Payload = Schema.Tuple([Schema.Finite, Schema.Finite]);
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);
 

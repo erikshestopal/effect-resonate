@@ -28,6 +28,14 @@
     "plugins": [
       {
         "name": "@effect/language-service",
+        "overrides": [
+          {
+            "include": ["test/**/*", "./test/**/*"],
+            "options": {
+              "diagnostics": false
+            }
+          }
+        ],
         "diagnosticSeverity": {
           "asyncFunction": "warning",
           "cryptoRandomUUID": "warning",
@@ -54,7 +62,7 @@
       }
     ]
   },
-  "include": ["src/**/*", "test/**/*", "examples/**/*"],
-  "exclude": ["node_modules", "dist", "repos"],
+  "include": ["src/**/*", "examples/**/*"],
+  "exclude": ["node_modules", "dist", "repos", "test"],
   "$schema": "https://raw.githubusercontent.com/Effect-TS/tsgo/refs/heads/main/schema.json"
 }

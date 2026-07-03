@@ -82,7 +82,7 @@ describe("Resonate function registry", () => {
       const checkout = yield* Resonate.Handler(Checkout).pipe(Effect.provide(layer));
       expect(yield* checkout({ id: "order-1" }).pipe(Effect.provide(contextLayer))).toBe("order-1");
 
-      const registry = yield* group.registry().pipe(Effect.provide(layer));
+      const registry = yield* group.registry.pipe(Effect.provide(layer));
       const latest = registry.get("Checkout");
       expect(Option.isSome(latest)).toBe(true);
       if (Option.isSome(latest)) {

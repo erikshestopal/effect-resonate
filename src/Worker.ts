@@ -37,7 +37,7 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
       const tasks = yield* Tasks;
       const engine = yield* ExecutionEngine;
       const crypto = yield* Crypto.Crypto;
-      const registry = yield* group.registry();
+      const registry = yield* group.registry;
       const pid = config.pid ?? Protocol.ProcessId.make(yield* Effect.orDie(crypto.randomUUIDv4));
       const ttl = config.ttl ?? Duration.seconds(60);
       const heartbeatEvery = Duration.millis(Math.max(1, Math.floor(Duration.toMillis(ttl) / 2)));
@@ -100,8 +100,8 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
             { id: message.data.task.id, version: message.data.task.version, pid, ttl },
             { origin: message.data.task.id },
           )
-          .pipe(Effect.catchTag("TaskFenced", () => Effect.succeed(undefined)));
-        if (Predicate.isUndefined(acquired)) {
+          .pipe(Effect.catchTag("TaskFenced", () => Effect.succeed(null)));
+        if (Predicate.isNull(acquired)) {
           return;
         }
         if (acquired.task.state !== "acquired") {

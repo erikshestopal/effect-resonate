@@ -7,7 +7,7 @@ export const functionName = "createAccount";
 export const sampleArgs = [{ accountId: "account-1", ledger: 1 }] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-tigerbeetle-account-creation-ts --func createAccount --json-args '[{"accountId":"account-1","ledger":1}]' example-tigerbeetle-account-creation-ts-demo
 
-const Payload = Schema.Struct({ accountId: Schema.String, ledger: Schema.Number });
+const Payload = Schema.Struct({ accountId: Schema.String, ledger: Schema.Finite });
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);
 

@@ -3,7 +3,7 @@ import { Config, Duration, Effect, Layer, Schema } from "effect";
 import { Protocol, Resonate, ResonateContext, Worker } from "effect-resonate";
 
 const countdown = Resonate.function("countdown", {
-  payload: Schema.Tuple([Schema.Number, Schema.Number]),
+  payload: Schema.Tuple([Schema.Finite, Schema.Finite]),
 });
 
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@default --func countdown --json-args '[3,1]' countdown-demo

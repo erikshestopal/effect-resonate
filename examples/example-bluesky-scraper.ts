@@ -7,7 +7,7 @@ export const functionName = "scrape";
 export const sampleArgs = ["resonatehq.bsky.social", 1] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-bluesky-scraper-ts --func scrape --json-args '["resonatehq.bsky.social",1]' example-bluesky-scraper-ts-demo
 
-const Payload = Schema.Tuple([Schema.String, Schema.Number]);
+const Payload = Schema.Tuple([Schema.String, Schema.Finite]);
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);
 

@@ -7,7 +7,7 @@ export const functionName = "sleepingWorkflow";
 export const sampleArgs = [1] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-durable-sleep-ts --func sleepingWorkflow --json-args '[1]' example-durable-sleep-ts-demo
 
-const Payload = Schema.Number;
+const Payload = Schema.Finite;
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);
 

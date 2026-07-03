@@ -777,7 +777,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             }
             const parked = HashMap.get(state.awaiting, promise.id);
             if (Option.isSome(parked)) {
-              return yield* Effect.fail(parked.value);
+              return yield* parked.value;
             }
             const suspended = new SuspendedExecution({ awaited: [promise.id] });
             state.awaiting = HashMap.set(state.awaiting, promise.id, suspended);

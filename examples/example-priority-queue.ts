@@ -13,7 +13,7 @@ const Payload = Schema.Struct({
       id: Schema.String,
       priority: Schema.Literals(["critical", "high", "normal", "low"]),
       description: Schema.String,
-      workMs: Schema.Number,
+      workMs: Schema.Finite,
     }),
   ),
 });

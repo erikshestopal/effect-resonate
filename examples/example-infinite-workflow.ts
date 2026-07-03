@@ -9,8 +9,8 @@ export const sampleArgs = [{ services: ["api", "db"], intervalMs: 1, maxIteratio
 
 const Payload = Schema.Struct({
   services: Schema.Array(Schema.String),
-  intervalMs: Schema.Number,
-  maxIterations: Schema.Number,
+  intervalMs: Schema.Finite,
+  maxIterations: Schema.Finite,
 });
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);

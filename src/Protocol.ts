@@ -318,7 +318,7 @@ export type PromiseRecord = typeof PromiseRecord.Type;
 export const TaskState = Schema.Literals(["pending", "acquired", "suspended", "halted", "fulfilled"]);
 export type TaskState = typeof TaskState.Type;
 
-const TaskResumes = Schema.Union([Schema.Number, Schema.Array(Schema.String), Schema.Boolean]);
+const TaskResumes = Schema.Union([Schema.Finite, Schema.Array(Schema.String), Schema.Boolean]);
 
 export class TaskPending extends Schema.Class<TaskPending>("TaskPending")({
   state: Schema.tag("pending"),
@@ -410,7 +410,7 @@ export const RequestHead = Schema.Struct({
   corrId: CorrelationId,
   version: ProtocolVersion,
   auth: Schema.optionalKey(Schema.String),
-  "resonate:debug_time": Schema.optionalKey(Schema.Number),
+  "resonate:debug_time": Schema.optionalKey(Schema.Finite),
   "resonate:origin": Schema.optionalKey(Schema.String),
 });
 export type RequestHead = typeof RequestHead.Type;
@@ -477,7 +477,7 @@ export const PromiseSearchRequest = Schema.Struct({
   data: Schema.Struct({
     state: Schema.optionalKey(PromiseState),
     tags: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-    limit: Schema.optionalKey(Schema.Number),
+    limit: Schema.optionalKey(Schema.Finite),
     cursor: Schema.optionalKey(Schema.String),
   }),
 });
@@ -582,7 +582,7 @@ export const TaskSearchRequest = Schema.Struct({
   head: RequestHead,
   data: Schema.Struct({
     state: Schema.optionalKey(TaskState),
-    limit: Schema.optionalKey(Schema.Number),
+    limit: Schema.optionalKey(Schema.Finite),
     cursor: Schema.optionalKey(Schema.String),
   }),
 });
@@ -621,7 +621,7 @@ export const ScheduleSearchRequest = Schema.Struct({
   head: RequestHead,
   data: Schema.Struct({
     tags: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-    limit: Schema.optionalKey(Schema.Number),
+    limit: Schema.optionalKey(Schema.Finite),
     cursor: Schema.optionalKey(Schema.String),
   }),
 });
@@ -1106,7 +1106,7 @@ export const DebugSnapResponse = Schema.Union([
       callbacks: Schema.Array(Schema.Struct({ awaiter: PromiseId, awaited: PromiseId })),
       listeners: Schema.optionalKey(Schema.Array(Schema.Struct({ id: PromiseId, address: Schema.String }))),
       tasks: Schema.Array(TaskRecordFromWire),
-      taskTimeouts: Schema.Array(Schema.Struct({ id: TaskId, type: Schema.Number, timeout: Timestamp })),
+      taskTimeouts: Schema.Array(Schema.Struct({ id: TaskId, type: Schema.Finite, timeout: Timestamp })),
       messages: Schema.Array(Schema.Struct({ address: Schema.String, message: Message })),
     }),
   }),

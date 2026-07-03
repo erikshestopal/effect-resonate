@@ -7,7 +7,7 @@ export const functionName = "getForecast";
 export const sampleArgs = [37.7749, -122.4194] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-mcp-tools-ts --func getForecast --json-args '[37.7749,-122.4194]' example-mcp-tools-ts-demo
 
-const Payload = Schema.Tuple([Schema.Number, Schema.Number]);
+const Payload = Schema.Tuple([Schema.Finite, Schema.Finite]);
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);
 

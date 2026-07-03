@@ -1,5 +1,5 @@
 import { BunRuntime } from "@effect/platform-bun";
-import { Config, Duration, Effect, Layer, Schema } from "effect";
+import { Config, DateTime, Duration, Effect, Layer, Schema } from "effect";
 import { Protocol, Resonate, ResonateContext, Worker } from "effect-resonate";
 
 export const repo = "example-node-drain-orchestrator-ts";
@@ -21,12 +21,12 @@ export const sampleArgs = [
 const Payload = Schema.Tuple([
   Schema.String,
   Schema.Struct({
-    evictionTimeout: Schema.Number,
-    drainTimeout: Schema.Number,
+    evictionTimeout: Schema.Finite,
+    drainTimeout: Schema.Finite,
     ignoreDaemonSets: Schema.Boolean,
     deleteLocalData: Schema.Boolean,
     force: Schema.Boolean,
-    gracePeriod: Schema.Number,
+    gracePeriod: Schema.Finite,
   }),
   Schema.Struct({ pool: Schema.String }),
 ]);
@@ -38,7 +38,7 @@ const handlers = App.toLayer(
     [functionName]: (operationId, options, nodeSelector) =>
       Effect.gen(function* () {
         const ctx = yield* ResonateContext.ResonateContext;
-        const startedAt = new Date().toISOString();
+        const startedAt = DateTime.formatIso(yield* DateTime.now);
         const results: Array<unknown> = [];
         for (const node of [nodeSelector.pool]) {
           yield* ctx.run(Effect.logInfo(`[Drain] Cordoning node ${node}`));
@@ -48,12 +48,18 @@ const handlers = App.toLayer(
             node,
             success: options.force || node.length > 0,
             startedAt,
-            completedAt: new Date().toISOString(),
+            completedAt: DateTime.formatIso(yield* DateTime.now),
             podsEvicted: 0,
           });
           yield* ctx.run(Effect.logInfo(`[Drain] Uncordoning node ${node}`));
         }
-        return { operationId, status: "completed", startedAt, completedAt: new Date().toISOString(), nodes: results };
+        return {
+          operationId,
+          status: "completed",
+          startedAt,
+          completedAt: DateTime.formatIso(yield* DateTime.now),
+          nodes: results,
+        };
       }),
   }),
 );

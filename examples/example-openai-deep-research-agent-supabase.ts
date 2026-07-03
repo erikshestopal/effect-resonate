@@ -7,7 +7,7 @@ export const functionName = "research";
 export const sampleArgs = ["durable execution", 1] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-openai-deep-research-agent-supabase-ts --func research --json-args '["durable execution",1]' example-openai-deep-research-agent-supabase-ts-demo
 
-const Payload = Schema.Tuple([Schema.String, Schema.Number]);
+const Payload = Schema.Tuple([Schema.String, Schema.Finite]);
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);
 

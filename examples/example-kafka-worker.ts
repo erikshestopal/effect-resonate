@@ -7,7 +7,7 @@ export const functionName = "workflow";
 export const sampleArgs = [{ recordId: "record-1", offset: 1 }] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-kafka-worker-ts --func workflow --json-args '[{"recordId":"record-1","offset":1}]' example-kafka-worker-ts-demo
 
-const Payload = Schema.Struct({ recordId: Schema.String, offset: Schema.Number });
+const Payload = Schema.Struct({ recordId: Schema.String, offset: Schema.Finite });
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);
 

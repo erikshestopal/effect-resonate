@@ -1,7 +1,7 @@
 import { Duration, Match, Schema, SchemaTransformation } from "effect";
 
-const Millis = Schema.Number;
-const MaxRetries = Schema.Number;
+const Millis = Schema.Finite;
+const MaxRetries = Schema.Finite;
 
 export class Constant extends Schema.Class<Constant>("RetryPolicy/Constant")({
   _tag: Schema.tag("Constant"),
@@ -16,7 +16,7 @@ export class Constant extends Schema.Class<Constant>("RetryPolicy/Constant")({
 export class Exponential extends Schema.Class<Exponential>("RetryPolicy/Exponential")({
   _tag: Schema.tag("Exponential"),
   delay: Millis,
-  factor: Schema.Number,
+  factor: Schema.Finite,
   maxRetries: MaxRetries,
   maxDelay: Millis,
 }) {
@@ -80,7 +80,7 @@ class WireConstant extends Schema.Class<WireConstant>("RetryPolicy/WireConstant"
 
 class WireExponential extends Schema.Class<WireExponential>("RetryPolicy/WireExponential")({
   type: Schema.Literal("exponential"),
-  data: Schema.Struct({ delay: Millis, factor: Schema.Number, maxRetries: MaxRetries, maxDelay: Millis }),
+  data: Schema.Struct({ delay: Millis, factor: Schema.Finite, maxRetries: MaxRetries, maxDelay: Millis }),
 }) {}
 
 class WireLinear extends Schema.Class<WireLinear>("RetryPolicy/WireLinear")({

@@ -66,21 +66,21 @@ export class DurablePromises extends Context.Service<DurablePromises, DurablePro
           if (isGetSuccess(response)) {
             return response.data.promise;
           }
-          return yield* Effect.fail(promiseError(id, response.head.status, response.data));
+          return yield* promiseError(id, response.head.status, response.data);
         }),
         create: Effect.fn("DurablePromises.create")(function* (data) {
           const response = yield* network.send(Protocol.PromiseCreateRequest.make({ head: yield* head(), data }));
           if (isCreateSuccess(response)) {
             return response.data.promise;
           }
-          return yield* Effect.fail(promiseError(data.id, response.head.status, response.data));
+          return yield* promiseError(data.id, response.head.status, response.data);
         }),
         settle: Effect.fn("DurablePromises.settle")(function* (data) {
           const response = yield* network.send(Protocol.PromiseSettleRequest.make({ head: yield* head(), data }));
           if (isSettleSuccess(response)) {
             return response.data.promise;
           }
-          return yield* Effect.fail(promiseError(data.id, response.head.status, response.data));
+          return yield* promiseError(data.id, response.head.status, response.data);
         }),
         registerCallback: Effect.fn("DurablePromises.registerCallback")(function* (data) {
           const response = yield* network.send(
@@ -89,7 +89,7 @@ export class DurablePromises extends Context.Service<DurablePromises, DurablePro
           if (isRegisterCallbackSuccess(response)) {
             return response.data.promise;
           }
-          return yield* Effect.fail(promiseError(data.awaited, response.head.status, response.data));
+          return yield* promiseError(data.awaited, response.head.status, response.data);
         }),
         registerListener: Effect.fn("DurablePromises.registerListener")(function* (data) {
           const response = yield* network.send(
@@ -98,7 +98,7 @@ export class DurablePromises extends Context.Service<DurablePromises, DurablePro
           if (isRegisterListenerSuccess(response)) {
             return response.data.promise;
           }
-          return yield* Effect.fail(promiseError(data.awaited, response.head.status, response.data));
+          return yield* promiseError(data.awaited, response.head.status, response.data);
         }),
         awaitSettled: Effect.fn("DurablePromises.awaitSettled")(function* (id) {
           const observed = yield* Effect.gen(function* () {

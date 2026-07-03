@@ -7,7 +7,7 @@ export const functionName = "factorial";
 export const sampleArgs = [4] as const;
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-recursive-factorial-ts --func factorial --json-args '[4]' example-recursive-factorial-ts-demo
 
-const Payload = Schema.Number;
+const Payload = Schema.Finite;
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);
 

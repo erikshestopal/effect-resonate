@@ -12,7 +12,7 @@ export const sampleArgs = [
 const Payload = Schema.Struct({
   event_id: Schema.String,
   type: Schema.String,
-  amount: Schema.Number,
+  amount: Schema.Finite,
   currency: Schema.String,
   customer_id: Schema.String,
 });

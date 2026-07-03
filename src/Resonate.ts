@@ -116,7 +116,7 @@ export interface FunctionGroup<Fns extends ReadonlyArray<AnyFunction>> {
       | HandlerFunction<Extract<Fns[number], { readonly name: Name }>>
       | Effect.Effect<HandlerFunction<Extract<Fns[number], { readonly name: Name }>>, E, R>,
   ) => Layer.Layer<Handler<Extract<Fns[number], { readonly name: Name }>>, E, R>;
-  readonly registry: () => Effect.Effect<Registry, never, Handler<Fns[number]>>;
+  readonly registry: Effect.Effect<Registry, never, Handler<Fns[number]>>;
 }
 
 const functionGroupToContext = <
@@ -166,16 +166,14 @@ export const group = <const Fns extends ReadonlyArray<AnyFunction>>(...fns: Fns)
     }
     return Layer.effect(Handler(definition), Effect.isEffect(build) ? build : Effect.succeed(build));
   },
-  registry() {
-    return Effect.gen(function* () {
-      const items: Array<RegistryItem> = [];
-      for (const definition of fns) {
-        const handler = yield* Handler(definition);
-        items.push({ definition, handler });
-      }
-      return yield* makeRegistry(items);
-    });
-  },
+  registry: Effect.gen(function* () {
+    const items: Array<RegistryItem> = [];
+    for (const definition of fns) {
+      const handler = yield* Handler(definition);
+      items.push({ definition, handler });
+    }
+    return yield* makeRegistry(items);
+  }),
 });
 
 export interface ScheduleOptions<F extends AnyFunction> {
@@ -539,7 +537,7 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
 
         const timeoutAt = Effect.fn("ResonateClient.timeoutAt")(function* (timeout: Duration.Duration) {
           const now = yield* Clock.currentTimeMillis;
-          return Schema.decodeUnknownSync(Protocol.Timestamp)(now + Duration.toMillis(timeout));
+          return yield* Schema.decodeUnknownEffect(Protocol.Timestamp)(now + Duration.toMillis(timeout));
         });
 
         const beginRpcImpl = Effect.fn("ResonateClient.beginRpc")(function* (

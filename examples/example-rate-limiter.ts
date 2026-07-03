@@ -11,7 +11,7 @@ export const sampleArgs = [
 
 const Payload = Schema.Struct({
   requests: Schema.Array(Schema.Struct({ id: Schema.String, endpoint: Schema.String, payload: Schema.String })),
-  ratePerSec: Schema.Number,
+  ratePerSec: Schema.Finite,
 });
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);

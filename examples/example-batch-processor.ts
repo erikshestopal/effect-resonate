@@ -16,8 +16,8 @@ export const sampleArgs = [
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@example-batch-processor-ts --func importRecords --json-args '[{"records":[{"id":"a","value":1},{"id":"b","value":2}],"batchSize":1}]' example-batch-processor-ts-demo
 
 const Payload = Schema.Struct({
-  records: Schema.Array(Schema.Struct({ id: Schema.String, value: Schema.Number })),
-  batchSize: Schema.Number,
+  records: Schema.Array(Schema.Struct({ id: Schema.String, value: Schema.Finite })),
+  batchSize: Schema.Finite,
 });
 const workflow = Resonate.function(functionName, { payload: Payload });
 const App = Resonate.group(workflow);
