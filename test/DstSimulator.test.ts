@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
-import { DateTime, Duration, Effect, Exit, Option, Ref, Schema } from "effect";
+import * as BunCrypto from "@effect/platform-bun/BunCrypto";
+import { DateTime, Duration, Effect, Exit, Layer, Option, Ref, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { currentCodec, ResonateCodec } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
@@ -120,7 +121,9 @@ const runProgramCorpus = Effect.fn("DstSimulator.runProgramCorpus")(function* (s
     expect(yield* Ref.get(sideEffects)).toBe(1);
   });
 
-  yield* program.pipe(Effect.provide(ResonateTest.layer({ group: DstFns, handlers: handlers })));
+  yield* program.pipe(
+    Effect.provide(ResonateTest.layer({ group: DstFns, handlers: handlers }).pipe(Layer.provide(BunCrypto.layer))),
+  );
 });
 
 const runOperationFuzzer = Effect.fn("DstSimulator.runOperationFuzzer")(function* (seed: number) {
@@ -164,7 +167,9 @@ const runOperationFuzzer = Effect.fn("DstSimulator.runOperationFuzzer")(function
     }
   });
 
-  yield* program.pipe(Effect.provide(ResonateTest.layer({ group: DstFns, handlers: handlers })));
+  yield* program.pipe(
+    Effect.provide(ResonateTest.layer({ group: DstFns, handlers: handlers }).pipe(Layer.provide(BunCrypto.layer))),
+  );
 });
 
 describe("deterministic simulation", () => {

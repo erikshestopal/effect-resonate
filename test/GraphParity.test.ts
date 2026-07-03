@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Duration, Effect, Schema } from "effect";
+import * as BunCrypto from "@effect/platform-bun/BunCrypto";
+import { Duration, Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { currentCodec, ResonateCodec } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
@@ -80,7 +81,9 @@ describe("graph parity", () => {
         args: [4],
         version: 1,
       });
-    }).pipe(Effect.provide(ResonateTest.layer({ group: GraphFns, handlers: handlers }))),
+    }).pipe(
+      Effect.provide(ResonateTest.layer({ group: GraphFns, handlers: handlers }).pipe(Layer.provide(BunCrypto.layer))),
+    ),
   );
 
   it.effect("keeps the graph byte-stable after worker restart replay", () =>
@@ -122,7 +125,9 @@ describe("graph parity", () => {
         "graph-replay-1.4",
         "graph-replay-1.d0f956885dab743",
       ]);
-    }).pipe(Effect.provide(ResonateTest.layer({ group: GraphFns, handlers: handlers }))),
+    }).pipe(
+      Effect.provide(ResonateTest.layer({ group: GraphFns, handlers: handlers }).pipe(Layer.provide(BunCrypto.layer))),
+    ),
   );
 
   it("has the resonate tree CLI available for shipped-server graph checks", async () => {

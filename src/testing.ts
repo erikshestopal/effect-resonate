@@ -1,4 +1,3 @@
-import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import {
   Context,
   Crypto,
@@ -155,7 +154,6 @@ export class ResonateTest extends Context.Service<ResonateTest, ResonateTestServ
         tickInterval: options.testOptions?.tickInterval ?? Duration.seconds(1),
         retryTimeout: options.testOptions?.retryTimeout ?? Duration.seconds(5),
       }),
-      BunCrypto.layer,
     );
     const core = Layer.mergeAll(DurablePromises.layer, Tasks.layer, Schedules.layer, options.handlers).pipe(
       Layer.provideMerge(base),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Duration, Effect, Exit, Option, Ref, Schema } from "effect";
+import * as BunCrypto from "@effect/platform-bun/BunCrypto";
+import { Duration, Effect, Exit, Layer, Option, Ref, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import * as Protocol from "../src/Protocol.ts";
@@ -50,7 +51,11 @@ describe("ResonateTest", () => {
         expect(Exit.isSuccess(exit.value)).toBe(true);
       }
       yield* snapshot.pipe(Effect.flatMap(assertInvariants));
-    }).pipe(Effect.provide(ResonateTest.layer({ group: AppFns, handlers: HandlersLive })));
+    }).pipe(
+      Effect.provide(
+        ResonateTest.layer({ group: AppFns, handlers: HandlersLive }).pipe(Layer.provide(BunCrypto.layer)),
+      ),
+    );
   });
 
   it.effect("restarts the worker and replays recorded local steps exactly once", () =>
@@ -96,7 +101,11 @@ describe("ResonateTest", () => {
         yield* snapshot.pipe(Effect.flatMap(assertInvariants));
       });
 
-      yield* program.pipe(Effect.provide(ResonateTest.layer({ group: AppFns, handlers: HandlersLive })));
+      yield* program.pipe(
+        Effect.provide(
+          ResonateTest.layer({ group: AppFns, handlers: HandlersLive }).pipe(Layer.provide(BunCrypto.layer)),
+        ),
+      );
     }),
   );
 });

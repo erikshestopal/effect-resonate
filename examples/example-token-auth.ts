@@ -1,4 +1,6 @@
 import { BunRuntime } from "@effect/platform-bun";
+import * as BunCrypto from "@effect/platform-bun/BunCrypto";
+import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import { Config, Duration, Effect, Layer, Schema } from "effect";
 import { Protocol, Resonate, ResonateContext, Worker } from "effect-resonate";
 
@@ -32,6 +34,8 @@ const worker = Layer.unwrap(
     const pid = Protocol.ProcessId.make(pidName);
     return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(30) } }).pipe(
       Layer.provideMerge(handlers),
+      Layer.provideMerge(BunHttpClient.layer),
+      Layer.provideMerge(BunCrypto.layer),
     );
   }),
 );

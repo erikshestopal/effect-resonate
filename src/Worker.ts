@@ -1,5 +1,3 @@
-import * as BunCrypto from "@effect/platform-bun/BunCrypto";
-import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import {
   Cause,
   Crypto,
@@ -14,6 +12,7 @@ import {
   SchemaParser,
   Stream,
 } from "effect";
+import type * as HttpClient from "effect/unstable/http/HttpClient";
 import * as NetworkHttp from "./network/http.ts";
 import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
@@ -144,7 +143,7 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
 export const layerHttp = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
   readonly group: FunctionGroup<Fns>;
   readonly http: HttpWorkerConfig;
-}): Layer.Layer<never, never, Handler<Fns[number]>> =>
+}): Layer.Layer<never, never, Handler<Fns[number]> | HttpClient.HttpClient | Crypto.Crypto> =>
   layer({ group: config.group, worker: config.http }).pipe(
     Layer.provideMerge(
       NetworkHttp.layer({
@@ -152,7 +151,6 @@ export const layerHttp = <const Fns extends ReadonlyArray<AnyFunction>>(config: 
         group: config.http.group,
         pid: config.http.pid,
         token: config.http.token,
-      }).pipe(Layer.provide(BunHttpClient.layer)),
+      }),
     ),
-    Layer.provideMerge(BunCrypto.layer),
   );

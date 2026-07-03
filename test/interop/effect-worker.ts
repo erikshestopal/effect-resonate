@@ -1,4 +1,6 @@
 import { BunRuntime } from "@effect/platform-bun";
+import * as BunCrypto from "@effect/platform-bun/BunCrypto";
+import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import { Config, Duration, Effect, Layer, Schema } from "effect";
 import * as Protocol from "../../src/Protocol.ts";
 import * as Resonate from "../../src/Resonate.ts";
@@ -47,6 +49,8 @@ const worker = Layer.unwrap(
     );
     return Worker.layerHttp({ group: Fns, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
       Layer.provideMerge(handlers),
+      Layer.provideMerge(BunHttpClient.layer),
+      Layer.provideMerge(BunCrypto.layer),
     );
   }),
 );
