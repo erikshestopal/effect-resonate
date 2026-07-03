@@ -117,6 +117,20 @@ interface RuntimeState {
   seq: number;
 }
 
+const RuntimeState = {
+  cachePromise(options: { readonly state: RuntimeState; readonly promise: Protocol.PromiseRecord }): void {
+    options.state.cache = HashMap.set(options.state.cache, options.promise.id, options.promise);
+  },
+  cachePromises(options: {
+    readonly state: RuntimeState;
+    readonly promises: ReadonlyArray<Protocol.PromiseRecord>;
+  }): void {
+    for (const promise of options.promises) {
+      RuntimeState.cachePromise({ state: options.state, promise });
+    }
+  },
+};
+
 interface SettleOptions {
   readonly state: RuntimeState;
   readonly id: Protocol.PromiseId;
@@ -272,18 +286,6 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
       const tasks = yield* Tasks;
       const codec = yield* currentCodec;
 
-      const addPreload = ({
-        state,
-        preload,
-      }: {
-        readonly state: RuntimeState;
-        readonly preload: ReadonlyArray<Protocol.PromiseRecord>;
-      }) => {
-        for (const promise of preload) {
-          state.cache = HashMap.set(state.cache, promise.id, promise);
-        }
-      };
-
       const decodeSettled = Effect.fn("ExecutionEngine.decodeSettled")(function* (promise: Protocol.PromiseRecord) {
         return yield* Match.value(promise).pipe(
           Match.when({ state: "pending" }, (promise) => Effect.die(`Promise '${promise.id}' is still pending`)),
@@ -317,9 +319,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           },
           options: { origin: state.originId },
         });
-        addPreload({ state, preload: result.preload });
+        RuntimeState.cachePromises({ state, promises: result.preload });
         const promise = yield* actionPromise(result.action);
-        state.cache = HashMap.set(state.cache, promise.id, promise);
+        RuntimeState.cachePromise({ state, promise });
         return promise;
       });
 
@@ -338,7 +340,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           },
           options: { origin: state.originId },
         });
-        state.cache = HashMap.set(state.cache, promise.id, promise);
+        RuntimeState.cachePromise({ state, promise });
         return promise;
       });
 
@@ -468,9 +470,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           },
           options: { origin: state.originId },
         });
-        addPreload({ state, preload: result.preload });
+        RuntimeState.cachePromises({ state, promises: result.preload });
         const promise = yield* actionPromise(result.action);
-        state.cache = HashMap.set(state.cache, promise.id, promise);
+        RuntimeState.cachePromise({ state, promise });
         return promise;
       });
 
@@ -514,9 +516,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           },
           options: { origin: state.originId },
         });
-        addPreload({ state, preload: result.preload });
+        RuntimeState.cachePromises({ state, promises: result.preload });
         const promise = yield* actionPromise(result.action);
-        state.cache = HashMap.set(state.cache, promise.id, promise);
+        RuntimeState.cachePromise({ state, promise });
         return promise;
       });
 
@@ -577,9 +579,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           },
           options: { origin: state.originId },
         });
-        addPreload({ state, preload: result.preload });
+        RuntimeState.cachePromises({ state, promises: result.preload });
         const promise = yield* actionPromise(result.action);
-        state.cache = HashMap.set(state.cache, promise.id, promise);
+        RuntimeState.cachePromise({ state, promise });
         if (promise.state === "pending") {
           state.attachedRemote = HashMap.set(
             state.attachedRemote,
@@ -655,9 +657,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           },
           options: { origin: state.originId },
         });
-        addPreload({ state, preload: result.preload });
+        RuntimeState.cachePromises({ state, promises: result.preload });
         const promise = yield* actionPromise(result.action);
-        state.cache = HashMap.set(state.cache, promise.id, promise);
+        RuntimeState.cachePromise({ state, promise });
         if (mode === "attached" && promise.state === "pending") {
           state.attachedRemote = HashMap.set(
             state.attachedRemote,
@@ -998,7 +1000,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             attempt: 0,
             seq: 0,
           };
-          addPreload({ state, preload: options.preload ?? [] });
+          RuntimeState.cachePromises({ state, promises: options.preload ?? [] });
 
           if (options.promise.state !== "pending") {
             return new EngineDone({ promise: options.promise });
