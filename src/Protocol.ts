@@ -8,7 +8,16 @@
  * @since 0.0.0
  */
 import type { Duration } from "effect";
-import { DateTime, Option, Predicate, Schema, SchemaParser, SchemaTransformation, String as Str } from "effect";
+import {
+  DateTime,
+  Option,
+  Predicate,
+  Record as Rec,
+  Schema,
+  SchemaParser,
+  SchemaTransformation,
+  String as Str,
+} from "effect";
 
 /**
  * Durable promise identifier.
@@ -265,7 +274,7 @@ export const TagsFromWire = Schema.Record(Schema.String, Schema.String).pipe(
         };
         const unrecognized: Record<string, string> = {};
         const user: Record<string, string> = {};
-        for (const [key, value] of Object.entries(flat)) {
+        for (const [key, value] of Rec.toEntries(flat)) {
           if (key in reserved) {
             continue;
           }

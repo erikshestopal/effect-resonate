@@ -429,7 +429,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         );
         return yield* encodeInvocation({
           name: target.name,
-          args: Array.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
+          args: Arr.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
           version: options?.version ?? target.version,
           retry: options?.retryPolicy,
         });
@@ -1044,7 +1044,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           const decoded = yield* Schema.decodeUnknownEffect(item.definition.payload)(invocation.args).pipe(
             Effect.catchCause(() => Schema.decodeUnknownEffect(item.definition.payload)(invocation.args[0])),
           );
-          const args = Array.isArray(decoded) ? decoded : [decoded];
+          const args = Arr.isArray(decoded) ? decoded : [decoded];
           const result: Effect.Effect<unknown, unknown> = Reflect.apply(item.handler, undefined, args);
           if (!Effect.isEffect(result)) {
             return yield* Effect.die(`Function '${invocation.func}' did not return an Effect`);

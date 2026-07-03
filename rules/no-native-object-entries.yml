@@ -1,0 +1,8 @@
+id: no-native-object-entries
+language: TypeScript
+severity: error
+message: Use effect Record helpers such as Rec.toEntries instead of native Object.entries in src.
+files:
+  - src/**/*.ts
+rule:
+  pattern: Object.entries($$$ARGS)

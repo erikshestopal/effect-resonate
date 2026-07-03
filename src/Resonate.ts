@@ -350,7 +350,7 @@ export const schedule = <F extends AnyFunction>(options: ScheduleOptions<F>): Sc
     const encoded = yield* codec.encode(
       InvocationParam.make({
         func: options.function.name,
-        args: Array.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
+        args: Arr.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
         version,
         ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
       }),
@@ -598,7 +598,7 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           );
           return yield* encodeInvocation({
             name: target.name,
-            args: Array.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
+            args: Arr.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
             version: options.callOptions?.version ?? target.version,
             retry: options.callOptions?.retryPolicy,
           });

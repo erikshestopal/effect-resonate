@@ -1,0 +1,8 @@
+id: no-native-array-is-array
+language: TypeScript
+severity: error
+message: Use effect Array helpers such as Arr.isArray instead of native Array.isArray in src.
+files:
+  - src/**/*.ts
+rule:
+  pattern: Array.isArray($$$ARGS)
