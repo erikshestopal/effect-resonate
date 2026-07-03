@@ -30,7 +30,11 @@ export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork,
       const send = Effect.fn("NetworkHttp.send")(function* <K extends Protocol.RequestKind>(
         request: Protocol.Request<K>,
       ) {
-        const wire = yield* encodeRequest(request);
+        const requestWithAuth = Option.match(token, {
+          onNone: () => request,
+          onSome: (auth) => ({ ...request, head: Protocol.RequestHead.make({ ...request.head, auth }) }),
+        });
+        const wire = yield* encodeRequest(requestWithAuth);
         const httpRequest = yield* HttpClientRequest.post(options.url, { headers: commonHeaders }).pipe(
           HttpClientRequest.bodyJson(wire),
           Effect.mapError((cause) => new TransportError({ reason: "ConnectionLost", cause })),

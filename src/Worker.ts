@@ -78,11 +78,16 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
           if (Predicate.isTagged(outcome, "Done")) {
             return false;
           }
-          const result = yield* tasks.suspend({
-            id: task.id,
-            version: task.version,
-            actions: suspendActions(task, outcome.awaited),
-          });
+          const result = yield* tasks.suspend(
+            {
+              id: task.id,
+              version: task.version,
+              actions: suspendActions(task, outcome.awaited),
+            },
+            {
+              origin: promise.tags.reserved["resonate:origin"] ?? promise.id,
+            },
+          );
           if (SchemaParser.is(SuspendAccepted)(result)) {
             return false;
           }
@@ -96,7 +101,10 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
           return;
         }
         const acquired = yield* tasks
-          .acquire({ id: message.data.task.id, version: message.data.task.version, pid, ttl })
+          .acquire(
+            { id: message.data.task.id, version: message.data.task.version, pid, ttl },
+            { origin: message.data.task.id },
+          )
           .pipe(Effect.catchTag("TaskFenced", () => Effect.succeed(undefined)));
         if (Predicate.isUndefined(acquired)) {
           return;
@@ -110,14 +118,19 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
         );
         yield* removeHeld(acquired.task.id);
         if (Exit.isFailure(exit)) {
-          yield* tasks.release({ id: acquired.task.id, version: acquired.task.version }).pipe(
-            Effect.catchTags({
-              TaskFenced: (_error: TaskFenced) => Effect.void,
-              PromiseNotFound: () => Effect.void,
-              InvalidTarget: () => Effect.void,
-              TransportError: () => Effect.void,
-            }),
-          );
+          yield* tasks
+            .release(
+              { id: acquired.task.id, version: acquired.task.version },
+              { origin: acquired.promise.tags.reserved["resonate:origin"] ?? acquired.promise.id },
+            )
+            .pipe(
+              Effect.catchTags({
+                TaskFenced: (_error: TaskFenced) => Effect.void,
+                PromiseNotFound: () => Effect.void,
+                InvalidTarget: () => Effect.void,
+                TransportError: () => Effect.void,
+              }),
+            );
         }
       });
 

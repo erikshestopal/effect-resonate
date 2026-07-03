@@ -902,6 +902,11 @@ describe("S-01…S-03 schedules and catch-up", () => {
       const state = yield* snap();
 
       expect(state.promises.map((promise) => promise.id).sort()).toEqual(["p-120000", "p-180000", "p-60000"]);
+      expect(state.promises.map((promise) => promise.tags.unrecognized["resonate:schedule"])).toEqual([
+        "catch",
+        "catch",
+        "catch",
+      ]);
       expect(
         state.promises
           .map((promise) => ({

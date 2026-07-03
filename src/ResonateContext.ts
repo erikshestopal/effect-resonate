@@ -142,10 +142,11 @@ const detachedId = (prefix: Protocol.PromiseId, seqid: Protocol.PromiseId): Prot
   return Protocol.PromiseId.make(`${prefix}.d${hash}`);
 };
 
-const requestHead = (corrId: string): Protocol.RequestHead =>
+const requestHead = (corrId: string, origin?: Protocol.PromiseId): Protocol.RequestHead =>
   Protocol.RequestHead.make({
     corrId: Protocol.CorrelationId.make(corrId),
     version: Protocol.protocolVersion,
+    ...(Predicate.isNotUndefined(origin) ? { "resonate:origin": origin } : {}),
   });
 
 const isExternalPromise = (promise: Protocol.PromiseRecord): boolean =>
@@ -250,14 +251,17 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
       ) {
         const settled = Exit.isSuccess(exit) ? resolvedState : rejectedState;
         const value = yield* codec.encode(Exit.isSuccess(exit) ? exit.value : exit.cause);
-        const result = yield* tasks.fence({
-          id: state.root,
-          version: state.version,
-          action: Protocol.PromiseSettleRequest.make({
-            head: requestHead(`${state.root}:${id}:settle`),
-            data: { id, state: settled, value },
-          }),
-        });
+        const result = yield* tasks.fence(
+          {
+            id: state.root,
+            version: state.version,
+            action: Protocol.PromiseSettleRequest.make({
+              head: requestHead(`${state.root}:${id}:settle`, state.originId),
+              data: { id, state: settled, value },
+            }),
+          },
+          { origin: state.originId },
+        );
         addPreload(state, result.preload);
         const promise = yield* actionPromise(result.action);
         state.cache.set(promise.id, promise);
@@ -270,14 +274,17 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
       ) {
         const settled = Exit.isSuccess(exit) ? resolvedState : rejectedState;
         const value = yield* codec.encode(Exit.isSuccess(exit) ? exit.value : exit.cause);
-        const promise = yield* tasks.fulfill({
-          id: state.root,
-          version: state.version,
-          action: Protocol.PromiseSettleRequest.make({
-            head: requestHead(`${state.root}:fulfill`),
-            data: { id: state.root, state: settled, value },
-          }),
-        });
+        const promise = yield* tasks.fulfill(
+          {
+            id: state.root,
+            version: state.version,
+            action: Protocol.PromiseSettleRequest.make({
+              head: requestHead(`${state.root}:fulfill`, state.originId),
+              data: { id: state.root, state: settled, value },
+            }),
+          },
+          { origin: state.originId },
+        );
         state.cache.set(promise.id, promise);
         return promise;
       });
@@ -335,11 +342,16 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         );
       });
 
-      const localTags = (state: RuntimeState, id: Protocol.PromiseId, extra: Protocol.Tags): Protocol.Tags =>
+      const localTags = (
+        state: RuntimeState,
+        id: Protocol.PromiseId,
+        extra: Protocol.Tags,
+        breaksLineage: boolean,
+      ): Protocol.Tags =>
         Protocol.Tags.make({
           reserved: {
             ...extra.reserved,
-            "resonate:origin": state.originId,
+            "resonate:origin": breaksLineage ? id : state.originId,
             "resonate:prefix": state.prefixId,
             "resonate:branch": state.branchId,
             "resonate:parent": state.root,
@@ -359,19 +371,22 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         if (Predicate.isNotUndefined(cached)) {
           return cached;
         }
-        const result = yield* tasks.fence({
-          id: state.root,
-          version: state.version,
-          action: Protocol.PromiseCreateRequest.make({
-            head: requestHead(`${state.root}:${id}:create`),
-            data: {
-              id,
-              timeoutAt: yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
-              param: Protocol.emptyValue,
-              tags: localTags(state, id, options?.tags ?? Protocol.emptyTags),
-            },
-          }),
-        });
+        const result = yield* tasks.fence(
+          {
+            id: state.root,
+            version: state.version,
+            action: Protocol.PromiseCreateRequest.make({
+              head: requestHead(`${state.root}:${id}:create`, state.originId),
+              data: {
+                id,
+                timeoutAt: yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
+                param: Protocol.emptyValue,
+                tags: localTags(state, id, options?.tags ?? Protocol.emptyTags, Predicate.isNotUndefined(options?.id)),
+              },
+            }),
+          },
+          { origin: state.originId },
+        );
         addPreload(state, result.preload);
         const promise = yield* actionPromise(result.action);
         state.cache.set(promise.id, promise);
@@ -388,30 +403,35 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         if (Predicate.isNotUndefined(cached)) {
           return cached;
         }
-        const result = yield* tasks.fence({
-          id: state.root,
-          version: state.version,
-          action: Protocol.PromiseCreateRequest.make({
-            head: requestHead(`${state.root}:${id}:sleep`),
-            data: {
-              id,
-              timeoutAt: timestamp(Math.min(DateTime.toEpochMillis(instant), DateTime.toEpochMillis(state.timeoutAt))),
-              param: Protocol.emptyValue,
-              tags: Protocol.Tags.make({
-                reserved: {
-                  "resonate:origin": state.originId,
-                  "resonate:prefix": state.prefixId,
-                  "resonate:branch": id,
-                  "resonate:parent": state.root,
-                  "resonate:scope": globalScope,
-                  "resonate:timer": timerTag,
-                },
-                unrecognized: {},
-                user: {},
-              }),
-            },
-          }),
-        });
+        const result = yield* tasks.fence(
+          {
+            id: state.root,
+            version: state.version,
+            action: Protocol.PromiseCreateRequest.make({
+              head: requestHead(`${state.root}:${id}:sleep`, state.originId),
+              data: {
+                id,
+                timeoutAt: timestamp(
+                  Math.min(DateTime.toEpochMillis(instant), DateTime.toEpochMillis(state.timeoutAt)),
+                ),
+                param: Protocol.emptyValue,
+                tags: Protocol.Tags.make({
+                  reserved: {
+                    "resonate:origin": state.originId,
+                    "resonate:prefix": state.prefixId,
+                    "resonate:branch": id,
+                    "resonate:parent": state.root,
+                    "resonate:scope": globalScope,
+                    "resonate:timer": timerTag,
+                  },
+                  unrecognized: {},
+                  user: {},
+                }),
+              },
+            }),
+          },
+          { origin: state.originId },
+        );
         addPreload(state, result.preload);
         const promise = yield* actionPromise(result.action);
         state.cache.set(promise.id, promise);
@@ -437,30 +457,33 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           }
           return cached;
         }
-        const result = yield* tasks.fence({
-          id: state.root,
-          version: state.version,
-          action: Protocol.PromiseCreateRequest.make({
-            head: requestHead(`${state.root}:${id}:promise`),
-            data: {
-              id,
-              timeoutAt: yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
-              param: Protocol.emptyValue,
-              tags: Protocol.Tags.make({
-                reserved: {
-                  ...(options?.tags ?? Protocol.emptyTags).reserved,
-                  "resonate:origin": state.originId,
-                  "resonate:prefix": state.prefixId,
-                  "resonate:branch": id,
-                  "resonate:parent": state.root,
-                  "resonate:scope": globalScope,
-                },
-                unrecognized: options?.tags?.unrecognized ?? {},
-                user: options?.tags?.user ?? {},
-              }),
-            },
-          }),
-        });
+        const result = yield* tasks.fence(
+          {
+            id: state.root,
+            version: state.version,
+            action: Protocol.PromiseCreateRequest.make({
+              head: requestHead(`${state.root}:${id}:promise`, state.originId),
+              data: {
+                id,
+                timeoutAt: yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
+                param: Protocol.emptyValue,
+                tags: Protocol.Tags.make({
+                  reserved: {
+                    ...(options?.tags ?? Protocol.emptyTags).reserved,
+                    "resonate:origin": state.originId,
+                    "resonate:prefix": state.prefixId,
+                    "resonate:branch": id,
+                    "resonate:parent": state.root,
+                    "resonate:scope": globalScope,
+                  },
+                  unrecognized: options?.tags?.unrecognized ?? {},
+                  user: options?.tags?.user ?? {},
+                }),
+              },
+            }),
+          },
+          { origin: state.originId },
+        );
         addPreload(state, result.preload);
         const promise = yield* actionPromise(result.action);
         state.cache.set(promise.id, promise);
@@ -493,34 +516,37 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             ? Protocol.TargetAddress.localAny(targetGroup)
             : Protocol.TargetAddress.pollAny(targetGroup);
         const now = yield* Clock.currentTimeMillis;
-        const result = yield* tasks.fence({
-          id: state.root,
-          version: state.version,
-          action: Protocol.PromiseCreateRequest.make({
-            head: requestHead(`${state.root}:${id}:rpc`),
-            data: {
-              id,
-              timeoutAt:
-                mode === "detached"
-                  ? timestamp(now + Duration.toMillis(options?.timeout ?? Duration.hours(24)))
-                  : yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
-              param: yield* encodeTargetPayload(targetFunction, args, options),
-              tags: Protocol.Tags.make({
-                reserved: {
-                  ...(options?.tags ?? Protocol.emptyTags).reserved,
-                  "resonate:origin": mode === "attached" && Predicate.isUndefined(options?.id) ? state.originId : id,
-                  "resonate:prefix": state.prefixId,
-                  "resonate:branch": id,
-                  "resonate:parent": state.root,
-                  "resonate:scope": globalScope,
-                  "resonate:target": target,
-                },
-                unrecognized: options?.tags?.unrecognized ?? {},
-                user: options?.tags?.user ?? {},
-              }),
-            },
-          }),
-        });
+        const result = yield* tasks.fence(
+          {
+            id: state.root,
+            version: state.version,
+            action: Protocol.PromiseCreateRequest.make({
+              head: requestHead(`${state.root}:${id}:rpc`, state.originId),
+              data: {
+                id,
+                timeoutAt:
+                  mode === "detached"
+                    ? timestamp(now + Duration.toMillis(options?.timeout ?? Duration.hours(24)))
+                    : yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
+                param: yield* encodeTargetPayload(targetFunction, args, options),
+                tags: Protocol.Tags.make({
+                  reserved: {
+                    ...(options?.tags ?? Protocol.emptyTags).reserved,
+                    "resonate:origin": mode === "attached" && Predicate.isUndefined(options?.id) ? state.originId : id,
+                    "resonate:prefix": state.prefixId,
+                    "resonate:branch": id,
+                    "resonate:parent": state.root,
+                    "resonate:scope": globalScope,
+                    "resonate:target": target,
+                  },
+                  unrecognized: options?.tags?.unrecognized ?? {},
+                  user: options?.tags?.user ?? {},
+                }),
+              },
+            }),
+          },
+          { origin: state.originId },
+        );
         addPreload(state, result.preload);
         const promise = yield* actionPromise(result.action);
         state.cache.set(promise.id, promise);

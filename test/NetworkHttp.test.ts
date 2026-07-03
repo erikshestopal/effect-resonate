@@ -63,7 +63,7 @@ describe("NetworkHttp.send", () => {
       ).pipe(Layer.build);
 
       const url = yield* serverUrl;
-      const network = yield* ResonateNetwork.pipe(Effect.provide(networkLayer(url)));
+      const network = yield* ResonateNetwork.pipe(Effect.provide(networkLayer(url, { token: "test-token" })));
       const head = yield* makeRequestHead;
       const response = yield* network.send(promiseGet(head));
       expect(isGot(response)).toBe(true);
@@ -74,6 +74,7 @@ describe("NetworkHttp.send", () => {
       const requests = yield* Ref.get(seen);
       expect(requests).toHaveLength(1);
       expect(requests[0]?.head.corrId).toBe(head.corrId);
+      expect(requests[0]?.head.auth).toBe("test-token");
     }).pipe(Effect.provide(serverLayer)),
   );
 

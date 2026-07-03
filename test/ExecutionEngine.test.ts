@@ -110,6 +110,10 @@ describe("ExecutionEngine", () => {
             Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
               const stepped = yield* ctx.run(Effect.succeed(value + 1));
+              const explicit = yield* ctx.beginRun(Effect.succeed(value + 2), {
+                id: Protocol.PromiseId.make("engine-explicit-local"),
+              });
+              yield* explicit.await;
               return Number(stepped) + 1;
             }),
         }),
@@ -123,10 +127,13 @@ describe("ExecutionEngine", () => {
 
       const state = yield* snap();
       const child = state.promises.find((promise) => promise.id === "engine-root-1.0");
+      const explicit = state.promises.find((promise) => promise.id === "engine-explicit-local");
       const completedRoot = state.promises.find((promise) => promise.id === handle.id);
       expect(child?.state).toBe("resolved");
       expect(child?.tags.reserved["resonate:scope"]).toBe("local");
       expect(child?.tags.reserved["resonate:parent"]).toBe(handle.id);
+      expect(explicit?.tags.reserved["resonate:origin"]).toBe("engine-explicit-local");
+      expect(explicit?.tags.reserved["resonate:prefix"]).toBe(handle.id);
       expect(completedRoot?.state).toBe("resolved");
       expect(yield* codec.decode(completedRoot?.value ?? Protocol.emptyValue)).toBe(3);
     }).pipe(Effect.provide(layer)),

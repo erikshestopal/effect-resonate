@@ -1518,7 +1518,11 @@ const catchUpSchedule = (
           id: promiseId,
           timeoutAt: DateTime.addDuration(cronTime, current.promiseTimeout),
           param: current.promiseParam,
-          tags: current.promiseTags,
+          tags: Protocol.Tags.make({
+            reserved: current.promiseTags.reserved,
+            unrecognized: { ...current.promiseTags.unrecognized, "resonate:schedule": current.id },
+            user: current.promiseTags.user,
+          }),
         },
       }),
     );
