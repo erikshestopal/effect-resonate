@@ -117,6 +117,17 @@ interface RuntimeState {
   seq: number;
 }
 
+interface SettleOptions {
+  readonly state: RuntimeState;
+  readonly id: Protocol.PromiseId;
+  readonly exit: Exit.Exit<unknown, unknown>;
+}
+
+interface FulfillRootOptions {
+  readonly state: RuntimeState;
+  readonly exit: Exit.Exit<unknown, unknown>;
+}
+
 export class EngineDone extends Schema.Class<EngineDone>("ExecutionEngine/Done")({
   _tag: Schema.tag("Done"),
   promise: Protocol.PromiseRecord,
@@ -291,15 +302,8 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         return Effect.die(action);
       };
 
-      const settle = Effect.fn("ExecutionEngine.settle")(function* ({
-        state,
-        id,
-        exit,
-      }: {
-        readonly state: RuntimeState;
-        readonly id: Protocol.PromiseId;
-        readonly exit: Exit.Exit<unknown, unknown>;
-      }) {
+      const settle = Effect.fn("ExecutionEngine.settle")(function* (options: SettleOptions) {
+        const { state, id, exit } = options;
         const settled = Exit.isSuccess(exit) ? resolvedState : rejectedState;
         const value = yield* codec.encode(Exit.isSuccess(exit) ? exit.value : exit.cause);
         const result = yield* tasks.fence({
@@ -319,13 +323,8 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         return promise;
       });
 
-      const fulfillRoot = Effect.fn("ExecutionEngine.fulfillRoot")(function* ({
-        state,
-        exit,
-      }: {
-        readonly state: RuntimeState;
-        readonly exit: Exit.Exit<unknown, unknown>;
-      }) {
+      const fulfillRoot = Effect.fn("ExecutionEngine.fulfillRoot")(function* (options: FulfillRootOptions) {
+        const { state, exit } = options;
         const settled = Exit.isSuccess(exit) ? resolvedState : rejectedState;
         const value = yield* codec.encode(Exit.isSuccess(exit) ? exit.value : exit.cause);
         const promise = yield* tasks.fulfill({
