@@ -15,6 +15,7 @@ fi
 
 vp install --frozen-lockfile --ignore-scripts
 bunx --bun effect-tsgo patch
+bun install --cwd repos/resonate-sdk-ts --ignore-scripts
 
 install_resonate() {
   local version="v0.9.8"

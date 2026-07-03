@@ -46,4 +46,4 @@ quickstart parity, cross-SDK invocation both directions, CLI interop.
 
 ## Implementation notes
 
-- Done in spec 23: added `test/E2EInterop.test.ts`, `vp run e2e`, and runnable examples (`examples/countdown.ts`, `examples/approval.ts`, `examples/fanout.ts`). The suite is server-gated like the differential and graph parity harnesses: it starts `resonate dev` and runs shipped-server quickstart/interop checks when the CLI is installed, and emits `[E2E SKIPPED]` when unavailable. In this orb the `resonate` CLI is not installed, so the real-server scenarios are present but skipped loudly during `vp run check`.
+- Done in spec 23: added `test/E2EInterop.test.ts`, `vp run e2e`, and runnable examples (`examples/countdown.ts`, `examples/approval.ts`, `examples/fanout.ts`). The suite starts `resonate dev`, invokes the quickstart countdown via `resonate invoke`, kills and restarts our worker mid-countdown, asserts `resonate tree`, exercises both cross-SDK call directions against the vendored native TS SDK, resolves external promises across SDK boundaries, and creates/gets/deletes a shipped-server schedule. It emits `[E2E SKIPPED]` only when the `resonate` CLI is missing.

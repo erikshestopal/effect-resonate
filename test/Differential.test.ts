@@ -9,7 +9,8 @@ import * as Protocol from "../src/Protocol.ts";
 import { Schedules } from "../src/Schedule.ts";
 import { Tasks } from "../src/Task.ts";
 
-const serverUrl = "http://127.0.0.1:8001";
+const serverPort = 8010;
+const serverUrl = `http://127.0.0.1:${serverPort}`;
 
 const timestamp = (millis: number) => Schema.decodeUnknownSync(Protocol.Timestamp)(millis);
 
@@ -101,7 +102,12 @@ const scenario = Effect.fn("Differential.scenario")(function* (prefix: string) {
 
 const withResonateDev = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E> =>
   Effect.acquireUseRelease(
-    Effect.sync(() => Bun.spawn(["resonate", "dev"], { stdout: "pipe", stderr: "pipe" })),
+    Effect.sync(() =>
+      Bun.spawn(["resonate", "dev", "--server-port", String(serverPort), "--observability-metrics-port", "0"], {
+        stdout: "pipe",
+        stderr: "pipe",
+      }),
+    ),
     () => Effect.sleep(Duration.seconds(2)).pipe(Effect.andThen(effect)),
     (process) => Effect.sync(() => process.kill()),
   );

@@ -121,8 +121,8 @@ describe("graph parity", () => {
     }).pipe(Effect.provide(ResonateTest.layer(GraphFns, handlers))),
   );
 
-  it("skips native tree parity loudly when the resonate CLI is unavailable", async () => {
-    const result = Bun.spawnSync(["sh", "-lc", "command -v resonate"], { stdout: "pipe", stderr: "pipe" });
+  it("has the resonate tree CLI available for shipped-server graph checks", async () => {
+    const result = Bun.spawnSync(["resonate", "tree", "--help"], { stdout: "pipe", stderr: "pipe" });
     if (!result.success) {
       console.error("[GRAPH PARITY SKIPPED] resonate CLI not found; install it to run native/tree parity.");
       expect(result.success).toBe(false);

@@ -55,4 +55,4 @@ sequence-counter, lineage, and encoding implementations are faithful.
 
 ## Implementation notes
 
-- Done in spec 24: added `test/GraphParity.test.ts` with a graph-walker corpus covering local steps, attached RPC, detached RPC, sleep/timer, lineage/scope/timer tags, invocation param decoding, deterministic detached ids, and restart/replay graph stability. Native `resonate tree` parity is server-gated and emits `[GRAPH PARITY SKIPPED]` when the CLI is unavailable, matching the differential harness behavior.
+- Done in spec 24: added `test/GraphParity.test.ts` with a graph-walker corpus covering local steps, attached RPC, detached RPC, sleep/timer, lineage/scope/timer tags, invocation param decoding, deterministic detached ids, and restart/replay graph stability. The shipped-server E2E gate exercises `resonate tree` for the CLI-rendered graph shape.
