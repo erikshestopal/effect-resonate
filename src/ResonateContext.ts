@@ -78,6 +78,7 @@ interface RuntimeState {
   readonly branchId: Protocol.PromiseId;
   readonly cache: Map<Protocol.PromiseId, Protocol.PromiseRecord>;
   readonly children: Array<RunningChild>;
+  readonly attachedRemote: Map<Protocol.PromiseId, SuspendedExecution>;
   readonly awaiting: Map<Protocol.PromiseId, SuspendedExecution>;
   seq: number;
 }
@@ -117,6 +118,22 @@ const timestamp = (millis: number): Protocol.Timestamp => Schema.decodeUnknownSy
 const childId = (parent: Protocol.PromiseId, seq: number): Protocol.PromiseId =>
   Protocol.PromiseId.make(`${parent}.${seq}`);
 
+const detachedId = (prefix: Protocol.PromiseId, seqid: Protocol.PromiseId): Protocol.PromiseId => {
+  const bytes = new TextEncoder().encode(seqid);
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (const byte of bytes) {
+    h1 = Math.imul(h1 ^ byte, 2654435761);
+    h2 = Math.imul(h2 ^ byte, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const hash = (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, "0");
+  return Protocol.PromiseId.make(`${prefix}.d${hash}`);
+};
+
 const requestHead = (corrId: string): Protocol.RequestHead =>
   Protocol.RequestHead.make({
     corrId: Protocol.CorrelationId.make(corrId),
@@ -137,9 +154,9 @@ export interface ResonateContextService {
     effect: Effect.Effect<unknown, unknown>,
     options?: ContextOptions,
   ) => Effect.Effect<LocalDurableHandle, unknown>;
-  readonly all: <const Effects extends ReadonlyArray<Effect.Effect<unknown, unknown, unknown>>>(
+  readonly all: <const Effects extends ReadonlyArray<Effect.Effect<unknown, unknown>>>(
     effects: Effects,
-  ) => Effect.Effect<ReadonlyArray<unknown>, unknown, unknown>;
+  ) => Effect.Effect<ReadonlyArray<unknown>, unknown>;
   readonly sleep: (duration: Duration.Input) => Effect.Effect<void, unknown>;
   readonly sleepUntil: (instant: DateTime.Utc) => Effect.Effect<void, unknown>;
   readonly beginRpc: {
@@ -153,6 +170,14 @@ export interface ResonateContextService {
   readonly rpc: {
     <F extends AnyFunction>(fn: F, args: PayloadArgs<F>, options?: ContextOptions): Effect.Effect<unknown, unknown>;
     (name: string, args: ReadonlyArray<unknown>, options?: ContextOptions): Effect.Effect<unknown, unknown>;
+  };
+  readonly detached: {
+    <F extends AnyFunction>(
+      fn: F,
+      args: PayloadArgs<F>,
+      options?: ContextOptions,
+    ): Effect.Effect<LocalDurableHandle, unknown>;
+    (name: string, args: ReadonlyArray<unknown>, options?: ContextOptions): Effect.Effect<LocalDurableHandle, unknown>;
   };
   readonly panic: (message: string) => Effect.Effect<never, DurablePanic>;
 }
@@ -374,11 +399,16 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         targetFunction: AnyFunction | string,
         args: ReadonlyArray<unknown>,
         options: ContextOptions | undefined,
+        mode: "attached" | "detached",
       ) {
-        const id = options?.id ?? childId(state.root, state.seq);
+        const seqid = childId(state.root, state.seq);
+        const id = options?.id ?? (mode === "detached" ? detachedId(state.prefixId, seqid) : seqid);
         state.seq = state.seq + 1;
         const cached = state.cache.get(id);
         if (Predicate.isNotUndefined(cached)) {
+          if (mode === "attached" && cached.state === "pending") {
+            state.attachedRemote.set(cached.id, new SuspendedExecution({ awaited: [cached.id] }));
+          }
           return cached;
         }
         const targetGroup = options?.target ?? state.targetGroup;
@@ -386,6 +416,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           state.targetTransport === "local"
             ? Protocol.TargetAddress.localAny(targetGroup)
             : Protocol.TargetAddress.pollAny(targetGroup);
+        const now = yield* Clock.currentTimeMillis;
         const result = yield* tasks.fence({
           id: state.root,
           version: state.version,
@@ -393,12 +424,15 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             head: requestHead(`${state.root}:${id}:rpc`),
             data: {
               id,
-              timeoutAt: yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
+              timeoutAt:
+                mode === "detached"
+                  ? timestamp(now + Duration.toMillis(options?.timeout ?? Duration.hours(24)))
+                  : yield* timeoutAt(state.timeoutAt, options?.timeout ?? Duration.hours(24)),
               param: yield* encodeTargetPayload(targetFunction, args, options),
               tags: Protocol.Tags.make({
                 reserved: {
                   ...(options?.tags ?? Protocol.emptyTags).reserved,
-                  "resonate:origin": Predicate.isUndefined(options?.id) ? state.originId : id,
+                  "resonate:origin": mode === "attached" && Predicate.isUndefined(options?.id) ? state.originId : id,
                   "resonate:prefix": state.prefixId,
                   "resonate:branch": id,
                   "resonate:parent": state.root,
@@ -414,6 +448,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         addPreload(state, result.preload);
         const promise = yield* actionPromise(result.action);
         state.cache.set(promise.id, promise);
+        if (mode === "attached" && promise.state === "pending") {
+          state.attachedRemote.set(promise.id, new SuspendedExecution({ awaited: [promise.id] }));
+        }
         return promise;
       });
 
@@ -515,7 +552,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           args: ReadonlyArray<unknown>,
           options?: ContextOptions,
         ): Effect.fn.Return<LocalDurableHandle, unknown> {
-          const promise = yield* createRemote(state, targetFunction, args, options);
+          const promise = yield* createRemote(state, targetFunction, args, options, "attached");
           const deferred = yield* Deferred.make<unknown, unknown>();
           if (promise.state !== "pending") {
             const settled = yield* decodeSettled(promise).pipe(Effect.exit);
@@ -532,6 +569,20 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         ): Effect.fn.Return<unknown, unknown> {
           const handle = yield* beginRpcImpl(targetFunction, args, options);
           return yield* handle.await;
+        });
+
+        const detached: ResonateContextService["detached"] = Effect.fn("ResonateContext.detached")(function* (
+          targetFunction: AnyFunction | string,
+          args: ReadonlyArray<unknown>,
+          options?: ContextOptions,
+        ): Effect.fn.Return<LocalDurableHandle, unknown> {
+          const promise = yield* createRemote(state, targetFunction, args, options, "detached");
+          const deferred = yield* Deferred.make<unknown, unknown>();
+          if (promise.state !== "pending") {
+            const settled = yield* decodeSettled(promise).pipe(Effect.exit);
+            yield* Deferred.done(deferred, settled);
+          }
+          return makeHandle(state, promise, deferred);
         });
 
         return Layer.succeed(
@@ -552,6 +603,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             sleepUntil,
             beginRpc,
             rpc,
+            detached,
             all: (effects) =>
               Effect.gen(function* () {
                 const exits = yield* Effect.forEach(effects, (effect) => effect.pipe(Effect.result));
@@ -592,6 +644,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           branchId: options.promise.tags.reserved["resonate:branch"] ?? options.promise.id,
           cache: new Map(),
           children: [],
+          attachedRemote: new Map(),
           awaiting: new Map(),
           seq: 0,
         };
@@ -623,9 +676,13 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           Effect.exit,
         );
         yield* drainChildren(state);
+        const attachedAwaited = [...state.attachedRemote.keys()];
         if (Exit.isSuccess(exit)) {
           if (Predicate.isTagged(exit.value, "SuspendedExecution")) {
-            return new EngineSuspended({ awaited: [...new Set(exit.value.awaited)] });
+            return new EngineSuspended({ awaited: [...new Set([...attachedAwaited, ...exit.value.awaited])] });
+          }
+          if (attachedAwaited.length > 0) {
+            return new EngineSuspended({ awaited: [...new Set(attachedAwaited)] });
           }
           const promise = yield* fulfillRoot(state, Exit.succeed(exit.value.value));
           return new EngineDone({ promise });

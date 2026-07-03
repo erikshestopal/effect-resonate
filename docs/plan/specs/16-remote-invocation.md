@@ -57,5 +57,4 @@ fire-and-forget with independent lifecycle.
 
 ## Notes
 
-- Attached `ctx.beginRpc`/`ctx.rpc` landed first: remote children are created through `task.fence` with global scope, target group, idempotent child id, encoded invocation param, and existing suspension semantics when awaited.
-- Remaining before done: detached ids/lineage, attached-but-unawaited flush, fan-out single-suspend coverage, explicit-id lineage break, and cross-worker execution coverage.
+- Done in spec 16: attached `ctx.beginRpc`/`ctx.rpc`, `ctx.detached`, native-compatible detached ids, explicit-id lineage breaks, attached-but-unawaited flush, fan-out single-suspend behavior, and worker-loop targeted RPC replay.

@@ -28,7 +28,15 @@ const Sleep = Resonate.function("SleepWorkflow", {
   payload: Schema.Number,
 });
 
-const group = Resonate.group(Workflow, Blocking, Suspend, Sleep);
+const RemoteRoot = Resonate.function("WorkerRemoteRoot", {
+  payload: Schema.Number,
+});
+
+const RemoteChild = Resonate.function("WorkerRemoteChild", {
+  payload: Schema.Number,
+});
+
+const group = Resonate.group(Workflow, Blocking, Suspend, Sleep, RemoteRoot, RemoteChild);
 const isDebugSnapSuccess = SchemaParser.is(Protocol.DebugSnapResponse.members[0]);
 
 const baseLayer = Layer.mergeAll(
@@ -73,6 +81,12 @@ const handlerLayer = group.toLayer(
         yield* ctx.sleep(Duration.hours(Number(hours)));
         return "awake";
       }),
+    WorkerRemoteRoot: (value) =>
+      Effect.gen(function* (): Effect.fn.Return<unknown, unknown, ResonateContext> {
+        const ctx = yield* ResonateContext;
+        return yield* ctx.rpc(RemoteChild, [Number(value) + 1], { target: Protocol.WorkerGroup.make("workers") });
+      }),
+    WorkerRemoteChild: (value) => Effect.succeed(Number(value) + 1),
   }),
 );
 const workerLayer = Worker.layer(group, {
@@ -148,6 +162,25 @@ describe("Worker", () => {
       yield* Effect.yieldNow;
       const promise = yield* promises.get(handle.id);
       expect(promise.state).toBe("resolved");
+      expect(yield* codec.decode(promise.value)).toBe(3);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("suspends and resumes a targeted context RPC through the worker loop", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const promises = yield* DurablePromises;
+      const codec = yield* ResonateCodec;
+      const handle = yield* client.beginRpc(RemoteRoot, Protocol.ExecutionId.make("worker-remote-1"), [1]);
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+
+      const promise = yield* promises.get(handle.id);
+      const child = yield* promises.get(Protocol.PromiseId.make("worker-remote-1.0"));
+      expect(promise.state).toBe("resolved");
+      expect(child.tags.reserved["resonate:target"]?.address).toBe("local://any@workers");
       expect(yield* codec.decode(promise.value)).toBe(3);
     }).pipe(Effect.provide(layer)),
   );
