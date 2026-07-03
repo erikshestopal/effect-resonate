@@ -13,16 +13,16 @@ import {
   Scope,
   Stream,
 } from "effect";
-import { DurablePromises } from "./DurablePromise.ts";
-import type { TransportError } from "./Errors.ts";
-import { decodeResponse, ResonateNetwork } from "./network/network.ts";
-import * as NetworkLocal from "./network/local.ts";
-import type { DebugState } from "./network/local.ts";
-import * as Protocol from "./Protocol.ts";
-import * as Resonate from "./Resonate.ts";
-import { Schedules } from "./Schedule.ts";
-import { Tasks } from "./Task.ts";
-import * as Worker from "./Worker.ts";
+import { DurablePromises } from "../../src/DurablePromise.ts";
+import type { TransportError } from "../../src/Errors.ts";
+import { decodeResponse, ResonateNetwork } from "../../src/network/network.ts";
+import * as NetworkLocal from "../../src/network/local.ts";
+import type { DebugState } from "../../src/network/local.ts";
+import * as Protocol from "../../src/Protocol.ts";
+import * as Resonate from "../../src/Resonate.ts";
+import { Schedules } from "../../src/Schedule.ts";
+import { Tasks } from "../../src/Task.ts";
+import * as Worker from "../../src/Worker.ts";
 
 export const assertInvariants = Effect.fn("assertInvariants")(function* (state: DebugState) {
   for (const task of state.tasks) {
@@ -81,7 +81,7 @@ export interface TestNetworkService {
 }
 
 export class TestNetwork extends Context.Service<TestNetwork, TestNetworkService>()(
-  "effect-resonate/testing/TestNetwork",
+  "effect-resonate/test/TestNetwork",
 ) {
   static layer(options: {
     readonly handler: TestNetworkHandler;
@@ -137,7 +137,7 @@ export interface ResonateTestService {
 }
 
 export class ResonateTest extends Context.Service<ResonateTest, ResonateTestService>()(
-  "effect-resonate/testing/ResonateTest",
+  "effect-resonate/test/ResonateTest",
 ) {
   static layer<const Fns extends ReadonlyArray<Resonate.AnyFunction>, E = never, R = never>(options: {
     readonly group: Resonate.FunctionGroup<Fns>;

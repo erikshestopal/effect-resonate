@@ -3,10 +3,10 @@ import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import { DateTime, Duration, Effect, Layer, Option, SchemaParser, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { ResonateNetwork } from "../src/network/network.ts";
-import { makeRequestHead } from "../src/testing.ts";
+import { makeRequestHead } from "./support/testing.ts";
 import * as NetworkLocal from "../src/network/local.ts";
 import * as Protocol from "../src/Protocol.ts";
-import { assertInvariants } from "../src/testing.ts";
+import { assertInvariants } from "./support/testing.ts";
 
 const layers = Layer.mergeAll(
   NetworkLocal.layer({ tickInterval: Duration.hours(24), retryTimeout: Duration.seconds(5) }),

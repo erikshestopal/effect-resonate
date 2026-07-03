@@ -3,9 +3,9 @@ import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import { Effect, Exit, Option, Predicate, Schema, SchemaParser, Stream } from "effect";
 import { TransportError } from "../src/Errors.ts";
 import { decodeResponse, ResonateNetwork } from "../src/network/network.ts";
-import { makeRequestHead } from "../src/testing.ts";
+import { makeRequestHead } from "./support/testing.ts";
 import * as Protocol from "../src/Protocol.ts";
-import { TestNetwork } from "../src/testing.ts";
+import { TestNetwork } from "./support/testing.ts";
 
 const promiseGet = (head: Protocol.RequestHead) =>
   Protocol.PromiseGetRequest.make({ head, data: { id: Protocol.PromiseId.make("foo.1") } });

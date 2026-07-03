@@ -92,6 +92,6 @@ that all conformance tests call after every operation.
 - `preload` is populated for create/acquire/suspend-300/fence from settled or
   pending siblings sharing `resonate:branch`, matching the native/shipped-server
   behavior rather than the Lean model's empty preload.
-- `assertInvariants(state)` is exported from `src/testing.ts` over the debug-snap
+- `assertInvariants(state)` lives in `test/support/testing.ts` over the debug-snap
   state. The local `snap()` test helper calls it automatically, so every test
   snapshot checks the seven invariants after the preceding operation.

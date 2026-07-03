@@ -584,7 +584,7 @@ Rules (handbook MUSTs plus native compatibility):
 
 ```ts
 import { it } from "@effect/vitest";
-import { ResonateTest } from "effect-resonate/testing";
+import { ResonateTest } from "../test/support/testing.ts";
 
 it.effect("countdown completes after sleeps", () =>
   Effect.gen(function* () {

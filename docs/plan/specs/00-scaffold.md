@@ -23,7 +23,7 @@ None (entry spec).
 - `effect` (from the version vendored in `repos/effect-smol` — match its API) as a
   dependency; test setup with `@effect/vitest` (`it.effect`).
 - One trivial `it.effect` smoke test proving the test toolchain works.
-- Package exports: main entry + `effect-resonate/testing` subpath.
+- Package exports: main entry only; test harnesses live under `test/support`.
 
 ## Tests
 

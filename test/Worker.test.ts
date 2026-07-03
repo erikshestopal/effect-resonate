@@ -5,7 +5,7 @@ import { TestClock } from "effect/testing";
 import { currentCodec, ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import { ResonateNetwork } from "../src/network/network.ts";
-import { makeRequestHead } from "../src/testing.ts";
+import { makeRequestHead } from "./support/testing.ts";
 import * as NetworkLocal from "../src/network/local.ts";
 import * as Protocol from "../src/Protocol.ts";
 import * as Resonate from "../src/Resonate.ts";

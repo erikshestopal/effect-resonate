@@ -7,7 +7,7 @@ import { DurablePromises } from "../src/DurablePromise.ts";
 import * as Protocol from "../src/Protocol.ts";
 import * as Resonate from "../src/Resonate.ts";
 import { ResonateContext } from "../src/ResonateContext.ts";
-import { ResonateTest, restartWorker, snapshot } from "../src/testing.ts";
+import { ResonateTest, restartWorker, snapshot } from "./support/testing.ts";
 
 const GraphRoot = Resonate.function({ name: "GraphRoot", payload: Schema.Number });
 

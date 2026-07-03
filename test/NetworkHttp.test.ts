@@ -7,7 +7,7 @@ import { TestClock } from "effect/testing";
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import { TransportError } from "../src/Errors.ts";
 import { ResonateNetwork } from "../src/network/network.ts";
-import { makeRequestHead } from "../src/testing.ts";
+import { makeRequestHead } from "./support/testing.ts";
 import * as NetworkHttp from "../src/network/http.ts";
 import * as Protocol from "../src/Protocol.ts";
 
