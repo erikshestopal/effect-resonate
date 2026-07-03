@@ -1,0 +1,28 @@
+id: no-native-array-methods
+language: TypeScript
+severity: error
+message: Use effect Array helpers such as Arr.findFirst, Arr.filter, Arr.map, Arr.some, Arr.contains, Arr.sort, or Arr.reduce instead of native array methods in src.
+files:
+  - src/**/*.ts
+rule:
+  all:
+    - any:
+        - pattern: $VALUE.find($$$ARGS)
+        - pattern: $VALUE.filter($$$ARGS)
+        - pattern: $VALUE.map($$$ARGS)
+        - pattern: $VALUE.flatMap($$$ARGS)
+        - pattern: $VALUE.some($$$ARGS)
+        - pattern: $VALUE.every($$$ARGS)
+        - pattern: $VALUE.includes($$$ARGS)
+        - pattern: $VALUE.sort($$$ARGS)
+        - pattern: $VALUE.reduce($$$ARGS)
+    - not:
+        any:
+          - pattern: Arr.$METHOD($$$ARGS)
+          - pattern: Effect.$METHOD($$$ARGS)
+          - pattern: HashMap.$METHOD($$$ARGS)
+          - pattern: HashSet.$METHOD($$$ARGS)
+          - pattern: Layer.$METHOD($$$ARGS)
+          - pattern: Option.$METHOD($$$ARGS)
+          - pattern: Schema.$METHOD($$$ARGS)
+          - pattern: Stream.$METHOD($$$ARGS)

@@ -1,0 +1,12 @@
+id: no-native-map-set
+language: TypeScript
+severity: error
+message: Use effect HashMap or HashSet instead of native Map or Set in src.
+files:
+  - src/**/*.ts
+rule:
+  any:
+    - pattern: new Map($$$ARGS)
+    - pattern: new Map<$T>($$$ARGS)
+    - pattern: new Set($$$ARGS)
+    - pattern: new Set<$T>($$$ARGS)

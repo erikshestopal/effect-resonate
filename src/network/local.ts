@@ -7,6 +7,7 @@
  * @since 0.0.0
  */
 import {
+  Array as Arr,
   Cron,
   DateTime,
   Duration,
@@ -349,9 +350,13 @@ const preload = ({
   if (Predicate.isUndefined(branch)) {
     return [];
   }
-  return [...HashMap.values(state.promises)]
-    .filter((candidate) => candidate.id !== id && candidate.tags.reserved["resonate:branch"] === branch)
-    .map((candidate) => candidate.toRecord());
+  return Arr.map(
+    Arr.filter(
+      Arr.fromIterable(HashMap.values(state.promises)),
+      (candidate) => candidate.id !== id && candidate.tags.reserved["resonate:branch"] === branch,
+    ),
+    (candidate) => candidate.toRecord(),
+  );
 };
 const enqueueResume = ({
   input: { emitted, state },
@@ -401,7 +406,7 @@ const enqueueResume = ({
       });
     }),
     Match.whenOr({ state: "pending" }, { state: "acquired" }, { state: "halted" }, (buffered) => {
-      if (buffered.resumes.includes(awaitedId)) {
+      if (Arr.contains(buffered.resumes, awaitedId)) {
         return { state, emitted };
       }
       return {
@@ -449,10 +454,10 @@ const settlementCascade = ({
   state = {
     ...state,
     promises: HashMap.map(state.promises, (promise) =>
-      promise.state === "pending" && promise.callbacks.includes(settled.id)
+      promise.state === "pending" && Arr.contains(promise.callbacks, settled.id)
         ? new PromiseObject({
             ...promise.fields,
-            callbacks: promise.callbacks.filter((id) => id !== settled.id),
+            callbacks: Arr.filter(promise.callbacks, (id) => id !== settled.id),
           })
         : promise,
     ),
@@ -737,7 +742,7 @@ const promiseRegisterCallback = ({
   if (!awaiterFresh) {
     return respond({ next: state, promise: awaited.value });
   }
-  const registered = awaited.value.callbacks.includes(request.data.awaiter)
+  const registered = Arr.contains(awaited.value.callbacks, request.data.awaiter)
     ? awaited.value
     : new PromiseObject({
         ...awaited.value.fields,
@@ -782,7 +787,7 @@ const promiseRegisterListener = ({
     return respond({ next: state, promise: awaited.value.projected(now) });
   }
   const address = request.data.address;
-  const registered = awaited.value.listeners.some((existing) => existing.address === address.address)
+  const registered = Arr.some(awaited.value.listeners, (existing) => existing.address === address.address)
     ? awaited.value
     : new PromiseObject({
         ...awaited.value.fields,
@@ -1154,7 +1159,8 @@ const taskSuspend = ({
   }
   const malformed =
     request.data.actions.length === 0 ||
-    request.data.actions.some(
+    Arr.some(
+      request.data.actions,
       (action) => action.data.awaiter !== request.data.id || action.data.awaited === request.data.id,
     );
   if (malformed) {
@@ -1216,7 +1222,7 @@ const taskSuspend = ({
   }
   let next = state;
   for (const awaited of pending) {
-    const registered = awaited.callbacks.includes(request.data.id)
+    const registered = Arr.contains(awaited.callbacks, request.data.id)
       ? awaited
       : new PromiseObject({
           ...awaited.fields,
@@ -1532,7 +1538,7 @@ const taskHeartbeat = ({
 const FiveFieldCronExpression = Schema.String.check(
   Schema.makeFilter(
     (cron) => {
-      const segments = cron.split(" ").filter((segment) => segment.length > 0);
+      const segments = Arr.filter(cron.split(" "), (segment) => segment.length > 0);
       return segments.length === 5 && Result.isSuccess(Cron.parse(cron));
     },
     { title: "five-field cron expression" },
@@ -1792,10 +1798,10 @@ const tick = ({
       state: {
         ...output.state,
         promises: HashMap.map(output.state.promises, (candidate) =>
-          candidate.state === "pending" && candidate.callbacks.includes(promise.id)
+          candidate.state === "pending" && Arr.contains(candidate.callbacks, promise.id)
             ? new PromiseObject({
                 ...candidate.fields,
-                callbacks: candidate.callbacks.filter((id) => id !== promise.id),
+                callbacks: Arr.filter(candidate.callbacks, (id) => id !== promise.id),
               })
             : candidate,
         ),
@@ -1821,7 +1827,8 @@ const tick = ({
       });
     }
   }
-  const dueTaskTimeouts = [...HashMap.entries(output.state.taskTimeouts)].filter(
+  const dueTaskTimeouts = Arr.filter(
+    Arr.fromIterable(HashMap.entries(output.state.taskTimeouts)),
     ([, entry]) => millis(entry.at) <= millis(now),
   );
   for (const [id, entry] of dueTaskTimeouts) {
@@ -1871,7 +1878,8 @@ const tick = ({
       output = maybeExecute({ input: { state: taskState, emitted: output.emitted }, task: pending });
     }
   }
-  const dueScheduleTimeouts = [...HashMap.entries(output.state.scheduleTimeouts)].filter(
+  const dueScheduleTimeouts = Arr.filter(
+    Arr.fromIterable(HashMap.entries(output.state.scheduleTimeouts)),
     ([, at]) => millis(at) <= millis(now),
   );
   for (const [id] of dueScheduleTimeouts) {
@@ -1956,24 +1964,24 @@ const apply = ({
           kind: "debug.snap",
           head: { corrId: request.head.corrId, status: 200, version: request.head.version },
           data: {
-            promises: [...HashMap.values(state.promises)].map((promise) => promise.toRecord()),
-            promiseTimeouts: [...HashMap.entries(state.promiseTimeouts)].map(([id, at]) => ({
+            promises: Arr.map(Arr.fromIterable(HashMap.values(state.promises)), (promise) => promise.toRecord()),
+            promiseTimeouts: Arr.map(Arr.fromIterable(HashMap.entries(state.promiseTimeouts)), ([id, at]) => ({
               id,
               timeout: at,
             })),
-            callbacks: [...HashMap.values(state.promises)].flatMap((promise) =>
-              promise.callbacks.map((awaiter) => ({ awaiter, awaited: promise.id })),
+            callbacks: Arr.flatMap(Arr.fromIterable(HashMap.values(state.promises)), (promise) =>
+              Arr.map(promise.callbacks, (awaiter) => ({ awaiter, awaited: promise.id })),
             ),
-            listeners: [...HashMap.values(state.promises)].flatMap((promise) =>
-              promise.listeners.map((address) => ({ id: promise.id, address: address.address })),
+            listeners: Arr.flatMap(Arr.fromIterable(HashMap.values(state.promises)), (promise) =>
+              Arr.map(promise.listeners, (address) => ({ id: promise.id, address: address.address })),
             ),
-            tasks: [...HashMap.values(state.tasks)].map((task) => task.toRecord()),
-            taskTimeouts: [...HashMap.entries(state.taskTimeouts)].map(([id, entry]) => ({
+            tasks: Arr.map(Arr.fromIterable(HashMap.values(state.tasks)), (task) => task.toRecord()),
+            taskTimeouts: Arr.map(Arr.fromIterable(HashMap.entries(state.taskTimeouts)), ([id, entry]) => ({
               id,
               type: entry.kind,
               timeout: entry.at,
             })),
-            messages: [...state.outbox].map((entry) => ({
+            messages: Arr.map(state.outbox, (entry) => ({
               address: entry.address.address,
               message: entry.message,
             })),

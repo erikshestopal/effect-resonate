@@ -25,6 +25,7 @@
  * @since 0.0.0
  */
 import {
+  Array as Arr,
   Cause,
   Crypto,
   Duration,
@@ -107,7 +108,7 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
           data: {
             id: task.id,
             version: task.version,
-            actions: outcome.awaited.map((id) =>
+            actions: Arr.map(outcome.awaited, (id) =>
               Protocol.PromiseRegisterCallbackRequest.make({
                 head: Protocol.RequestHead.make({
                   corrId: Protocol.CorrelationId.make(`${task.id}:${id}:callback`),

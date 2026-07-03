@@ -18,6 +18,7 @@ import {
   Exit,
   Fiber,
   HashMap,
+  HashSet,
   Layer,
   Option,
   Predicate,
@@ -109,7 +110,7 @@ interface RuntimeState {
   readonly children: Array<RunningChild>;
   attachedRemote: HashMap.HashMap<Protocol.PromiseId, SuspendedExecution>;
   awaiting: HashMap.HashMap<Protocol.PromiseId, SuspendedExecution>;
-  readonly externalPromises: Set<string>;
+  externalPromises: HashSet.HashSet<string>;
   attempt: number;
   seq: number;
 }
@@ -558,10 +559,10 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         readonly options: Pick<ContextOptions, "id" | "timeout" | "tags"> | undefined;
       }) {
         if (Predicate.isUndefined(options?.id)) {
-          if (state.externalPromises.has(declaration.name)) {
+          if (HashSet.has(state.externalPromises, declaration.name)) {
             return yield* Effect.die(`Promise declaration '${declaration.name}' was created more than once`);
           }
-          state.externalPromises.add(declaration.name);
+          state.externalPromises = HashSet.add(state.externalPromises, declaration.name);
         }
         const id = options?.id ?? declaration.id(state.root);
         const cached = HashMap.get(state.cache, id);
@@ -1021,7 +1022,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             children: [],
             attachedRemote: HashMap.empty(),
             awaiting: HashMap.empty(),
-            externalPromises: new Set(),
+            externalPromises: HashSet.empty(),
             attempt: 0,
             seq: 0,
           };
@@ -1059,10 +1060,10 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           const attachedAwaited = Array.from(HashMap.keys(state.attachedRemote));
           if (Exit.isSuccess(exit)) {
             if (Predicate.isTagged(exit.value, "SuspendedExecution")) {
-              return new EngineSuspended({ awaited: [...new Set([...attachedAwaited, ...exit.value.awaited])] });
+              return new EngineSuspended({ awaited: Arr.dedupe([...attachedAwaited, ...exit.value.awaited]) });
             }
             if (attachedAwaited.length > 0) {
-              return new EngineSuspended({ awaited: [...new Set(attachedAwaited)] });
+              return new EngineSuspended({ awaited: Arr.dedupe(attachedAwaited) });
             }
             const promise = yield* fulfillRoot({ state, exit: Exit.succeed(exit.value.value) });
             return new EngineDone({ promise });

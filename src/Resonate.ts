@@ -37,6 +37,7 @@ import {
   Duration,
   Effect,
   Exit,
+  HashSet,
   Layer,
   Option,
   Order,
@@ -123,15 +124,15 @@ export interface Registry {
 }
 
 export const makeRegistry = (items: ReadonlyArray<RegistryItem>): Effect.Effect<Registry> => {
-  const seen = new Set<string>();
+  let seen = HashSet.empty<string>();
   for (const item of items) {
     const key = `${item.definition.name}:${item.definition.version}`;
-    if (seen.has(key)) {
+    if (HashSet.has(seen, key)) {
       return Effect.die(
         `Function '${item.definition.name}' (version ${item.definition.version}) is already registered`,
       );
     }
-    seen.add(key);
+    seen = HashSet.add(seen, key);
   }
 
   return Effect.succeed({
@@ -293,12 +294,7 @@ const fullCronSegment = (options: {
   if (options.values.size !== options.max - options.min + 1) {
     return false;
   }
-  for (let value = options.min; value <= options.max; value = value + 1) {
-    if (!options.values.has(value)) {
-      return false;
-    }
-  }
-  return true;
+  return Arr.every(Arr.range(options.min, options.max), (value) => options.values.has(value));
 };
 
 const cronSegment = (options: {

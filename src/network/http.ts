@@ -6,7 +6,7 @@
  *
  * @since 0.0.0
  */
-import { Duration, Effect, Filter, Layer, Option, Schedule, Schema, Stream } from "effect";
+import { Duration, Effect, Filter, HashSet, Layer, Option, Schedule, Schema, Stream } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { TransportError } from "../Errors.ts";
 import * as Protocol from "../Protocol.ts";
@@ -25,7 +25,7 @@ export interface NetworkHttpOptions {
   readonly token?: string;
 }
 
-const protocolStatuses = new Set([200, 300, 404, 409, 422, 501]);
+const protocolStatuses = HashSet.make(200, 300, 404, 409, 422, 501);
 
 /**
  * Builds a network service backed by the Resonate HTTP API and SSE stream.
@@ -65,7 +65,7 @@ export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork,
         if (response.status === 401 || response.status === 403) {
           return yield* new TransportError({ reason: "Unauthorized", cause: response.status });
         }
-        if (!protocolStatuses.has(response.status)) {
+        if (!HashSet.has(protocolStatuses, response.status)) {
           return yield* new TransportError({ reason: "ConnectionLost", cause: response.status });
         }
         const body = yield* response.json.pipe(
