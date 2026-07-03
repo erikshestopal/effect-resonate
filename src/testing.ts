@@ -120,7 +120,7 @@ export class TestNetwork extends Context.Service<TestNetwork, TestNetworkService
   }
 }
 
-const isDebugSnapSuccess = Schema.is(Protocol.DebugSnapResponse.members[0]);
+const isDebugSnapSuccess = Schema.is(Protocol.DebugSnapSuccessResponse);
 
 export interface ResonateTestOptions {
   readonly group?: Protocol.WorkerGroup;

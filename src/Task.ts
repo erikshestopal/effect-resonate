@@ -41,17 +41,17 @@ export interface TaskRequestOptions {
   readonly origin?: string;
 }
 
-const isGetSuccess = SchemaParser.is(Protocol.TaskGetResponse.members[0]);
-const isCreateSuccess = SchemaParser.is(Protocol.TaskCreateResponse.members[0]);
-const isAcquireSuccess = SchemaParser.is(Protocol.TaskAcquireResponse.members[0]);
-const isReleaseSuccess = SchemaParser.is(Protocol.TaskReleaseResponse.members[0]);
-const isSuspendAccepted = SchemaParser.is(Protocol.TaskSuspendResponse.members[0]);
-const isSuspendRefused = SchemaParser.is(Protocol.TaskSuspendResponse.members[1]);
-const isHaltSuccess = SchemaParser.is(Protocol.TaskHaltResponse.members[0]);
-const isContinueSuccess = SchemaParser.is(Protocol.TaskContinueResponse.members[0]);
-const isFulfillSuccess = SchemaParser.is(Protocol.TaskFulfillResponse.members[0]);
-const isFenceSuccess = SchemaParser.is(Protocol.TaskFenceResponse.members[0]);
-const isHeartbeatSuccess = SchemaParser.is(Protocol.TaskHeartbeatResponse.members[0]);
+const isGetSuccess = SchemaParser.is(Protocol.TaskGetSuccessResponse);
+const isCreateSuccess = SchemaParser.is(Protocol.TaskCreateSuccessResponse);
+const isAcquireSuccess = SchemaParser.is(Protocol.TaskAcquireSuccessResponse);
+const isReleaseSuccess = SchemaParser.is(Protocol.TaskReleaseSuccessResponse);
+const isSuspendAccepted = SchemaParser.is(Protocol.TaskSuspendAcceptedResponse);
+const isSuspendRefused = SchemaParser.is(Protocol.TaskSuspendRefusedResponse);
+const isHaltSuccess = SchemaParser.is(Protocol.TaskHaltSuccessResponse);
+const isContinueSuccess = SchemaParser.is(Protocol.TaskContinueSuccessResponse);
+const isFulfillSuccess = SchemaParser.is(Protocol.TaskFulfillSuccessResponse);
+const isFenceSuccess = SchemaParser.is(Protocol.TaskFenceSuccessResponse);
+const isHeartbeatSuccess = SchemaParser.is(Protocol.TaskHeartbeatSuccessResponse);
 
 const taskError = (
   id: Protocol.TaskId,

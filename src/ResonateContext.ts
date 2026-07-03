@@ -154,8 +154,8 @@ const isExternalPromise = (promise: Protocol.PromiseRecord): boolean =>
   Predicate.isNotUndefined(promise.tags.reserved["resonate:target"]) ||
   Predicate.isNotUndefined(promise.tags.reserved["resonate:timer"]);
 
-const isPromiseCreateSuccess = SchemaParser.is(Protocol.PromiseCreateResponse.members[0]);
-const isPromiseSettleSuccess = SchemaParser.is(Protocol.PromiseSettleResponse.members[0]);
+const isPromiseCreateSuccess = SchemaParser.is(Protocol.PromiseCreateSuccessResponse);
+const isPromiseSettleSuccess = SchemaParser.is(Protocol.PromiseSettleSuccessResponse);
 
 export interface ResonateContextService {
   readonly info: ContextInfo;
@@ -848,7 +848,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             timeoutAt: options.promise.timeoutAt,
             targetTransport: rootTarget?.transport ?? "poll",
             targetGroup: rootTarget?.group ?? Protocol.WorkerGroup.make("default"),
-            originId: options.promise.tags.reserved["resonate:origin"] ?? options.promise.id,
+            originId: Protocol.promiseOrigin(options.promise),
             prefixId: options.promise.tags.reserved["resonate:prefix"] ?? options.promise.id,
             parentId: options.promise.tags.reserved["resonate:parent"] ?? options.promise.id,
             branchId: options.promise.tags.reserved["resonate:branch"] ?? options.promise.id,

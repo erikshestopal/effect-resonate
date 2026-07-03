@@ -3,9 +3,9 @@ import { InvalidTarget, ScheduleNotFound, type ResonateProtocolError, type Trans
 import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
 
-const isGetSuccess = SchemaParser.is(Protocol.ScheduleGetResponse.members[0]);
-const isCreateSuccess = SchemaParser.is(Protocol.ScheduleCreateResponse.members[0]);
-const isDeleteSuccess = SchemaParser.is(Protocol.ScheduleDeleteResponse.members[0]);
+const isGetSuccess = SchemaParser.is(Protocol.ScheduleGetSuccessResponse);
+const isCreateSuccess = SchemaParser.is(Protocol.ScheduleCreateSuccessResponse);
+const isDeleteSuccess = SchemaParser.is(Protocol.ScheduleDeleteSuccessResponse);
 
 const scheduleError = (id: Protocol.ScheduleId, status: number, message: unknown): ResonateProtocolError => {
   if (status === 404) {

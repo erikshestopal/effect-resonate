@@ -82,3 +82,28 @@ and a same-named module/object with constructors and operations.
   lint/type warnings does not count as green — fix every warning (e.g.
   `no-misused-spread` on Schema class instances: expose a `fields` getter and
   spread that, never the instance).
+
+## 8. Let schemas and Effect combinators own control flow
+
+- For schema-backed tagged unions, prefer
+  `Schema.Union([...]).pipe(Schema.toTaggedUnion("_tag" | "kind"))` and use the
+  derived `.match` / `.guards` instead of manually checking tags or retyping
+  stream filters in handlers.
+- Export named schemas for reusable union members (`TaskGetSuccessResponse`,
+  `TaskSuspendRefusedResponse`, …). Consumers must not depend on positional
+  `.members[0]` / `.members[1]`; keep that wiring at the schema definition site
+  or write the member schema as a named value up front.
+- Do not encode loops with `Ref` state plus booleans consumed by
+  `Effect.repeat`. If each iteration carries the next state, write an
+  `Effect.fn` recursion and pass the state as a parameter.
+- Use `Option` for absence, not `null` sentinels. Use `Option.filter` for
+  follow-up state guards when the value remains optional.
+- Use `Effect.onError` and `Effect.ensuring` for cleanup/finalizers instead of
+  manually inspecting `Exit` and then removing state. This keeps cleanup
+  interruption-safe.
+- Repeated background cadence should use `Schedule`/`Effect.schedule`; prefer
+  `Duration` arithmetic (`Duration.max`, `Duration.divideUnsafe`) over
+  round-tripping through raw milliseconds.
+- Repeated domain fallbacks belong on the domain model, e.g.
+  `Protocol.promiseOrigin(promise)` instead of retyping the reserved-tag
+  fallback rule at call sites.

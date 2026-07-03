@@ -9,11 +9,11 @@ import {
 import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
 
-const isGetSuccess = SchemaParser.is(Protocol.PromiseGetResponse.members[0]);
-const isCreateSuccess = SchemaParser.is(Protocol.PromiseCreateResponse.members[0]);
-const isSettleSuccess = SchemaParser.is(Protocol.PromiseSettleResponse.members[0]);
-const isRegisterCallbackSuccess = SchemaParser.is(Protocol.PromiseRegisterCallbackResponse.members[0]);
-const isRegisterListenerSuccess = SchemaParser.is(Protocol.PromiseRegisterListenerResponse.members[0]);
+const isGetSuccess = SchemaParser.is(Protocol.PromiseGetSuccessResponse);
+const isCreateSuccess = SchemaParser.is(Protocol.PromiseCreateSuccessResponse);
+const isSettleSuccess = SchemaParser.is(Protocol.PromiseSettleSuccessResponse);
+const isRegisterCallbackSuccess = SchemaParser.is(Protocol.PromiseRegisterCallbackSuccessResponse);
+const isRegisterListenerSuccess = SchemaParser.is(Protocol.PromiseRegisterListenerSuccessResponse);
 
 const promiseError = (id: Protocol.PromiseId, status: number, message: unknown): ResonateProtocolError => {
   if (status === 404) {

@@ -1,53 +1,37 @@
-import { Duration, Match, Schema, SchemaTransformation } from "effect";
+import { Duration, Schema, SchemaTransformation } from "effect";
 
-const Millis = Schema.Finite;
-const MaxRetries = Schema.Finite;
+const Millis = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0));
+const MaxRetries = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
+const Factor = Schema.Finite.check(Schema.isGreaterThan(0));
+
+const ConstantFields = { delay: Millis, maxRetries: MaxRetries };
+const ExponentialFields = { delay: Millis, factor: Factor, maxRetries: MaxRetries, maxDelay: Millis };
+const LinearFields = { delay: Millis, maxRetries: MaxRetries };
 
 export class Constant extends Schema.Class<Constant>("RetryPolicy/Constant")({
   _tag: Schema.tag("Constant"),
-  delay: Millis,
-  maxRetries: MaxRetries,
-}) {
-  static default(): Constant {
-    return new Constant({ delay: 1_000, maxRetries: Number.MAX_SAFE_INTEGER });
-  }
-}
+  ...ConstantFields,
+}) {}
 
 export class Exponential extends Schema.Class<Exponential>("RetryPolicy/Exponential")({
   _tag: Schema.tag("Exponential"),
-  delay: Millis,
-  factor: Schema.Finite,
-  maxRetries: MaxRetries,
-  maxDelay: Millis,
-}) {
-  static default(): Exponential {
-    return new Exponential({ delay: 1_000, factor: 2, maxRetries: Number.MAX_SAFE_INTEGER, maxDelay: 30_000 });
-  }
-}
+  ...ExponentialFields,
+}) {}
 
 export class Linear extends Schema.Class<Linear>("RetryPolicy/Linear")({
   _tag: Schema.tag("Linear"),
-  delay: Millis,
-  maxRetries: MaxRetries,
-}) {
-  static default(): Linear {
-    return new Linear({ delay: 1_000, maxRetries: Number.MAX_SAFE_INTEGER });
-  }
-}
+  ...LinearFields,
+}) {}
 
 export class Never extends Schema.Class<Never>("RetryPolicy/Never")({
   _tag: Schema.tag("Never"),
-}) {
-  static default(): Never {
-    return new Never();
-  }
-}
+}) {}
 
-export const RetryPolicy = Schema.Union([Constant, Exponential, Linear, Never]);
+export const RetryPolicy = Schema.Union([Constant, Exponential, Linear, Never]).pipe(Schema.toTaggedUnion("_tag"));
 export type RetryPolicy = typeof RetryPolicy.Type;
 
 export const constant = (options?: { readonly delay?: Duration.Input; readonly maxRetries?: number }): Constant =>
-  new Constant({
+  Constant.make({
     delay: Duration.toMillis(options?.delay ?? Duration.seconds(1)),
     maxRetries: options?.maxRetries ?? Number.MAX_SAFE_INTEGER,
   });
@@ -58,7 +42,7 @@ export const exponential = (options?: {
   readonly maxRetries?: number;
   readonly maxDelay?: Duration.Input;
 }): Exponential =>
-  new Exponential({
+  Exponential.make({
     delay: Duration.toMillis(options?.delay ?? Duration.seconds(1)),
     factor: options?.factor ?? 2,
     maxRetries: options?.maxRetries ?? Number.MAX_SAFE_INTEGER,
@@ -66,81 +50,101 @@ export const exponential = (options?: {
   });
 
 export const linear = (options?: { readonly delay?: Duration.Input; readonly maxRetries?: number }): Linear =>
-  new Linear({
+  Linear.make({
     delay: Duration.toMillis(options?.delay ?? Duration.seconds(1)),
     maxRetries: options?.maxRetries ?? Number.MAX_SAFE_INTEGER,
   });
 
-export const never = (): Never => new Never();
+export const never = (): Never => Never.make({});
 
-class WireConstant extends Schema.Class<WireConstant>("RetryPolicy/WireConstant")({
+const ConstantWire = Schema.Struct({
   type: Schema.Literal("constant"),
-  data: Schema.Struct({ delay: Millis, maxRetries: MaxRetries }),
-}) {}
+  data: Schema.Struct(ConstantFields),
+});
 
-class WireExponential extends Schema.Class<WireExponential>("RetryPolicy/WireExponential")({
-  type: Schema.Literal("exponential"),
-  data: Schema.Struct({ delay: Millis, factor: Schema.Finite, maxRetries: MaxRetries, maxDelay: Millis }),
-}) {}
-
-class WireLinear extends Schema.Class<WireLinear>("RetryPolicy/WireLinear")({
-  type: Schema.Literal("linear"),
-  data: Schema.Struct({ delay: Millis, maxRetries: MaxRetries }),
-}) {}
-
-class WireNever extends Schema.Class<WireNever>("RetryPolicy/WireNever")({
-  type: Schema.Literal("never"),
-  data: Schema.Struct({}),
-}) {}
-
-export const RetryPolicyFromWire = Schema.Union([WireConstant, WireExponential, WireLinear, WireNever]).pipe(
+const ConstantFromWire = ConstantWire.pipe(
   Schema.decodeTo(
-    RetryPolicy,
+    Constant,
     SchemaTransformation.transform({
-      decode: (wire) =>
-        Match.value(wire).pipe(
-          Match.discriminatorsExhaustive("type")({
-            constant: (policy) => new Constant(policy.data),
-            exponential: (policy) => new Exponential(policy.data),
-            linear: (policy) => new Linear(policy.data),
-            never: () => new Never(),
-          }),
-        ),
+      decode: (wire) => Constant.make(wire.data),
       encode: (policy) =>
-        Match.value(policy).pipe(
-          Match.discriminatorsExhaustive("_tag")({
-            Constant: (policy) =>
-              WireConstant.make({ type: "constant", data: { delay: policy.delay, maxRetries: policy.maxRetries } }),
-            Exponential: (policy) =>
-              WireExponential.make({
-                type: "exponential",
-                data: {
-                  delay: policy.delay,
-                  factor: policy.factor,
-                  maxRetries: policy.maxRetries,
-                  maxDelay: policy.maxDelay,
-                },
-              }),
-            Linear: (policy) =>
-              WireLinear.make({ type: "linear", data: { delay: policy.delay, maxRetries: policy.maxRetries } }),
-            Never: () => WireNever.make({ type: "never", data: {} }),
-          }),
-        ),
+        ConstantWire.make({ type: "constant", data: { delay: policy.delay, maxRetries: policy.maxRetries } }),
     }),
   ),
 );
 
-export const next = (policy: RetryPolicy, attempt: number): number | null =>
-  Match.value(policy).pipe(
-    Match.discriminatorsExhaustive("_tag")({
-      Constant: (policy) => (attempt > policy.maxRetries ? null : attempt === 0 ? 0 : policy.delay),
-      Exponential: (policy) =>
-        attempt > policy.maxRetries
-          ? null
-          : attempt === 0
-            ? 0
-            : Math.min(policy.delay * policy.factor ** attempt, policy.maxDelay),
-      Linear: (policy) => (attempt > policy.maxRetries ? null : policy.delay * attempt),
-      Never: () => (attempt === 0 ? 0 : null),
+const ExponentialWire = Schema.Struct({
+  type: Schema.Literal("exponential"),
+  data: Schema.Struct(ExponentialFields),
+});
+
+const ExponentialFromWire = ExponentialWire.pipe(
+  Schema.decodeTo(
+    Exponential,
+    SchemaTransformation.transform({
+      decode: (wire) => Exponential.make(wire.data),
+      encode: (policy) =>
+        ExponentialWire.make({
+          type: "exponential",
+          data: {
+            delay: policy.delay,
+            factor: policy.factor,
+            maxRetries: policy.maxRetries,
+            maxDelay: policy.maxDelay,
+          },
+        }),
     }),
-  );
+  ),
+);
+
+const LinearWire = Schema.Struct({
+  type: Schema.Literal("linear"),
+  data: Schema.Struct(LinearFields),
+});
+
+const LinearFromWire = LinearWire.pipe(
+  Schema.decodeTo(
+    Linear,
+    SchemaTransformation.transform({
+      decode: (wire) => Linear.make(wire.data),
+      encode: (policy) =>
+        LinearWire.make({ type: "linear", data: { delay: policy.delay, maxRetries: policy.maxRetries } }),
+    }),
+  ),
+);
+
+const NeverWire = Schema.Struct({
+  type: Schema.Literal("never"),
+  data: Schema.Struct({}),
+});
+
+const NeverFromWire = NeverWire.pipe(
+  Schema.decodeTo(
+    Never,
+    SchemaTransformation.transform({
+      decode: () => Never.make({}),
+      encode: () => NeverWire.make({ type: "never", data: {} }),
+    }),
+  ),
+);
+
+export const RetryPolicyFromWire = Schema.Union([ConstantFromWire, ExponentialFromWire, LinearFromWire, NeverFromWire]);
+
+const budget = RetryPolicy.match({
+  Constant: (policy) => policy.maxRetries,
+  Exponential: (policy) => policy.maxRetries,
+  Linear: (policy) => policy.maxRetries,
+  Never: () => 0,
+});
+
+export const next = (policy: RetryPolicy, attempt: number): number | null =>
+  attempt === 0
+    ? 0
+    : attempt > budget(policy)
+      ? null
+      : RetryPolicy.match(policy, {
+          Constant: (policy) => policy.delay,
+          Exponential: (policy) => Math.min(policy.delay * policy.factor ** attempt, policy.maxDelay),
+          Linear: (policy) => policy.delay * attempt,
+          Never: () => 0,
+        });

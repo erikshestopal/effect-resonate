@@ -315,6 +315,9 @@ export const PromiseRecord = PromiseRecordFromWire.check(
 );
 export type PromiseRecord = typeof PromiseRecord.Type;
 
+export const promiseOrigin = (promise: PromiseRecord): PromiseId =>
+  promise.tags.reserved["resonate:origin"] ?? promise.id;
+
 export const TaskState = Schema.Literals(["pending", "acquired", "suspended", "halted", "fulfilled"]);
 export type TaskState = typeof TaskState.Type;
 
@@ -403,7 +406,7 @@ export const UnblockMessage = Schema.Struct({
 });
 export type UnblockMessage = typeof UnblockMessage.Type;
 
-export const Message = Schema.Union([ExecuteMessage, UnblockMessage]);
+export const Message = Schema.Union([ExecuteMessage, UnblockMessage]).pipe(Schema.toTaggedUnion("kind"));
 export type Message = typeof Message.Type;
 
 export const RequestHead = Schema.Struct({
@@ -733,6 +736,7 @@ export const PromiseGetResponse = Schema.Union([
   }),
 ]);
 export type PromiseGetResponse = typeof PromiseGetResponse.Type;
+export const PromiseGetSuccessResponse = PromiseGetResponse.members[0];
 
 export const PromiseCreateResponse = Schema.Union([
   Schema.Struct({
@@ -747,6 +751,7 @@ export const PromiseCreateResponse = Schema.Union([
   }),
 ]);
 export type PromiseCreateResponse = typeof PromiseCreateResponse.Type;
+export const PromiseCreateSuccessResponse = PromiseCreateResponse.members[0];
 
 export const PromiseSettleResponse = Schema.Union([
   Schema.Struct({
@@ -761,6 +766,7 @@ export const PromiseSettleResponse = Schema.Union([
   }),
 ]);
 export type PromiseSettleResponse = typeof PromiseSettleResponse.Type;
+export const PromiseSettleSuccessResponse = PromiseSettleResponse.members[0];
 
 export const PromiseRegisterCallbackResponse = Schema.Union([
   Schema.Struct({
@@ -775,6 +781,7 @@ export const PromiseRegisterCallbackResponse = Schema.Union([
   }),
 ]);
 export type PromiseRegisterCallbackResponse = typeof PromiseRegisterCallbackResponse.Type;
+export const PromiseRegisterCallbackSuccessResponse = PromiseRegisterCallbackResponse.members[0];
 
 export const PromiseRegisterListenerResponse = Schema.Union([
   Schema.Struct({
@@ -789,6 +796,7 @@ export const PromiseRegisterListenerResponse = Schema.Union([
   }),
 ]);
 export type PromiseRegisterListenerResponse = typeof PromiseRegisterListenerResponse.Type;
+export const PromiseRegisterListenerSuccessResponse = PromiseRegisterListenerResponse.members[0];
 
 export const PromiseSearchResponse = Schema.Union([
   Schema.Struct({
@@ -820,6 +828,7 @@ export const TaskGetResponse = Schema.Union([
   }),
 ]);
 export type TaskGetResponse = typeof TaskGetResponse.Type;
+export const TaskGetSuccessResponse = TaskGetResponse.members[0];
 
 export const TaskCreateResponse = Schema.Union([
   Schema.Struct({
@@ -838,6 +847,7 @@ export const TaskCreateResponse = Schema.Union([
   }),
 ]);
 export type TaskCreateResponse = typeof TaskCreateResponse.Type;
+export const TaskCreateSuccessResponse = TaskCreateResponse.members[0];
 
 export const TaskAcquireResponse = Schema.Union([
   Schema.Struct({
@@ -856,6 +866,7 @@ export const TaskAcquireResponse = Schema.Union([
   }),
 ]);
 export type TaskAcquireResponse = typeof TaskAcquireResponse.Type;
+export const TaskAcquireSuccessResponse = TaskAcquireResponse.members[0];
 
 export const TaskReleaseResponse = Schema.Union([
   Schema.Struct({
@@ -870,6 +881,7 @@ export const TaskReleaseResponse = Schema.Union([
   }),
 ]);
 export type TaskReleaseResponse = typeof TaskReleaseResponse.Type;
+export const TaskReleaseSuccessResponse = TaskReleaseResponse.members[0];
 
 export const TaskSuspendResponse = Schema.Union([
   Schema.Struct({
@@ -889,6 +901,8 @@ export const TaskSuspendResponse = Schema.Union([
   }),
 ]);
 export type TaskSuspendResponse = typeof TaskSuspendResponse.Type;
+export const TaskSuspendAcceptedResponse = TaskSuspendResponse.members[0];
+export const TaskSuspendRefusedResponse = TaskSuspendResponse.members[1];
 
 export const TaskHaltResponse = Schema.Union([
   Schema.Struct({
@@ -903,6 +917,7 @@ export const TaskHaltResponse = Schema.Union([
   }),
 ]);
 export type TaskHaltResponse = typeof TaskHaltResponse.Type;
+export const TaskHaltSuccessResponse = TaskHaltResponse.members[0];
 
 export const TaskContinueResponse = Schema.Union([
   Schema.Struct({
@@ -917,6 +932,7 @@ export const TaskContinueResponse = Schema.Union([
   }),
 ]);
 export type TaskContinueResponse = typeof TaskContinueResponse.Type;
+export const TaskContinueSuccessResponse = TaskContinueResponse.members[0];
 
 export const TaskFulfillResponse = Schema.Union([
   Schema.Struct({
@@ -931,6 +947,7 @@ export const TaskFulfillResponse = Schema.Union([
   }),
 ]);
 export type TaskFulfillResponse = typeof TaskFulfillResponse.Type;
+export const TaskFulfillSuccessResponse = TaskFulfillResponse.members[0];
 
 export const TaskFenceResponse = Schema.Union([
   Schema.Struct({
@@ -948,6 +965,7 @@ export const TaskFenceResponse = Schema.Union([
   }),
 ]);
 export type TaskFenceResponse = typeof TaskFenceResponse.Type;
+export const TaskFenceSuccessResponse = TaskFenceResponse.members[0];
 
 export const TaskHeartbeatResponse = Schema.Union([
   Schema.Struct({
@@ -962,6 +980,7 @@ export const TaskHeartbeatResponse = Schema.Union([
   }),
 ]);
 export type TaskHeartbeatResponse = typeof TaskHeartbeatResponse.Type;
+export const TaskHeartbeatSuccessResponse = TaskHeartbeatResponse.members[0];
 
 export const TaskSearchResponse = Schema.Union([
   Schema.Struct({
@@ -995,6 +1014,7 @@ export const ScheduleGetResponse = Schema.Union([
   }),
 ]);
 export type ScheduleGetResponse = typeof ScheduleGetResponse.Type;
+export const ScheduleGetSuccessResponse = ScheduleGetResponse.members[0];
 
 export const ScheduleCreateResponse = Schema.Union([
   Schema.Struct({
@@ -1009,6 +1029,7 @@ export const ScheduleCreateResponse = Schema.Union([
   }),
 ]);
 export type ScheduleCreateResponse = typeof ScheduleCreateResponse.Type;
+export const ScheduleCreateSuccessResponse = ScheduleCreateResponse.members[0];
 
 export const ScheduleDeleteResponse = Schema.Union([
   Schema.Struct({
@@ -1023,6 +1044,7 @@ export const ScheduleDeleteResponse = Schema.Union([
   }),
 ]);
 export type ScheduleDeleteResponse = typeof ScheduleDeleteResponse.Type;
+export const ScheduleDeleteSuccessResponse = ScheduleDeleteResponse.members[0];
 
 export const ScheduleSearchResponse = Schema.Union([
   Schema.Struct({
@@ -1116,6 +1138,7 @@ export const DebugSnapResponse = Schema.Union([
     data: Schema.String,
   }),
 ]);
+export const DebugSnapSuccessResponse = DebugSnapResponse.members[0];
 export const DebugStopResponse = Schema.Union([
   Schema.Struct({
     kind: Schema.tag("debug.stop"),
