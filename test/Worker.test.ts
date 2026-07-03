@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
-import { Duration, Effect, Layer, Schema, SchemaParser } from "effect";
+import { DateTime, Duration, Effect, Layer, Option, Schema, SchemaParser } from "effect";
 import { TestClock } from "effect/testing";
 import { ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
@@ -24,7 +24,11 @@ const Suspend = Resonate.function("SuspendWorkflow", {
   payload: Schema.Number,
 });
 
-const group = Resonate.group(Workflow, Blocking, Suspend);
+const Sleep = Resonate.function("SleepWorkflow", {
+  payload: Schema.Number,
+});
+
+const group = Resonate.group(Workflow, Blocking, Suspend, Sleep);
 const isDebugSnapSuccess = SchemaParser.is(Protocol.DebugSnapResponse.members[0]);
 
 const baseLayer = Layer.mergeAll(
@@ -62,6 +66,12 @@ const handlerLayer = group.toLayer(
         });
         yield* child.await;
         return "done";
+      }),
+    SleepWorkflow: (hours) =>
+      Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
+        const ctx = yield* ResonateContext;
+        yield* ctx.sleep(Duration.hours(Number(hours)));
+        return "awake";
       }),
   }),
 );
@@ -194,6 +204,70 @@ describe("Worker", () => {
       const resumed = yield* promises.get(root);
       expect(resumed.state).toBe("resolved");
       expect(yield* codec.decode(resumed.value)).toBe("done");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("suspends on durable sleep and resumes when the timer resolves", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const promises = yield* DurablePromises;
+      const codec = yield* ResonateCodec;
+      const handle = yield* client.beginRpc(Sleep, Protocol.ExecutionId.make("worker-sleep-1"), [1]);
+
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+
+      const suspended = yield* snap();
+      const timer = suspended.promises.find((promise) => promise.id === "worker-sleep-1.0");
+      expect(suspended.tasks.find((task) => task.id === handle.id)?.state).toBe("suspended");
+      expect(timer?.state).toBe("pending");
+      expect(timer?.tags.reserved["resonate:timer"]).toBe("true");
+      expect(timer?.tags.reserved["resonate:target"]).toBeUndefined();
+      expect(timer?.tags.reserved["resonate:scope"]).toBe("global");
+      expect(timer?.tags.reserved["resonate:branch"]).toBe("worker-sleep-1.0");
+      expect(timer?.tags.reserved["resonate:parent"]).toBe(handle.id);
+      expect(DateTime.toEpochMillis(timer?.timeoutAt ?? DateTime.makeUnsafe(-1))).toBe(3_600_000);
+
+      yield* TestClock.adjust(Duration.hours(1));
+      yield* tick(3_600_000);
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+
+      const resolvedTimer = yield* promises.get(Protocol.PromiseId.make("worker-sleep-1.0"));
+      expect(resolvedTimer.state).toBe("resolved");
+      if (resolvedTimer.state === "pending") {
+        return yield* Effect.die("timer was not resolved");
+      }
+      expect(Option.map(resolvedTimer.settledAt, DateTime.toEpochMillis)).toEqual(Option.some(3_600_000));
+
+      const resumed = yield* promises.get(handle.id);
+      expect(resumed.state).toBe("resolved");
+      expect(yield* codec.decode(resumed.value)).toBe("awake");
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("clamps durable sleep to the parent timeout", () =>
+    Effect.gen(function* () {
+      const client = yield* Resonate.ResonateClient;
+      const promises = yield* DurablePromises;
+      const handle = yield* client.beginRpc(Sleep, Protocol.ExecutionId.make("worker-sleep-clamp-1"), [2], {
+        timeout: Duration.minutes(30),
+      });
+
+      yield* Effect.yieldNow;
+      yield* Effect.yieldNow;
+
+      const suspended = yield* snap();
+      const timer = suspended.promises.find((promise) => promise.id === "worker-sleep-clamp-1.0");
+      expect(DateTime.toEpochMillis(timer?.timeoutAt ?? DateTime.makeUnsafe(-1))).toBe(1_800_000);
+
+      yield* TestClock.adjust(Duration.minutes(30));
+      yield* tick(1_800_000);
+
+      const resolvedTimer = yield* promises.get(Protocol.PromiseId.make("worker-sleep-clamp-1.0"));
+      const timedOutRoot = yield* promises.get(handle.id);
+      expect(resolvedTimer.state).toBe("resolved");
+      expect(timedOutRoot.state).toBe("rejected_timedout");
     }).pipe(Effect.provide(layer)),
   );
 });

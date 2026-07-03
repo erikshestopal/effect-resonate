@@ -42,3 +42,8 @@ Durable sleep as `resonate:timer` promises — free to replay, suspension-friend
 ## Acceptance
 
 - `vp run check` green; CONFORMANCE.md sleep row → done.
+
+## Notes
+
+- Implemented in `ResonateContext.sleep`/`sleepUntil`; timer promises use `resonate:branch` equal to the timer id, matching the native SDK.
+- Replay after wake is driven by idempotent `promise.create` for the same timer id returning the already-resolved timer record.

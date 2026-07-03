@@ -34,6 +34,8 @@ const contextLayer = Layer.succeed(
         cancel: Effect.void,
       }),
     all: (effects) => Effect.forEach(effects, (effect) => effect),
+    sleep: () => Effect.void,
+    sleepUntil: () => Effect.void,
     panic: (message) => Effect.die(message),
   }),
 );

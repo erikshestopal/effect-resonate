@@ -103,6 +103,8 @@ export interface ExecuteOptions {
 }
 
 const localScope = Schema.Literal("local").make("local");
+const globalScope = Schema.Literal("global").make("global");
+const timerTag = Schema.Literal("true").make("true");
 const resolvedState = Schema.Literal("resolved").make("resolved");
 const rejectedState = Schema.Literal("rejected").make("rejected");
 
@@ -139,6 +141,8 @@ export interface ResonateContextService {
   readonly all: <const Effects extends ReadonlyArray<Effect.Effect<unknown, unknown, unknown>>>(
     effects: Effects,
   ) => Effect.Effect<ReadonlyArray<unknown>, unknown, unknown>;
+  readonly sleep: (duration: Duration.Input) => Effect.Effect<void, unknown>;
+  readonly sleepUntil: (instant: DateTime.Utc) => Effect.Effect<void, unknown>;
   readonly panic: (message: string) => Effect.Effect<never, DurablePanic>;
 }
 
@@ -279,6 +283,46 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         return promise;
       });
 
+      const createSleep = Effect.fn("ExecutionEngine.createSleep")(function* (
+        state: RuntimeState,
+        instant: DateTime.Utc,
+      ) {
+        const id = childId(state.root, state.seq);
+        state.seq = state.seq + 1;
+        const cached = state.cache.get(id);
+        if (Predicate.isNotUndefined(cached)) {
+          return cached;
+        }
+        const result = yield* tasks.fence({
+          id: state.root,
+          version: state.version,
+          action: Protocol.PromiseCreateRequest.make({
+            head: requestHead(`${state.root}:${id}:sleep`),
+            data: {
+              id,
+              timeoutAt: timestamp(Math.min(DateTime.toEpochMillis(instant), DateTime.toEpochMillis(state.timeoutAt))),
+              param: Protocol.emptyValue,
+              tags: Protocol.Tags.make({
+                reserved: {
+                  "resonate:origin": state.originId,
+                  "resonate:prefix": state.prefixId,
+                  "resonate:branch": id,
+                  "resonate:parent": state.root,
+                  "resonate:scope": globalScope,
+                  "resonate:timer": timerTag,
+                },
+                unrecognized: {},
+                user: {},
+              }),
+            },
+          }),
+        });
+        addPreload(state, result.preload);
+        const promise = yield* actionPromise(result.action);
+        state.cache.set(promise.id, promise);
+        return promise;
+      });
+
       const makeHandle = (
         state: RuntimeState,
         promise: Protocol.PromiseRecord,
@@ -351,6 +395,27 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           return yield* handle.await;
         });
 
+        const sleepUntil: ResonateContextService["sleepUntil"] = Effect.fn("ResonateContext.sleepUntil")(
+          function* (instant) {
+            const promise = yield* createSleep(state, instant);
+            if (promise.state !== "pending") {
+              yield* decodeSettled(promise);
+              return;
+            }
+            const parked = state.awaiting.get(promise.id);
+            if (Predicate.isNotUndefined(parked)) {
+              return yield* Effect.fail(parked);
+            }
+            const suspended = new SuspendedExecution({ awaited: [promise.id] });
+            state.awaiting.set(promise.id, suspended);
+            return yield* suspended;
+          },
+        );
+
+        const sleep: ResonateContextService["sleep"] = Effect.fn("ResonateContext.sleep")(function* (duration) {
+          return yield* sleepUntil(timestamp((yield* Clock.currentTimeMillis) + Duration.toMillis(duration)));
+        });
+
         return Layer.succeed(
           ResonateContext,
           ResonateContext.of({
@@ -365,6 +430,8 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             },
             run,
             beginRun,
+            sleep,
+            sleepUntil,
             all: (effects) =>
               Effect.gen(function* () {
                 const exits = yield* Effect.forEach(effects, (effect) => effect.pipe(Effect.result));
