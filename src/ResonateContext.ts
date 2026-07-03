@@ -151,28 +151,6 @@ const timestamp = (millis: number): Protocol.Timestamp => Schema.decodeUnknownSy
 const childId = ({ parent, seq }: { readonly parent: Protocol.PromiseId; readonly seq: number }): Protocol.PromiseId =>
   Protocol.PromiseId.make(`${parent}.${seq}`);
 
-const detachedId = ({
-  prefix,
-  seqid,
-}: {
-  readonly prefix: Protocol.PromiseId;
-  readonly seqid: Protocol.PromiseId;
-}): Protocol.PromiseId => {
-  const bytes = new TextEncoder().encode(seqid);
-  let h1 = 0xdeadbeef;
-  let h2 = 0x41c6ce57;
-  for (const byte of bytes) {
-    h1 = Math.imul(h1 ^ byte, 2654435761);
-    h2 = Math.imul(h2 ^ byte, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
-  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
-  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  const hash = (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, "0");
-  return Protocol.PromiseId.make(`${prefix}.d${hash}`);
-};
-
 const requestHead = ({
   corrId,
   origin,
@@ -632,7 +610,8 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         readonly mode: "attached" | "detached";
       }) {
         const seqid = childId({ parent: state.root, seq: state.seq });
-        const id = options?.id ?? (mode === "detached" ? detachedId({ prefix: state.prefixId, seqid }) : seqid);
+        const id =
+          options?.id ?? (mode === "detached" ? Protocol.detachedPromiseId({ prefix: state.prefixId, seqid }) : seqid);
         state.seq = Num.increment(state.seq);
         const cached = HashMap.get(state.cache, id);
         if (Option.isSome(cached)) {

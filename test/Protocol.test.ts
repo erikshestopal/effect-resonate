@@ -46,6 +46,27 @@ const schedule = {
   nextRunAt: 1750003600000,
 };
 
+describe("identifiers", () => {
+  it("derives native-compatible detached promise ids", () => {
+    expect(
+      Protocol.detachedPromiseId({
+        prefix: Protocol.PromiseId.make("root"),
+        seqid: Protocol.PromiseId.make("root.0"),
+      }),
+    ).toBe("root.d06d7462a6ced99");
+  });
+
+  it("keeps recursive detached ids bounded under the stable prefix", () => {
+    const id = Protocol.detachedPromiseId({
+      prefix: Protocol.PromiseId.make("top"),
+      seqid: Protocol.PromiseId.make("top.deadbeefdeadbe.0"),
+    });
+
+    expect(id.startsWith("top.d")).toBe(true);
+    expect(id).toHaveLength("top.d".length + 14);
+  });
+});
+
 describe("records", () => {
   it("round-trips promise records", () => {
     roundTrip(Protocol.PromiseRecordFromWire, pendingPromise);

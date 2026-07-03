@@ -28,6 +28,36 @@ import {
 export const PromiseId = Schema.NonEmptyString.pipe(Schema.brand("PromiseId"));
 export type PromiseId = typeof PromiseId.Type;
 
+const utf8 = new TextEncoder();
+
+const cyrb53 = (input: string): number => {
+  const bytes = utf8.encode(input);
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (const byte of bytes) {
+    h1 = Math.imul(h1 ^ byte, 2654435761);
+    h2 = Math.imul(h2 ^ byte, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+};
+
+/**
+ * Derives the deterministic id for a detached child promise.
+ *
+ * The native TypeScript SDK uses `${prefix}.d${cyrb53(seqid)}`: the `d` marks
+ * the segment as detached and hashing the sequence id keeps recursive detached
+ * lineages bounded to one segment beyond the stable `resonate:prefix`.
+ *
+ * @category identifiers
+ * @since 0.0.0
+ */
+export const detachedPromiseId = (options: { readonly prefix: PromiseId; readonly seqid: PromiseId }): PromiseId =>
+  PromiseId.make(`${options.prefix}.d${cyrb53(options.seqid).toString(16).padStart(14, "0")}`);
+
 export const ExecutionId = Schema.NonEmptyString.pipe(Schema.brand("ExecutionId"));
 export type ExecutionId = typeof ExecutionId.Type;
 
