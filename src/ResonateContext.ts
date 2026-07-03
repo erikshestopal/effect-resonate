@@ -7,6 +7,7 @@ import {
   Effect,
   Exit,
   Fiber,
+  HashMap,
   Layer,
   Option,
   Predicate,
@@ -82,10 +83,10 @@ interface RuntimeState {
   readonly prefixId: Protocol.PromiseId;
   readonly parentId: Protocol.PromiseId;
   readonly branchId: Protocol.PromiseId;
-  readonly cache: Map<Protocol.PromiseId, Protocol.PromiseRecord>;
+  cache: HashMap.HashMap<Protocol.PromiseId, Protocol.PromiseRecord>;
   readonly children: Array<RunningChild>;
-  readonly attachedRemote: Map<Protocol.PromiseId, SuspendedExecution>;
-  readonly awaiting: Map<Protocol.PromiseId, SuspendedExecution>;
+  attachedRemote: HashMap.HashMap<Protocol.PromiseId, SuspendedExecution>;
+  awaiting: HashMap.HashMap<Protocol.PromiseId, SuspendedExecution>;
   readonly externalPromises: Set<string>;
   attempt: number;
   seq: number;
@@ -216,7 +217,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
 
       const addPreload = (state: RuntimeState, preload: ReadonlyArray<Protocol.PromiseRecord>) => {
         for (const promise of preload) {
-          state.cache.set(promise.id, promise);
+          state.cache = HashMap.set(state.cache, promise.id, promise);
         }
       };
 
@@ -264,7 +265,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         );
         addPreload(state, result.preload);
         const promise = yield* actionPromise(result.action);
-        state.cache.set(promise.id, promise);
+        state.cache = HashMap.set(state.cache, promise.id, promise);
         return promise;
       });
 
@@ -285,7 +286,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           },
           { origin: state.originId },
         );
-        state.cache.set(promise.id, promise);
+        state.cache = HashMap.set(state.cache, promise.id, promise);
         return promise;
       });
 
@@ -367,9 +368,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
       ) {
         const id = options?.id ?? childId(state.root, state.seq);
         state.seq = state.seq + 1;
-        const cached = state.cache.get(id);
-        if (Predicate.isNotUndefined(cached)) {
-          return cached;
+        const cached = HashMap.get(state.cache, id);
+        if (Option.isSome(cached)) {
+          return cached.value;
         }
         const result = yield* tasks.fence(
           {
@@ -389,7 +390,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         );
         addPreload(state, result.preload);
         const promise = yield* actionPromise(result.action);
-        state.cache.set(promise.id, promise);
+        state.cache = HashMap.set(state.cache, promise.id, promise);
         return promise;
       });
 
@@ -399,9 +400,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
       ) {
         const id = childId(state.root, state.seq);
         state.seq = state.seq + 1;
-        const cached = state.cache.get(id);
-        if (Predicate.isNotUndefined(cached)) {
-          return cached;
+        const cached = HashMap.get(state.cache, id);
+        if (Option.isSome(cached)) {
+          return cached.value;
         }
         const result = yield* tasks.fence(
           {
@@ -434,7 +435,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         );
         addPreload(state, result.preload);
         const promise = yield* actionPromise(result.action);
-        state.cache.set(promise.id, promise);
+        state.cache = HashMap.set(state.cache, promise.id, promise);
         return promise;
       });
 
@@ -450,12 +451,16 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           state.externalPromises.add(declaration.name);
         }
         const id = options?.id ?? declaration.id(state.root);
-        const cached = state.cache.get(id);
-        if (Predicate.isNotUndefined(cached)) {
-          if (cached.state === "pending") {
-            state.attachedRemote.set(cached.id, new SuspendedExecution({ awaited: [cached.id] }));
+        const cached = HashMap.get(state.cache, id);
+        if (Option.isSome(cached)) {
+          if (cached.value.state === "pending") {
+            state.attachedRemote = HashMap.set(
+              state.attachedRemote,
+              cached.value.id,
+              new SuspendedExecution({ awaited: [cached.value.id] }),
+            );
           }
-          return cached;
+          return cached.value;
         }
         const result = yield* tasks.fence(
           {
@@ -486,9 +491,13 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         );
         addPreload(state, result.preload);
         const promise = yield* actionPromise(result.action);
-        state.cache.set(promise.id, promise);
+        state.cache = HashMap.set(state.cache, promise.id, promise);
         if (promise.state === "pending") {
-          state.attachedRemote.set(promise.id, new SuspendedExecution({ awaited: [promise.id] }));
+          state.attachedRemote = HashMap.set(
+            state.attachedRemote,
+            promise.id,
+            new SuspendedExecution({ awaited: [promise.id] }),
+          );
         }
         return promise;
       });
@@ -503,12 +512,16 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         const seqid = childId(state.root, state.seq);
         const id = options?.id ?? (mode === "detached" ? detachedId(state.prefixId, seqid) : seqid);
         state.seq = state.seq + 1;
-        const cached = state.cache.get(id);
-        if (Predicate.isNotUndefined(cached)) {
-          if (mode === "attached" && cached.state === "pending") {
-            state.attachedRemote.set(cached.id, new SuspendedExecution({ awaited: [cached.id] }));
+        const cached = HashMap.get(state.cache, id);
+        if (Option.isSome(cached)) {
+          if (mode === "attached" && cached.value.state === "pending") {
+            state.attachedRemote = HashMap.set(
+              state.attachedRemote,
+              cached.value.id,
+              new SuspendedExecution({ awaited: [cached.value.id] }),
+            );
           }
-          return cached;
+          return cached.value;
         }
         const targetGroup = options?.target ?? state.targetGroup;
         const target =
@@ -549,9 +562,13 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         );
         addPreload(state, result.preload);
         const promise = yield* actionPromise(result.action);
-        state.cache.set(promise.id, promise);
+        state.cache = HashMap.set(state.cache, promise.id, promise);
         if (mode === "attached" && promise.state === "pending") {
-          state.attachedRemote.set(promise.id, new SuspendedExecution({ awaited: [promise.id] }));
+          state.attachedRemote = HashMap.set(
+            state.attachedRemote,
+            promise.id,
+            new SuspendedExecution({ awaited: [promise.id] }),
+          );
         }
         return promise;
       });
@@ -565,12 +582,12 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         await:
           isExternalPromise(promise) && promise.state === "pending"
             ? Effect.suspend(() => {
-                const parked = state.awaiting.get(promise.id);
-                if (Predicate.isNotUndefined(parked)) {
-                  return Effect.fail(parked);
+                const parked = HashMap.get(state.awaiting, promise.id);
+                if (Option.isSome(parked)) {
+                  return Effect.fail(parked.value);
                 }
                 const suspended = new SuspendedExecution({ awaited: [promise.id] });
-                state.awaiting.set(promise.id, suspended);
+                state.awaiting = HashMap.set(state.awaiting, promise.id, suspended);
                 return Effect.fail(suspended);
               })
             : Deferred.await(deferred),
@@ -594,12 +611,12 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
       ): LocalDurableHandle<PromiseSuccess<P>, unknown> => {
         const awaitExternal: Effect.Effect<PromiseSuccess<P>, unknown> = Effect.suspend(() => {
           if (promise.state === "pending") {
-            const parked = state.awaiting.get(promise.id);
-            if (Predicate.isNotUndefined(parked)) {
-              return Effect.fail(parked);
+            const parked = HashMap.get(state.awaiting, promise.id);
+            if (Option.isSome(parked)) {
+              return Effect.fail(parked.value);
             }
             const suspended = new SuspendedExecution({ awaited: [promise.id] });
-            state.awaiting.set(promise.id, suspended);
+            state.awaiting = HashMap.set(state.awaiting, promise.id, suspended);
             return Effect.fail(suspended);
           }
           if (promise.state === "rejected_canceled") {
@@ -735,12 +752,12 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               yield* decodeSettled(promise);
               return;
             }
-            const parked = state.awaiting.get(promise.id);
-            if (Predicate.isNotUndefined(parked)) {
-              return yield* Effect.fail(parked);
+            const parked = HashMap.get(state.awaiting, promise.id);
+            if (Option.isSome(parked)) {
+              return yield* Effect.fail(parked.value);
             }
             const suspended = new SuspendedExecution({ awaited: [promise.id] });
-            state.awaiting.set(promise.id, suspended);
+            state.awaiting = HashMap.set(state.awaiting, promise.id, suspended);
             return yield* suspended;
           },
         );
@@ -857,10 +874,10 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           prefixId: options.promise.tags.reserved["resonate:prefix"] ?? options.promise.id,
           parentId: options.promise.tags.reserved["resonate:parent"] ?? options.promise.id,
           branchId: options.promise.tags.reserved["resonate:branch"] ?? options.promise.id,
-          cache: new Map(),
+          cache: HashMap.empty(),
           children: [],
-          attachedRemote: new Map(),
-          awaiting: new Map(),
+          attachedRemote: HashMap.empty(),
+          awaiting: HashMap.empty(),
           externalPromises: new Set(),
           attempt: 0,
           seq: 0,
@@ -893,7 +910,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           Effect.exit,
         );
         yield* drainChildren(state);
-        const attachedAwaited = [...state.attachedRemote.keys()];
+        const attachedAwaited = Array.from(HashMap.keys(state.attachedRemote));
         if (Exit.isSuccess(exit)) {
           if (Predicate.isTagged(exit.value, "SuspendedExecution")) {
             return new EngineSuspended({ awaited: [...new Set([...attachedAwaited, ...exit.value.awaited])] });

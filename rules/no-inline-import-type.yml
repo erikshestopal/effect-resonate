@@ -1,0 +1,10 @@
+id: no-inline-import-type
+language: TypeScript
+severity: error
+message: Import types at the top of the file and use a local type alias instead of inline import("...").Type references.
+files:
+  - src/**/*.ts
+  - test/**/*.ts
+  - examples/**/*.ts
+rule:
+  pattern: import($PATH).$TYPE

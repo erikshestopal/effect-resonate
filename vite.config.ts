@@ -21,7 +21,7 @@ export default defineConfig({
         command: "vp check --fix",
       },
       "check:ast-grep": {
-        command: "sg scan src test",
+        command: "sg scan src test examples",
       },
       "check:test": {
         command: "bunx --bun vp test run",

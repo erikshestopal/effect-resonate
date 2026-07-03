@@ -1,12 +1,12 @@
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
-import { Crypto, Duration, Effect, Exit, Layer, Predicate, Ref, SchemaParser, Stream } from "effect";
+import { Crypto, Duration, Effect, Exit, HashMap, Layer, Predicate, Ref, SchemaParser, Stream } from "effect";
 import { TaskFenced } from "./Errors.ts";
 import * as NetworkHttp from "./NetworkHttp.ts";
 import { ResonateNetwork } from "./Network.ts";
 import * as Protocol from "./Protocol.ts";
-import { type AnyFunction, type FunctionGroup } from "./Resonate.ts";
-import { ExecutionEngine } from "./ResonateContext.ts";
+import { type AnyFunction, type FunctionGroup, type Handler } from "./Resonate.ts";
+import { type ExecuteOptions, ExecutionEngine } from "./ResonateContext.ts";
 import { SuspendAccepted, Tasks } from "./Task.ts";
 
 export interface WorkerConfig {
@@ -25,10 +25,12 @@ interface HeldTask {
   readonly version: Protocol.TaskVersion;
 }
 
+type WorkerRequirements<F extends AnyFunction> = ResonateNetwork | Crypto.Crypto | Handler<F>;
+
 export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
   group: FunctionGroup<Fns>,
   config: WorkerConfig,
-): Layer.Layer<never, never, ResonateNetwork | Crypto.Crypto | import("./Resonate.ts").Handler<Fns[number]>> =>
+): Layer.Layer<never, never, WorkerRequirements<Fns[number]>> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
       const network = yield* ResonateNetwork;
@@ -39,19 +41,14 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
       const pid = config.pid ?? Protocol.ProcessId.make(yield* Effect.orDie(crypto.randomUUIDv4));
       const ttl = config.ttl ?? Duration.seconds(60);
       const heartbeatEvery = Duration.millis(Math.max(1, Math.floor(Duration.toMillis(ttl) / 2)));
-      const held = yield* Ref.make(new Map<string, HeldTask>());
+      const held = yield* Ref.make(HashMap.empty<Protocol.TaskId, HeldTask>());
 
-      const addHeld = (task: HeldTask) => Ref.update(held, (current) => new Map(current).set(task.id, task));
-      const removeHeld = (id: Protocol.TaskId) =>
-        Ref.update(held, (current) => {
-          const next = new Map(current);
-          next.delete(id);
-          return next;
-        });
+      const addHeld = (task: HeldTask) => Ref.update(held, HashMap.set(task.id, task));
+      const removeHeld = (id: Protocol.TaskId) => Ref.update(held, HashMap.remove(id));
 
       const heartbeat = Effect.gen(function* () {
         const current = yield* Ref.get(held);
-        yield* tasks.heartbeat({ pid, tasks: [...current.values()] }).pipe(Effect.catchCause(() => Effect.void));
+        yield* tasks.heartbeat({ pid, tasks: HashMap.toValues(current) }).pipe(Effect.catchCause(() => Effect.void));
       }).pipe(Effect.delay(heartbeatEvery), Effect.forever);
 
       const suspendActions = (task: Protocol.TaskAcquired, awaited: ReadonlyArray<Protocol.PromiseId>) =>
@@ -68,7 +65,7 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
       const executeUntilBlocked = Effect.fn("Worker.executeUntilBlocked")(function* (
         task: Protocol.TaskAcquired,
         promise: Protocol.PromiseRecord,
-        registry: import("./ResonateContext.ts").ExecuteOptions["registry"],
+        registry: ExecuteOptions["registry"],
         preload: ReadonlyArray<Protocol.PromiseRecord>,
       ) {
         const currentPreload = yield* Ref.make(preload);
@@ -149,7 +146,7 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
 export const layerHttp = <const Fns extends ReadonlyArray<AnyFunction>>(
   group: FunctionGroup<Fns>,
   config: HttpWorkerConfig,
-): Layer.Layer<never, never, import("./Resonate.ts").Handler<Fns[number]>> =>
+): Layer.Layer<never, never, Handler<Fns[number]>> =>
   layer(group, config).pipe(
     Layer.provideMerge(
       NetworkHttp.layer({
