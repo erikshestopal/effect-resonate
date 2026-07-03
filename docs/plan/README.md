@@ -154,7 +154,7 @@ Statuses: `todo` | `in-progress` | `done` | `blocked` (blocked requires a note).
 | 21  | [test-harness](specs/21-test-harness.md)                       | done   | `effect-resonate/testing` exports `ResonateTest.layer`, `snapshot`, `restartWorker`, and `assertInvariants`; the layer bundles local server, worker, client, codec, protocol services, and handlers.      |
 | 22  | [dst-simulator](specs/22-dst-simulator.md)                     | done   | Seeded DST corpus in `test/DstSimulator.test.ts` drives worker restarts, clock steps, yields/reorder points, protocol-op fuzzing, invariant checks, and exactly-once counters; `vp run dst` added.        |
 | 23  | [e2e-interop](specs/23-e2e-interop.md)                         | todo   |                                                                                                                                                                                                           |
-| 24  | [graph-parity](specs/24-graph-parity.md)                       | todo   |                                                                                                                                                                                                           |
+| 24  | [graph-parity](specs/24-graph-parity.md)                       | done   | Graph parity harness asserts deterministic ids, lineage/scope/timer tags, invocation params, detached ids, and replay graph stability; native `resonate tree` parity skips loudly without CLI.            |
 
 ## Protocol conformance tracking
 
