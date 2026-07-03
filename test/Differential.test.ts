@@ -72,7 +72,14 @@ const scenario = Effect.fn("Differential.scenario")(function* (prefix: string) {
         corrId: Protocol.CorrelationId.make(`${prefix}-task-corr`),
         version: Protocol.protocolVersion,
       }),
-      data: promiseCreateData(taskId),
+      data: {
+        ...promiseCreateData(taskId),
+        tags: Protocol.Tags.make({
+          reserved: { "resonate:target": Protocol.TargetAddress.pollAny(Protocol.WorkerGroup.make("differential")) },
+          unrecognized: {},
+          user: {},
+        }),
+      },
     }),
   });
   const schedule = yield* schedules.create({
@@ -100,21 +107,24 @@ const withResonateDev = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E>
   );
 
 describe("differential harness", () => {
-  it.effect("compares local oracle with shipped server when resonate CLI is installed", () =>
-    Effect.gen(function* () {
-      const resonate = Bun.which("resonate");
-      if (resonate === null) {
-        console.warn("[DIFFERENTIAL SKIPPED] resonate CLI not found; install it to run shipped-server parity.");
-        expect(resonate).toBeNull();
-        return;
-      }
+  it.live(
+    "compares local oracle with shipped server when resonate CLI is installed",
+    () =>
+      Effect.gen(function* () {
+        const resonate = Bun.which("resonate");
+        if (resonate === null) {
+          console.warn("[DIFFERENTIAL SKIPPED] resonate CLI not found; install it to run shipped-server parity.");
+          expect(resonate).toBeNull();
+          return;
+        }
 
-      const prefix = `diff-${Date.now()}`;
-      const local = yield* scenario(prefix).pipe(Effect.provide(localRunLayer));
-      const live = yield* withResonateDev(
-        scenario(prefix).pipe(Effect.provide(liveRunLayer(Protocol.ProcessId.make(`${prefix}-live`)))),
-      );
-      expect(live).toEqual(local);
-    }),
+        const prefix = `diff-${Date.now()}`;
+        const local = yield* scenario(prefix).pipe(Effect.provide(localRunLayer));
+        const live = yield* withResonateDev(
+          scenario(prefix).pipe(Effect.provide(liveRunLayer(Protocol.ProcessId.make(`${prefix}-live`)))),
+        );
+        expect(live).toEqual(local);
+      }),
+    30_000,
   );
 });

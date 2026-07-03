@@ -66,28 +66,35 @@ const withResonateDev = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E>
   );
 
 describe("E2E interop", () => {
-  it.effect("runs shipped-server quickstart and interop gate when resonate is installed", () =>
-    Effect.gen(function* () {
-      const resonate = Bun.which("resonate");
-      if (resonate === null) {
-        console.warn("[E2E SKIPPED] resonate CLI not found; install it to run shipped-server interop.");
-        expect(resonate).toBeNull();
-        return;
-      }
+  it.live(
+    "runs shipped-server quickstart and interop gate when resonate is installed",
+    () =>
+      Effect.gen(function* () {
+        const resonate = Bun.which("resonate");
+        if (resonate === null) {
+          console.warn("[E2E SKIPPED] resonate CLI not found; install it to run shipped-server interop.");
+          expect(resonate).toBeNull();
+          return;
+        }
 
-      const group = Protocol.WorkerGroup.make(`e2e-${Date.now()}`);
-      const pid = Protocol.ProcessId.make("worker-1");
-      yield* withResonateDev(
-        Effect.gen(function* () {
-          const client = yield* Resonate.ResonateClient;
-          const countdown = yield* client.beginRpc(Countdown, Protocol.ExecutionId.make(`${group}-countdown`), [1, 1]);
-          const echo = yield* client.beginRpc(Echo, Protocol.ExecutionId.make(`${group}-echo`), ["ok"]);
+        const group = Protocol.WorkerGroup.make(`e2e-${Date.now()}`);
+        const pid = Protocol.ProcessId.make("worker-1");
+        yield* withResonateDev(
+          Effect.gen(function* () {
+            const client = yield* Resonate.ResonateClient;
+            const countdown = yield* client.beginRpc(
+              Countdown,
+              Protocol.ExecutionId.make(`${group}-countdown`),
+              [1, 1],
+            );
+            const echo = yield* client.beginRpc(Echo, Protocol.ExecutionId.make(`${group}-echo`), ["ok"]);
 
-          yield* Effect.sleep(Duration.seconds(3));
-          expect(yield* countdown.await).toBe("done");
-          expect(yield* echo.await).toBe("echo:ok");
-        }).pipe(Effect.provide(liveLayer(group, pid))),
-      );
-    }),
+            yield* Effect.sleep(Duration.seconds(3));
+            expect(yield* countdown.await).toBe("done");
+            expect(yield* echo.await).toBe("echo:ok");
+          }).pipe(Effect.provide(liveLayer(group, pid))),
+        );
+      }),
+    30_000,
   );
 });
