@@ -2,7 +2,8 @@ import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import { Effect, Exit, Option, Predicate, Schema, SchemaParser, Stream } from "effect";
 import { TransportError } from "../src/Errors.ts";
-import { checkEnvelope, makeRequestHead, ResonateNetwork } from "../src/network/network.ts";
+import { decodeResponse, ResonateNetwork } from "../src/network/network.ts";
+import { makeRequestHead } from "../src/testing.ts";
 import * as Protocol from "../src/Protocol.ts";
 import { TestNetwork } from "../src/testing.ts";
 
@@ -38,9 +39,9 @@ describe("envelope helpers", () => {
         head: { corrId: Protocol.CorrelationId.make("someone-else"), status: 404, version: "2026-04-01" },
         data: "not found",
       });
-      const exit = yield* Effect.exit(checkEnvelope(request)(response));
+      const exit = yield* Effect.exit(decodeResponse(request)(response));
       expect(Exit.isFailure(exit)).toBe(true);
-      const error = yield* Effect.flip(checkEnvelope(request)(response));
+      const error = yield* Effect.flip(decodeResponse(request)(response));
       expect(Predicate.isTagged(error, "TransportError")).toBe(true);
       expect(error.reason).toBe("CorrelationMismatch");
     }).pipe(Effect.provide(BunCrypto.layer)),
@@ -56,7 +57,7 @@ describe("envelope helpers", () => {
           head: { corrId: head.corrId, status, version: "2026-04-01" },
           data: "denied",
         });
-        const error = yield* Effect.flip(checkEnvelope(request)(response));
+        const error = yield* Effect.flip(decodeResponse(request)(response));
         expect(error.reason).toBe("Unauthorized");
       }
     }).pipe(Effect.provide(BunCrypto.layer)),
@@ -71,7 +72,7 @@ describe("envelope helpers", () => {
         head: { corrId: head.corrId, status: 404, version: "2026-04-01" },
         data: "not found",
       });
-      expect(yield* checkEnvelope(request)(notFound)).toBe(notFound);
+      expect(yield* decodeResponse(request)(notFound)).toEqual(notFound);
     }).pipe(Effect.provide(BunCrypto.layer)),
   );
 });

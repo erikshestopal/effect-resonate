@@ -416,24 +416,6 @@ interface Transition<R extends Protocol.Response = Protocol.Response> {
   readonly emitted: ReadonlyArray<OutboxEntry>;
 }
 
-const head = (request: Protocol.Request, status: 200) => ({
-  corrId: request.head.corrId,
-  status,
-  version: request.head.version,
-});
-
-const errorHead = (request: Protocol.Request, status: 400 | 404 | 409 | 422 | 501) => ({
-  corrId: request.head.corrId,
-  status,
-  version: request.head.version,
-});
-
-const redirectHead = (request: Protocol.Request, status: 300) => ({
-  corrId: request.head.corrId,
-  status,
-  version: request.head.version,
-});
-
 const promiseGet = (state: ServerState, now: DateTime.Utc, request: Protocol.Request<"promise.get">): Transition => {
   const promise = HashMap.get(state.promises, request.data.id);
   if (Option.isNone(promise)) {
@@ -441,7 +423,7 @@ const promiseGet = (state: ServerState, now: DateTime.Utc, request: Protocol.Req
       state,
       response: Protocol.PromiseGetResponse.make({
         kind: "promise.get",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Promise not found",
       }),
       emitted: [],
@@ -451,7 +433,7 @@ const promiseGet = (state: ServerState, now: DateTime.Utc, request: Protocol.Req
     state,
     response: Protocol.PromiseGetResponse.make({
       kind: "promise.get",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: { promise: promise.value.projected(now).toRecord() },
     }),
     emitted: [],
@@ -471,7 +453,7 @@ const promiseCreate = (
     state: next.state,
     response: Protocol.PromiseCreateResponse.make({
       kind: "promise.create",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: { promise: promise.toRecord() },
     }),
     emitted: next.emitted,
@@ -573,7 +555,7 @@ const promiseSettle = (
     state: next.state,
     response: Protocol.PromiseSettleResponse.make({
       kind: "promise.settle",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: { promise: promise.toRecord() },
     }),
     emitted: next.emitted,
@@ -585,7 +567,7 @@ const promiseSettle = (
       state,
       response: Protocol.PromiseSettleResponse.make({
         kind: "promise.settle",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Promise not found",
       }),
       emitted: [],
@@ -629,7 +611,7 @@ const promiseRegisterCallback = (
     state,
     response: Protocol.PromiseRegisterCallbackResponse.make({
       kind: "promise.register_callback",
-      head: errorHead(request, status),
+      head: { corrId: request.head.corrId, status, version: request.head.version },
       data: message,
     }),
     emitted: [],
@@ -638,7 +620,7 @@ const promiseRegisterCallback = (
     state: next,
     response: Protocol.PromiseRegisterCallbackResponse.make({
       kind: "promise.register_callback",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: { promise: promise.toRecord() },
     }),
     emitted: [],
@@ -687,7 +669,7 @@ const promiseRegisterListener = (
     state: next,
     response: Protocol.PromiseRegisterListenerResponse.make({
       kind: "promise.register_listener",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: { promise: promise.toRecord() },
     }),
     emitted: [],
@@ -699,7 +681,7 @@ const promiseRegisterListener = (
       state,
       response: Protocol.PromiseRegisterListenerResponse.make({
         kind: "promise.register_listener",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Awaited promise not found",
       }),
       emitted: [],
@@ -733,7 +715,7 @@ const taskGet = (state: ServerState, now: DateTime.Utc, request: Protocol.Reques
       state,
       response: Protocol.TaskGetResponse.make({
         kind: "task.get",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Task not found",
       }),
       emitted: [],
@@ -752,7 +734,7 @@ const taskGet = (state: ServerState, now: DateTime.Utc, request: Protocol.Reques
     state,
     response: Protocol.TaskGetResponse.make({
       kind: "task.get",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: { task: projected.toRecord() },
     }),
     emitted: [],
@@ -764,7 +746,7 @@ const taskCreate = (state: ServerState, now: DateTime.Utc, request: Protocol.Req
     state: next.state,
     response: Protocol.TaskCreateResponse.make({
       kind: "task.create",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: Option.isSome(task)
         ? {
             task: task.value.toRecord(),
@@ -786,7 +768,11 @@ const taskCreate = (state: ServerState, now: DateTime.Utc, request: Protocol.Req
         state,
         response: Protocol.TaskCreateResponse.make({
           kind: "task.create",
-          head: errorHead(request, Option.isSome(existingPromise.value.target) ? 409 : 422),
+          head: {
+            corrId: request.head.corrId,
+            status: Option.isSome(existingPromise.value.target) ? 409 : 422,
+            version: request.head.version,
+          },
           data: Option.isSome(existingPromise.value.target) ? "Promise already exists" : "Promise has no address",
         }),
         emitted: [],
@@ -813,7 +799,7 @@ const taskCreate = (state: ServerState, now: DateTime.Utc, request: Protocol.Req
         state,
         response: Protocol.TaskCreateResponse.make({
           kind: "task.create",
-          head: errorHead(request, 409),
+          head: { corrId: request.head.corrId, status: 409, version: request.head.version },
           data: "Task already exists",
         }),
         emitted: [],
@@ -879,7 +865,7 @@ const taskAcquire = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
       state,
       response: Protocol.TaskAcquireResponse.make({
         kind: "task.acquire",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Task not found",
       }),
       emitted: [],
@@ -891,7 +877,7 @@ const taskAcquire = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
       state,
       response: Protocol.TaskAcquireResponse.make({
         kind: "task.acquire",
-        head: errorHead(request, 409),
+        head: { corrId: request.head.corrId, status: 409, version: request.head.version },
         data: "Task not pending",
       }),
       emitted: [],
@@ -914,7 +900,7 @@ const taskAcquire = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
     state: next,
     response: Protocol.TaskAcquireResponse.make({
       kind: "task.acquire",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: {
         task: acquired.toRecord(),
         promise: promise.value.toRecord(),
@@ -953,7 +939,7 @@ const taskRelease = (
       state,
       response: Protocol.TaskReleaseResponse.make({
         kind: "task.release",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Task not found",
       }),
       emitted: [],
@@ -965,7 +951,7 @@ const taskRelease = (
       state,
       response: Protocol.TaskReleaseResponse.make({
         kind: "task.release",
-        head: errorHead(request, 409),
+        head: { corrId: request.head.corrId, status: 409, version: request.head.version },
         data: "Task not acquired",
       }),
       emitted: [],
@@ -987,7 +973,7 @@ const taskRelease = (
     state: output.state,
     response: Protocol.TaskReleaseResponse.make({
       kind: "task.release",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: {},
     }),
     emitted: output.emitted,
@@ -1001,7 +987,7 @@ const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
       state,
       response: Protocol.TaskSuspendResponse.make({
         kind: "task.suspend",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Task not found",
       }),
       emitted: [],
@@ -1017,7 +1003,7 @@ const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
       state,
       response: Protocol.TaskSuspendResponse.make({
         kind: "task.suspend",
-        head: errorHead(request, 400),
+        head: { corrId: request.head.corrId, status: 400, version: request.head.version },
         data: "Malformed suspend",
       }),
       emitted: [],
@@ -1029,7 +1015,7 @@ const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
       state,
       response: Protocol.TaskSuspendResponse.make({
         kind: "task.suspend",
-        head: errorHead(request, 409),
+        head: { corrId: request.head.corrId, status: 409, version: request.head.version },
         data: "Task not acquired",
       }),
       emitted: [],
@@ -1044,7 +1030,7 @@ const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
         state,
         response: Protocol.TaskSuspendResponse.make({
           kind: "task.suspend",
-          head: errorHead(request, 422),
+          head: { corrId: request.head.corrId, status: 422, version: request.head.version },
           data: "Awaited promise not found",
         }),
         emitted: [],
@@ -1063,7 +1049,7 @@ const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
       state: next,
       response: Protocol.TaskSuspendResponse.make({
         kind: "task.suspend",
-        head: redirectHead(request, 300),
+        head: { corrId: request.head.corrId, status: 300, version: request.head.version },
         data: { preload: preload(next, request.data.id) },
       }),
       emitted: [],
@@ -1092,7 +1078,7 @@ const taskSuspend = (state: ServerState, now: DateTime.Utc, request: Protocol.Re
     state: next,
     response: Protocol.TaskSuspendResponse.make({
       kind: "task.suspend",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: {},
     }),
     emitted: [],
@@ -1106,7 +1092,7 @@ const taskHalt = (state: ServerState, request: Protocol.Request<"task.halt">): T
       state,
       response: Protocol.TaskHaltResponse.make({
         kind: "task.halt",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Task not found",
       }),
       emitted: [],
@@ -1117,7 +1103,7 @@ const taskHalt = (state: ServerState, request: Protocol.Request<"task.halt">): T
       state,
       response: Protocol.TaskHaltResponse.make({
         kind: "task.halt",
-        head: errorHead(request, 409),
+        head: { corrId: request.head.corrId, status: 409, version: request.head.version },
         data: "Task is fulfilled",
       }),
       emitted: [],
@@ -1128,7 +1114,7 @@ const taskHalt = (state: ServerState, request: Protocol.Request<"task.halt">): T
       state,
       response: Protocol.TaskHaltResponse.make({
         kind: "task.halt",
-        head: head(request, 200),
+        head: { corrId: request.head.corrId, status: 200, version: request.head.version },
         data: {},
       }),
       emitted: [],
@@ -1144,7 +1130,7 @@ const taskHalt = (state: ServerState, request: Protocol.Request<"task.halt">): T
     state: delTaskTimeout(setTask(state, halted), halted.id),
     response: Protocol.TaskHaltResponse.make({
       kind: "task.halt",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: {},
     }),
     emitted: [],
@@ -1163,7 +1149,7 @@ const taskContinue = (
       state,
       response: Protocol.TaskContinueResponse.make({
         kind: "task.continue",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Task not found",
       }),
       emitted: [],
@@ -1174,7 +1160,7 @@ const taskContinue = (
       state,
       response: Protocol.TaskContinueResponse.make({
         kind: "task.continue",
-        head: errorHead(request, 409),
+        head: { corrId: request.head.corrId, status: 409, version: request.head.version },
         data: "Task is not halted",
       }),
       emitted: [],
@@ -1185,7 +1171,7 @@ const taskContinue = (
       state,
       response: Protocol.TaskContinueResponse.make({
         kind: "task.continue",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Promise not found",
       }),
       emitted: [],
@@ -1202,7 +1188,7 @@ const taskContinue = (
     state: output.state,
     response: Protocol.TaskContinueResponse.make({
       kind: "task.continue",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: {},
     }),
     emitted: output.emitted,
@@ -1221,7 +1207,7 @@ const taskFulfill = (
       state,
       response: Protocol.TaskFulfillResponse.make({
         kind: "task.fulfill",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Task not found",
       }),
       emitted: [],
@@ -1233,7 +1219,7 @@ const taskFulfill = (
       state,
       response: Protocol.TaskFulfillResponse.make({
         kind: "task.fulfill",
-        head: errorHead(request, 409),
+        head: { corrId: request.head.corrId, status: 409, version: request.head.version },
         data: "Task not acquired",
       }),
       emitted: [],
@@ -1261,7 +1247,7 @@ const taskFulfill = (
     state: output.state,
     response: Protocol.TaskFulfillResponse.make({
       kind: "task.fulfill",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: { promise: settled.toRecord() },
     }),
     emitted: output.emitted,
@@ -1280,7 +1266,7 @@ const taskFence = (
       state,
       response: Protocol.TaskFenceResponse.make({
         kind: "task.fence",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Task not found",
       }),
       emitted: [],
@@ -1291,7 +1277,7 @@ const taskFence = (
       state,
       response: Protocol.TaskFenceResponse.make({
         kind: "task.fence",
-        head: errorHead(request, 409),
+        head: { corrId: request.head.corrId, status: 409, version: request.head.version },
         data: "Fence check failed",
       }),
       emitted: [],
@@ -1303,7 +1289,7 @@ const taskFence = (
       state: inner.state,
       response: Protocol.TaskFenceResponse.make({
         kind: "task.fence",
-        head: head(request, 200),
+        head: { corrId: request.head.corrId, status: 200, version: request.head.version },
         data: { action: inner.response, preload: preload(inner.state, request.data.id) },
       }),
       emitted: inner.emitted,
@@ -1314,7 +1300,7 @@ const taskFence = (
     state: inner.state,
     response: Protocol.TaskFenceResponse.make({
       kind: "task.fence",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: { action: inner.response, preload: preload(inner.state, request.data.id) },
     }),
     emitted: inner.emitted,
@@ -1350,7 +1336,7 @@ const taskHeartbeat = (
     state: next,
     response: Protocol.TaskHeartbeatResponse.make({
       kind: "task.heartbeat",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: {},
     }),
     emitted: [],
@@ -1380,12 +1366,6 @@ const parseCron = (cron: string): Option.Option<Cron.Cron> => {
   return Option.some(parsed.success);
 };
 
-const nextCron = (cron: Cron.Cron, now: DateTime.Utc): DateTime.Utc =>
-  DateTime.makeUnsafe(Cron.next(cron, now).getTime());
-
-const expandTemplate = (template: string, id: Protocol.ScheduleId, timestamp: DateTime.Utc): string =>
-  template.replaceAll("{{.id}}", id).replaceAll("{{.timestamp}}", String(millis(timestamp)));
-
 const scheduleGet = (state: ServerState, request: Protocol.Request<"schedule.get">): Transition => {
   const schedule = HashMap.get(state.schedules, request.data.id);
   if (Option.isNone(schedule)) {
@@ -1393,7 +1373,7 @@ const scheduleGet = (state: ServerState, request: Protocol.Request<"schedule.get
       state,
       response: Protocol.ScheduleGetResponse.make({
         kind: "schedule.get",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Schedule not found",
       }),
       emitted: [],
@@ -1403,7 +1383,7 @@ const scheduleGet = (state: ServerState, request: Protocol.Request<"schedule.get
     state,
     response: Protocol.ScheduleGetResponse.make({
       kind: "schedule.get",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: { schedule: schedule.value.toRecord() },
     }),
     emitted: [],
@@ -1421,7 +1401,7 @@ const scheduleCreate = (
       state,
       response: Protocol.ScheduleCreateResponse.make({
         kind: "schedule.create",
-        head: head(request, 200),
+        head: { corrId: request.head.corrId, status: 200, version: request.head.version },
         data: { schedule: existing.value.toRecord() },
       }),
       emitted: [],
@@ -1433,7 +1413,7 @@ const scheduleCreate = (
       state,
       response: Protocol.ScheduleCreateResponse.make({
         kind: "schedule.create",
-        head: errorHead(request, 400),
+        head: { corrId: request.head.corrId, status: 400, version: request.head.version },
         data: "Invalid cron expression",
       }),
       emitted: [],
@@ -1447,7 +1427,7 @@ const scheduleCreate = (
     promiseParam: request.data.promiseParam,
     promiseTags: request.data.promiseTags,
     createdAt: now,
-    nextRunAt: nextCron(cron.value, now),
+    nextRunAt: DateTime.makeUnsafe(Cron.next(cron.value, now).getTime()),
     lastRunAt: Option.none(),
   });
   let next = setSchedule(state, schedule);
@@ -1456,7 +1436,7 @@ const scheduleCreate = (
     state: next,
     response: Protocol.ScheduleCreateResponse.make({
       kind: "schedule.create",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: { schedule: schedule.toRecord() },
     }),
     emitted: [],
@@ -1469,7 +1449,7 @@ const scheduleDelete = (state: ServerState, request: Protocol.Request<"schedule.
       state,
       response: Protocol.ScheduleDeleteResponse.make({
         kind: "schedule.delete",
-        head: errorHead(request, 404),
+        head: { corrId: request.head.corrId, status: 404, version: request.head.version },
         data: "Schedule not found",
       }),
       emitted: [],
@@ -1480,7 +1460,7 @@ const scheduleDelete = (state: ServerState, request: Protocol.Request<"schedule.
     state: next,
     response: Protocol.ScheduleDeleteResponse.make({
       kind: "schedule.delete",
-      head: head(request, 200),
+      head: { corrId: request.head.corrId, status: 200, version: request.head.version },
       data: {},
     }),
     emitted: [],
@@ -1507,7 +1487,9 @@ const catchUpSchedule = (
   let current = schedule;
   while (millis(current.nextRunAt) <= millis(now)) {
     const cronTime = current.nextRunAt;
-    const promiseId = Protocol.PromiseId.make(expandTemplate(current.promiseId, current.id, cronTime));
+    const promiseId = Protocol.PromiseId.make(
+      current.promiseId.replaceAll("{{.id}}", current.id).replaceAll("{{.timestamp}}", String(millis(cronTime))),
+    );
     const transition = promiseCreate(
       output.state,
       cronTime,
@@ -1530,7 +1512,7 @@ const catchUpSchedule = (
     current = new ScheduleObject({
       ...current.fields,
       lastRunAt: Option.some(cronTime),
-      nextRunAt: nextCron(cron.value, cronTime),
+      nextRunAt: DateTime.makeUnsafe(Cron.next(cron.value, cronTime).getTime()),
     });
   }
 
@@ -1710,7 +1692,7 @@ const apply = (
         state,
         response: Protocol.PromiseSearchResponse.make({
           kind: "promise.search",
-          head: errorHead(request, 501),
+          head: { corrId: request.head.corrId, status: 501, version: request.head.version },
           data: "Not implemented",
         }),
         emitted: [],
@@ -1719,7 +1701,7 @@ const apply = (
         state,
         response: Protocol.DebugStartResponse.make({
           kind: "debug.start",
-          head: head(request, 200),
+          head: { corrId: request.head.corrId, status: 200, version: request.head.version },
           data: {},
         }),
         emitted: [],
@@ -1728,7 +1710,7 @@ const apply = (
         state,
         response: Protocol.DebugStopResponse.make({
           kind: "debug.stop",
-          head: head(request, 200),
+          head: { corrId: request.head.corrId, status: 200, version: request.head.version },
           data: {},
         }),
         emitted: [],
@@ -1737,7 +1719,7 @@ const apply = (
         state: initialState,
         response: Protocol.DebugResetResponse.make({
           kind: "debug.reset",
-          head: head(request, 200),
+          head: { corrId: request.head.corrId, status: 200, version: request.head.version },
           data: {},
         }),
         emitted: [],
@@ -1748,7 +1730,7 @@ const apply = (
           state: result.state,
           response: Protocol.DebugTickResponse.make({
             kind: "debug.tick",
-            head: head(request, 200),
+            head: { corrId: request.head.corrId, status: 200, version: request.head.version },
             data: result.actions,
           }),
           emitted: result.emitted,
@@ -1758,7 +1740,7 @@ const apply = (
         state,
         response: Protocol.DebugSnapResponse.make({
           kind: "debug.snap",
-          head: head(request, 200),
+          head: { corrId: request.head.corrId, status: 200, version: request.head.version },
           data: {
             promises: [...HashMap.values(state.promises)].map((promise) => promise.toRecord()),
             promiseTimeouts: [...HashMap.entries(state.promiseTimeouts)].map(([id, at]) => ({
@@ -1799,7 +1781,7 @@ const apply = (
         state,
         response: Protocol.TaskSearchResponse.make({
           kind: "task.search",
-          head: errorHead(request, 501),
+          head: { corrId: request.head.corrId, status: 501, version: request.head.version },
           data: "Not implemented",
         }),
         emitted: [],
@@ -1811,7 +1793,7 @@ const apply = (
         state,
         response: Protocol.ScheduleSearchResponse.make({
           kind: "schedule.search",
-          head: errorHead(request, 501),
+          head: { corrId: request.head.corrId, status: 501, version: request.head.version },
           data: "Not implemented",
         }),
         emitted: [],
@@ -1841,16 +1823,13 @@ export const layer = (options?: NetworkLocalOptions): Layer.Layer<ResonateNetwor
       const ref = yield* Ref.make(initialState);
       const queue = yield* Queue.unbounded<Protocol.Message>();
 
-      const deliver = (emitted: ReadonlyArray<OutboxEntry>) =>
-        Effect.forEach(emitted, (entry) => Queue.offer(queue, entry.message), { discard: true });
-
       const applyRequest = Effect.fn("NetworkLocal.apply")(function* (request: Protocol.Request) {
         const now = yield* DateTime.now;
         const [response, emitted] = yield* Ref.modify(ref, (state) => {
           const transition = apply(state, now, retryTimeout, request);
           return [[transition.response, transition.emitted] as const, transition.state];
         });
-        yield* deliver(emitted);
+        yield* Effect.forEach(emitted, (entry) => Queue.offer(queue, entry.message), { discard: true });
         return response;
       });
 
@@ -1860,7 +1839,7 @@ export const layer = (options?: NetworkLocalOptions): Layer.Layer<ResonateNetwor
           const result = tick(state, now, retryTimeout);
           return [result.emitted, result.state];
         });
-        yield* deliver(emitted);
+        yield* Effect.forEach(emitted, (entry) => Queue.offer(queue, entry.message), { discard: true });
       }).pipe(Effect.delay(tickInterval), Effect.forever, Effect.forkScoped);
 
       return ResonateNetwork.of({

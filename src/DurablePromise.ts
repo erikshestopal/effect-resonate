@@ -108,17 +108,6 @@ export class DurablePromises extends Context.Service<DurablePromises, DurablePro
         return yield* Effect.fail(promiseError(data.awaited, response.head.status, response.data));
       });
 
-      const settledFor = (id: Protocol.PromiseId) =>
-        Filter.fromPredicateOption((message: Protocol.Message): Option.Option<Protocol.PromiseSettled> => {
-          if (message.kind !== "unblock" || message.data.promise.id !== id) {
-            return Option.none();
-          }
-          if (message.data.promise.state === "pending") {
-            return Option.none();
-          }
-          return Option.some(message.data.promise);
-        });
-
       const awaitSettled: DurablePromisesService["awaitSettled"] = Effect.fn("DurablePromises.awaitSettled")(
         function* (id) {
           const observed = yield* Effect.gen(function* () {
@@ -126,9 +115,22 @@ export class DurablePromises extends Context.Service<DurablePromises, DurablePro
             if (promise.state !== "pending") {
               return Option.some(promise);
             }
-            return yield* Stream.runHead(network.messages.pipe(Stream.filterMap(settledFor(id)), Stream.take(1))).pipe(
-              Effect.race(Effect.as(Effect.sleep(Duration.seconds(60)), Option.none<Protocol.PromiseSettled>())),
-            );
+            return yield* Stream.runHead(
+              network.messages.pipe(
+                Stream.filterMap(
+                  Filter.fromPredicateOption((message: Protocol.Message): Option.Option<Protocol.PromiseSettled> => {
+                    if (message.kind !== "unblock" || message.data.promise.id !== id) {
+                      return Option.none();
+                    }
+                    if (message.data.promise.state === "pending") {
+                      return Option.none();
+                    }
+                    return Option.some(message.data.promise);
+                  }),
+                ),
+                Stream.take(1),
+              ),
+            ).pipe(Effect.race(Effect.as(Effect.sleep(Duration.seconds(60)), Option.none<Protocol.PromiseSettled>())));
           }).pipe(Effect.repeat({ until: Option.isSome }), Effect.retry(Schedule.spaced(Duration.seconds(5))));
           return yield* Option.match(observed, {
             onNone: () => Effect.die("DurablePromises.awaitSettled repeated without observing settlement"),

@@ -67,6 +67,12 @@ export const assertInvariants = Effect.fn("assertInvariants")(function* (state: 
   }
 });
 
+export const makeRequestHead: Effect.Effect<Protocol.RequestHead, never, Crypto.Crypto> = Effect.gen(function* () {
+  const crypto = yield* Crypto.Crypto;
+  const corrId = Protocol.CorrelationId.make(yield* Effect.orDie(crypto.randomUUIDv4));
+  return Protocol.RequestHead.make({ corrId, version: Protocol.protocolVersion });
+});
+
 export type TestNetworkHandler = (request: Protocol.Request) => Effect.Effect<Protocol.Response, TransportError>;
 
 export interface TestNetworkService {

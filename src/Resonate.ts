@@ -65,36 +65,13 @@ const RegistryTypeId = "effect-resonate/Registry";
 const FunctionGroupTypeId = "effect-resonate/FunctionGroup";
 
 export interface Registry {
-  new (_: never): {};
   readonly [RegistryTypeId]: typeof RegistryTypeId;
   readonly items: ReadonlyArray<RegistryItem>;
   readonly pipe: typeof Pipeable.Prototype.pipe;
   readonly get: (name: string, version?: Protocol.FunctionVersionOrLatest) => Option.Option<RegistryItem>;
 }
 
-const RegistryProto = {
-  ...Pipeable.Prototype,
-  get(this: Registry, name: string, version: Protocol.FunctionVersionOrLatest = "latest") {
-    const named = this.items.filter((item) => item.definition.name === name);
-    if (named.length === 0) {
-      return Option.none();
-    }
-    if (version !== "latest") {
-      return Option.fromNullishOr(named.find((item) => item.definition.version === version));
-    }
-    return Option.some(
-      named.reduce((left, right) => (left.definition.version > right.definition.version ? left : right)),
-    );
-  },
-};
-
-const makeRegistryProto = (items: ReadonlyArray<RegistryItem>): Registry =>
-  Object.assign(function () {}, RegistryProto, {
-    [RegistryTypeId]: RegistryTypeId,
-    items,
-  }) as unknown as Registry;
-
-const makeRegistry = (items: ReadonlyArray<RegistryItem>): Effect.Effect<Registry> => {
+export const makeRegistry = (items: ReadonlyArray<RegistryItem>): Effect.Effect<Registry> => {
   const seen = new Set<string>();
   for (const item of items) {
     const key = `${item.definition.name}:${item.definition.version}`;
@@ -105,11 +82,27 @@ const makeRegistry = (items: ReadonlyArray<RegistryItem>): Effect.Effect<Registr
     }
     seen.add(key);
   }
-  return Effect.succeed(makeRegistryProto(items));
+
+  return Effect.succeed({
+    ...Pipeable.Prototype,
+    [RegistryTypeId]: RegistryTypeId,
+    items,
+    get(name, version = "latest") {
+      const named = items.filter((item) => item.definition.name === name);
+      if (named.length === 0) {
+        return Option.none();
+      }
+      if (version !== "latest") {
+        return Option.fromNullishOr(named.find((item) => item.definition.version === version));
+      }
+      return Option.some(
+        named.reduce((left, right) => (left.definition.version > right.definition.version ? left : right)),
+      );
+    },
+  });
 };
 
 export interface FunctionGroup<Fns extends ReadonlyArray<AnyFunction>> {
-  new (_: never): {};
   readonly [FunctionGroupTypeId]: typeof FunctionGroupTypeId;
   readonly fns: Fns;
   readonly pipe: typeof Pipeable.Prototype.pipe;
@@ -143,64 +136,6 @@ const functionGroupToContext = <
   return Effect.as(makeRegistry(items), context);
 };
 
-const FunctionGroupProto = {
-  ...Pipeable.Prototype,
-  of: <const Handlers extends HandlersFrom<AnyFunction>>(handlers: Handlers): Handlers => handlers,
-  toLayer<
-    const Fns extends ReadonlyArray<AnyFunction>,
-    const Handlers extends HandlersFrom<Fns[number]>,
-    E = never,
-    R = never,
-  >(
-    this: FunctionGroup<Fns>,
-    build: Handlers | Effect.Effect<Handlers, E, R>,
-  ): Layer.Layer<Handler<Fns[number]>, E, R> {
-    return Layer.effectContext(
-      (Effect.isEffect(build) ? build : Effect.succeed(build)).pipe(
-        Effect.flatMap((handlers) => functionGroupToContext(this, handlers)),
-      ),
-    );
-  },
-  toLayerHandler<
-    const Fns extends ReadonlyArray<AnyFunction>,
-    const Name extends Fns[number]["name"],
-    E = never,
-    R = never,
-  >(
-    this: FunctionGroup<Fns>,
-    name: Name,
-    build:
-      | HandlerFunction<Extract<Fns[number], { readonly name: Name }>>
-      | Effect.Effect<HandlerFunction<Extract<Fns[number], { readonly name: Name }>>, E, R>,
-  ): Layer.Layer<Handler<Extract<Fns[number], { readonly name: Name }>>, E, R> {
-    const definition = this.fns.find((fn) => fn.name === name);
-    if (Predicate.isUndefined(definition)) {
-      return Layer.effectContext(Effect.die(`Function '${name}' is not part of this group`));
-    }
-    return Layer.effect(Handler(definition), Effect.isEffect(build) ? build : Effect.succeed(build));
-  },
-
-  registry<Fns extends ReadonlyArray<AnyFunction>>(
-    this: FunctionGroup<Fns>,
-  ): Effect.Effect<Registry, never, Handler<Fns[number]>> {
-    const fns = this.fns;
-    return Effect.gen(function* () {
-      const items: Array<RegistryItem> = [];
-      for (const definition of fns) {
-        const handler = yield* Handler(definition);
-        items.push({ definition, handler });
-      }
-      return yield* makeRegistry(items);
-    });
-  },
-};
-
-const makeFunctionGroupProto = <Fns extends ReadonlyArray<AnyFunction>>(fns: Fns): FunctionGroup<Fns> =>
-  Object.assign(function () {}, FunctionGroupProto, {
-    [FunctionGroupTypeId]: FunctionGroupTypeId,
-    fns,
-  }) as unknown as FunctionGroup<Fns>;
-
 export const defineFunction = <const Name extends string, Payload extends Schema.Codec<unknown, unknown, never, never>>(
   name: Name,
   options: { readonly payload: Payload; readonly version?: number | Protocol.FunctionVersion },
@@ -212,8 +147,36 @@ export const defineFunction = <const Name extends string, Payload extends Schema
 
 export { defineFunction as function };
 
-export const group = <const Fns extends ReadonlyArray<AnyFunction>>(...fns: Fns): FunctionGroup<Fns> =>
-  makeFunctionGroupProto(fns);
+export const group = <const Fns extends ReadonlyArray<AnyFunction>>(...fns: Fns): FunctionGroup<Fns> => ({
+  ...Pipeable.Prototype,
+  [FunctionGroupTypeId]: FunctionGroupTypeId,
+  fns,
+  of: (handlers) => handlers,
+  toLayer(build) {
+    return Layer.effectContext(
+      (Effect.isEffect(build) ? build : Effect.succeed(build)).pipe(
+        Effect.flatMap((handlers) => functionGroupToContext(this, handlers)),
+      ),
+    );
+  },
+  toLayerHandler(name, build) {
+    const definition = fns.find((fn) => fn.name === name);
+    if (Predicate.isUndefined(definition)) {
+      return Layer.effectContext(Effect.die(`Function '${name}' is not part of this group`));
+    }
+    return Layer.effect(Handler(definition), Effect.isEffect(build) ? build : Effect.succeed(build));
+  },
+  registry() {
+    return Effect.gen(function* () {
+      const items: Array<RegistryItem> = [];
+      for (const definition of fns) {
+        const handler = yield* Handler(definition);
+        items.push({ definition, handler });
+      }
+      return yield* makeRegistry(items);
+    });
+  },
+});
 
 export interface ScheduleOptions<F extends AnyFunction> {
   readonly id: Protocol.ScheduleId;

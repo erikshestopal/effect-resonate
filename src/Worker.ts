@@ -48,17 +48,6 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
         yield* tasks.heartbeat({ pid, tasks: HashMap.toValues(current) }).pipe(Effect.catchCause(() => Effect.void));
       }).pipe(Effect.delay(heartbeatEvery), Effect.forever);
 
-      const suspendActions = (task: Protocol.TaskAcquired, awaited: ReadonlyArray<Protocol.PromiseId>) =>
-        awaited.map((id) =>
-          Protocol.PromiseRegisterCallbackRequest.make({
-            head: Protocol.RequestHead.make({
-              corrId: Protocol.CorrelationId.make(`${task.id}:${id}:callback`),
-              version: Protocol.protocolVersion,
-            }),
-            data: { awaited: id, awaiter: task.id },
-          }),
-        );
-
       const executeUntilBlocked = Effect.fn("Worker.executeUntilBlocked")(function* (
         task: Protocol.TaskAcquired,
         promise: Protocol.PromiseRecord,
@@ -80,7 +69,15 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(
             {
               id: task.id,
               version: task.version,
-              actions: suspendActions(task, outcome.awaited),
+              actions: outcome.awaited.map((id) =>
+                Protocol.PromiseRegisterCallbackRequest.make({
+                  head: Protocol.RequestHead.make({
+                    corrId: Protocol.CorrelationId.make(`${task.id}:${id}:callback`),
+                    version: Protocol.protocolVersion,
+                  }),
+                  data: { awaited: id, awaiter: task.id },
+                }),
+              ),
             },
             {
               origin: promise.tags.reserved["resonate:origin"] ?? promise.id,

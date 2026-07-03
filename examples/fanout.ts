@@ -15,22 +15,29 @@ const notifyAll = Resonate.function("notifyAll", {
 // Invoke after starting this worker: resonate invoke --server http://127.0.0.1:8001 --target poll://any@default --func notifyAll --json-args '[{"orderId":"order-1","email":"ada@example.com","phone":"+15550100"}]' fanout-demo
 const App = Resonate.group(notifyAll);
 
-const send = (channel: string, destination: string) =>
-  Effect.gen(function* () {
-    const message = `${channel}:${destination}`;
-    yield* Effect.logInfo(message);
-    return { channel, destination, ok: true };
-  });
-
 const handlers = App.toLayer(
   App.of({
     notifyAll: (event) =>
       Effect.gen(function* (): Effect.fn.Return<ReadonlyArray<unknown>, unknown, ResonateContext.ResonateContext> {
         const ctx = yield* ResonateContext.ResonateContext;
-        const email = yield* ctx.beginRun(send("email", event.email));
-        const sms = yield* ctx.beginRun(send("sms", event.phone));
-        const slack = yield* ctx.beginRun(send("slack", event.orderId));
-        const push = yield* ctx.beginRun(send("push", event.orderId));
+        const email = yield* ctx.beginRun(
+          Effect.logInfo(`email:${event.email}`).pipe(
+            Effect.as({ channel: "email", destination: event.email, ok: true }),
+          ),
+        );
+        const sms = yield* ctx.beginRun(
+          Effect.logInfo(`sms:${event.phone}`).pipe(Effect.as({ channel: "sms", destination: event.phone, ok: true })),
+        );
+        const slack = yield* ctx.beginRun(
+          Effect.logInfo(`slack:${event.orderId}`).pipe(
+            Effect.as({ channel: "slack", destination: event.orderId, ok: true }),
+          ),
+        );
+        const push = yield* ctx.beginRun(
+          Effect.logInfo(`push:${event.orderId}`).pipe(
+            Effect.as({ channel: "push", destination: event.orderId, ok: true }),
+          ),
+        );
         return yield* ctx.all([email.await, sms.await, slack.await, push.await]);
       }),
   }),
