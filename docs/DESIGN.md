@@ -599,7 +599,7 @@ it.effect("countdown completes after sleeps", () =>
 );
 ```
 
-`ResonateTest.layer` = local in-memory server + worker + client, with server timeouts/leases/schedules driven by Effect's `TestClock` (the local server's tick is clock-based, so `TestClock.adjust` replaces the native SDK's `debug.tick` plumbing). Crash/replay is testable directly: `ResonateTest.restartWorker` drops all in-process state and forces re-acquire + replay.
+`ResonateTest.layer` = local in-memory server + worker + client, with server timeouts/leases/schedules driven by Effect's `TestClock` (the local server's tick is clock-based, so `TestClock.adjust` replaces the native SDK's `debug.tick` plumbing). Crash/replay is testable directly: `restartWorker` drops the worker scope while preserving the in-memory server, forcing re-acquire + replay; `snapshot` returns the debug state for assertions and can be piped into `assertInvariants`.
 
 ---
 

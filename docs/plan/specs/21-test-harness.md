@@ -47,3 +47,7 @@ driven by `TestClock`, plus crash/replay ergonomics.
 ## Acceptance
 
 - `vp run check` green.
+
+## Implementation notes
+
+- Done in spec 21: `src/testing.ts` now exports the `ResonateTest` service with `ResonateTest.layer(group, handlersLayer)`, plus top-level `snapshot`, `restartWorker`, and the existing `assertInvariants`. The layer composes the in-memory local server, codec/encryption, protocol clients, public client, engine, handlers, and a restartable worker scope. Tests cover the DESIGN countdown example and worker restart replay with a recorded local step executing exactly once.
