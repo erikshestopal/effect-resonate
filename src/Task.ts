@@ -6,7 +6,7 @@
  *
  * @since 0.0.0
  */
-import { Context, Crypto, Effect, Layer, Schema, SchemaParser } from "effect";
+import { Context, Crypto, Effect, Layer, Predicate, Schema, SchemaParser } from "effect";
 import {
   InvalidTarget,
   PromiseNotFound,
@@ -23,11 +23,11 @@ import * as Protocol from "./Protocol.ts";
  * @category models
  * @since 0.0.0
  */
-export interface TaskCreateResult {
-  readonly promise: Protocol.PromiseRecord;
-  readonly task?: Protocol.TaskRecord;
-  readonly preload: ReadonlyArray<Protocol.PromiseRecord>;
-}
+export class TaskCreateResult extends Schema.Class<TaskCreateResult>("Task/CreateResult")({
+  promise: Protocol.PromiseRecord,
+  task: Schema.optionalKey(Protocol.TaskRecord),
+  preload: Schema.Array(Protocol.PromiseRecord),
+}) {}
 
 /**
  * Result returned when acquiring a task for execution.
@@ -35,11 +35,11 @@ export interface TaskCreateResult {
  * @category models
  * @since 0.0.0
  */
-export interface TaskClaimResult {
-  readonly task: Protocol.TaskRecord;
-  readonly promise: Protocol.PromiseRecord;
-  readonly preload: ReadonlyArray<Protocol.PromiseRecord>;
-}
+export class TaskClaimResult extends Schema.Class<TaskClaimResult>("Task/ClaimResult")({
+  task: Protocol.TaskRecord,
+  promise: Protocol.PromiseRecord,
+  preload: Schema.Array(Protocol.PromiseRecord),
+}) {}
 
 export class SuspendRefused extends Schema.Class<SuspendRefused>("SuspendRefused")({
   _tag: Schema.tag("SuspendRefused"),
@@ -52,10 +52,10 @@ export class SuspendAccepted extends Schema.Class<SuspendAccepted>("SuspendAccep
 
 export type SuspendResult = SuspendAccepted | SuspendRefused;
 
-export interface FenceResult {
-  readonly action: Protocol.PromiseCreateResponse | Protocol.PromiseSettleResponse;
-  readonly preload: ReadonlyArray<Protocol.PromiseRecord>;
-}
+export class FenceResult extends Schema.Class<FenceResult>("Task/FenceResult")({
+  action: Schema.Union([Protocol.PromiseCreateResponse, Protocol.PromiseSettleResponse]),
+  preload: Schema.Array(Protocol.PromiseRecord),
+}) {}
 
 export interface TaskRequestOptions {
   readonly origin?: string;
@@ -161,7 +161,11 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("effect-resona
         create: Effect.fn("Tasks.create")(function* (data) {
           const response = yield* network.send(Protocol.TaskCreateRequest.make({ head: yield* head(), data }));
           if (isCreateSuccess(response)) {
-            return { promise: response.data.promise, task: response.data.task, preload: response.data.preload };
+            return TaskCreateResult.make({
+              promise: response.data.promise,
+              ...(Predicate.isNotUndefined(response.data.task) ? { task: response.data.task } : {}),
+              preload: response.data.preload,
+            });
           }
           return yield* taskError({
             id: data.action.data.id,
@@ -173,7 +177,11 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("effect-resona
         acquire: Effect.fn("Tasks.acquire")(function* ({ data, options }) {
           const response = yield* network.send(Protocol.TaskAcquireRequest.make({ head: yield* head(options), data }));
           if (isAcquireSuccess(response)) {
-            return { task: response.data.task, promise: response.data.promise, preload: response.data.preload };
+            return TaskClaimResult.make({
+              task: response.data.task,
+              promise: response.data.promise,
+              preload: response.data.preload,
+            });
           }
           return yield* taskError({
             id: data.id,
@@ -240,7 +248,7 @@ export class Tasks extends Context.Service<Tasks, TasksService>()("effect-resona
         fence: Effect.fn("Tasks.fence")(function* ({ data, options }) {
           const response = yield* network.send(Protocol.TaskFenceRequest.make({ head: yield* head(options), data }));
           if (isFenceSuccess(response)) {
-            return { action: response.data.action, preload: response.data.preload };
+            return FenceResult.make({ action: response.data.action, preload: response.data.preload });
           }
           return yield* taskError({
             id: data.id,
