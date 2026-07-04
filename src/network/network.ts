@@ -56,18 +56,16 @@ export const decodeResponse =
       Effect.mapError((cause) => new TransportError({ reason: "MalformedResponse", cause })),
       Effect.flatMap((response) => {
         if (response.kind !== request.kind || response.head.corrId !== request.head.corrId) {
-          return Effect.fail(
-            new TransportError({
-              reason: "CorrelationMismatch",
-              cause: {
-                expected: { kind: request.kind, corrId: request.head.corrId },
-                received: { kind: response.kind, corrId: response.head.corrId },
-              },
-            }),
-          );
+          return new TransportError({
+            reason: "CorrelationMismatch",
+            cause: {
+              expected: { kind: request.kind, corrId: request.head.corrId },
+              received: { kind: response.kind, corrId: response.head.corrId },
+            },
+          });
         }
         if (response.head.status === 401 || response.head.status === 403) {
-          return Effect.fail(new TransportError({ reason: "Unauthorized", cause: response }));
+          return new TransportError({ reason: "Unauthorized", cause: response });
         }
         return Effect.succeed(response);
       }),

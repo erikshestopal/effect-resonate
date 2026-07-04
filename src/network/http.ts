@@ -85,9 +85,9 @@ export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork,
             Effect.mapError((cause) => new TransportError({ reason: "ConnectionLost", cause })),
             Effect.flatMap((response) =>
               response.status === 401 || response.status === 403
-                ? Effect.fail(new TransportError({ reason: "Unauthorized", cause: response.status }))
+                ? new TransportError({ reason: "Unauthorized", cause: response.status })
                 : response.status !== 200
-                  ? Effect.fail(new TransportError({ reason: "ConnectionLost", cause: response.status }))
+                  ? new TransportError({ reason: "ConnectionLost", cause: response.status })
                   : Effect.succeed(response),
             ),
             Effect.map((response) =>

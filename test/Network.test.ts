@@ -80,7 +80,7 @@ describe("envelope helpers", () => {
 describe("TestNetwork", () => {
   const scripted: (request: Protocol.Request) => Effect.Effect<Protocol.Response, TransportError> = (request) => {
     if (request.kind !== "promise.get") {
-      return Effect.fail(new TransportError({ reason: "MalformedResponse", cause: request }));
+      return new TransportError({ reason: "MalformedResponse", cause: request });
     }
     return Effect.succeed(
       Protocol.PromiseGetResponse.make({

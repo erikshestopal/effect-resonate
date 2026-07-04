@@ -694,11 +694,11 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
                 ? Effect.suspend(() => {
                     const parked = HashMap.get(state.awaiting, promise.id);
                     if (Option.isSome(parked)) {
-                      return Effect.fail(parked.value);
+                      return parked.value;
                     }
                     const suspended = new SuspendedExecution({ awaited: [promise.id] });
                     state.awaiting = HashMap.set(state.awaiting, promise.id, suspended);
-                    return Effect.fail(suspended);
+                    return suspended;
                   })
                 : Deferred.await(deferred),
             poll: Deferred.poll(deferred).pipe(
@@ -723,11 +723,11 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             if (promise.state === "pending") {
               const parked = HashMap.get(state.awaiting, promise.id);
               if (Option.isSome(parked)) {
-                return Effect.fail(parked.value);
+                return parked.value;
               }
               const suspended = new SuspendedExecution({ awaited: [promise.id] });
               state.awaiting = HashMap.set(state.awaiting, promise.id, suspended);
-              return Effect.fail(suspended);
+              return suspended;
             }
             if (promise.state === "rejected_canceled") {
               return new DurablePromiseCanceled({ id: promise.id });
