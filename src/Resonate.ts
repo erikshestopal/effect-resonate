@@ -50,6 +50,7 @@ import { InvocationParam } from "./Invocation.ts";
 import * as NetworkHttp from "./network/http.ts";
 import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
+import type { PromiseDeclaration, PromiseFailure, PromiseSuccess } from "./PromiseDefinition.ts";
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";
 import { Tasks } from "./Task.ts";
@@ -83,6 +84,8 @@ export {
 } from "./FunctionDefinition.ts";
 export { Registry } from "./Registry.ts";
 export type { RegistryItem } from "./Registry.ts";
+export { promise } from "./PromiseDefinition.ts";
+export type { PromiseDeclaration, PromiseFailure, PromiseSuccess } from "./PromiseDefinition.ts";
 export { schedule } from "./ScheduleDefinition.ts";
 export type { ScheduleOptions, ScheduleValue } from "./ScheduleDefinition.ts";
 
@@ -100,56 +103,6 @@ export interface DurableHandle<A = unknown, E = unknown> {
   readonly await: Effect.Effect<A, E | DurablePromiseCanceled | DurablePromiseTimedOut | EncodingError>;
   readonly poll: Effect.Effect<Option.Option<Exit.Exit<A, E>>, unknown>;
   readonly cancel: Effect.Effect<void, unknown>;
-}
-
-export interface PromiseDeclaration<
-  Name extends string = string,
-  Success extends Schema.Codec<unknown, unknown, never, never> = Schema.Codec<unknown, unknown, never, never>,
-  Failure extends Schema.Codec<unknown, unknown, never, never> | undefined =
-    | Schema.Codec<unknown, unknown, never, never>
-    | undefined,
-> {
-  readonly name: Name;
-  readonly success: Success;
-  readonly error: Failure;
-  readonly id: (executionId: Protocol.ExecutionId | Protocol.PromiseId) => Protocol.PromiseId;
-}
-
-export type PromiseSuccess<P extends PromiseDeclaration> = P["success"]["Type"];
-export type PromiseFailure<P extends PromiseDeclaration> =
-  P["error"] extends Schema.Codec<unknown, unknown, never, never> ? P["error"]["Type"] : never;
-
-/**
- * Defines an externally resolvable durable promise.
- *
- * @category constructors
- * @since 0.0.0
- */
-export function promise<
-  const Name extends string,
-  Success extends Schema.Codec<unknown, unknown, never, never>,
->(options: { readonly name: Name; readonly success: Success }): PromiseDeclaration<Name, Success, undefined>;
-export function promise<
-  const Name extends string,
-  Success extends Schema.Codec<unknown, unknown, never, never>,
-  Failure extends Schema.Codec<unknown, unknown, never, never>,
->(options: {
-  readonly name: Name;
-  readonly success: Success;
-  readonly error: Failure;
-}): PromiseDeclaration<Name, Success, Failure>;
-export function promise<
-  const Name extends string,
-  Success extends Schema.Codec<unknown, unknown, never, never>,
-  Failure extends Schema.Codec<unknown, unknown, never, never>,
->(options: { readonly name: Name; readonly success: Success; readonly error?: Failure }) {
-  return {
-    name: options.name,
-    success: options.success,
-    error: options.error,
-    id: (executionId: Protocol.ExecutionId | Protocol.PromiseId) =>
-      Protocol.PromiseId.make(`${executionId}.${options.name}`),
-  };
 }
 
 export interface ResonateClientOptions {

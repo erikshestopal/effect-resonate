@@ -82,6 +82,14 @@ export * as NetworkLocal from "./network/local.ts";
 export * as Protocol from "./Protocol.ts";
 
 /**
+ * External durable promise declarations.
+ *
+ * @category modules
+ * @since 0.0.0
+ */
+export * as PromiseDefinition from "./PromiseDefinition.ts";
+
+/**
  * Durable function handler registry model.
  *
  * @category modules
