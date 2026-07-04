@@ -31,10 +31,11 @@ import {
 } from "effect";
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, EncodingError } from "./Errors.ts";
+import type { AnyFunction, PayloadArgs } from "./FunctionDefinition.ts";
 import { InvocationParam } from "./Invocation.ts";
 import * as Protocol from "./Protocol.ts";
 import type { Registry } from "./Registry.ts";
-import type { AnyFunction, PayloadArgs, PromiseDeclaration, PromiseSuccess } from "./Resonate.ts";
+import type { PromiseDeclaration, PromiseSuccess } from "./Resonate.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";
 import { Tasks } from "./Task.ts";
 

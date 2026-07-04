@@ -5,11 +5,11 @@
  */
 import { Array as Arr, Cron, Duration, Effect, Layer, Number as Num, Order, Predicate, Schema } from "effect";
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
+import type { AnyFunction, PayloadArgs } from "./FunctionDefinition.ts";
 import { InvocationParam } from "./Invocation.ts";
 import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";
-import type { AnyFunction, PayloadArgs } from "./Resonate.ts";
 import { Schedules } from "./Schedule.ts";
 
 const globalScope = Schema.Literal("global").make("global");

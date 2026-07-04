@@ -34,6 +34,14 @@ export * as DurablePromise from "./DurablePromise.ts";
 export * as Errors from "./Errors.ts";
 
 /**
+ * Durable function definitions and typed handler groups.
+ *
+ * @category modules
+ * @since 0.0.0
+ */
+export * as FunctionDefinition from "./FunctionDefinition.ts";
+
+/**
  * Shared invocation payload schemas.
  *
  * @category modules

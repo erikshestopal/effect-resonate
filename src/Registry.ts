@@ -4,8 +4,8 @@
  * @since 0.0.0
  */
 import { Array as Arr, Effect, HashSet, Option, Order, Pipeable } from "effect";
+import type { AnyFunction, HandlerFunction } from "./FunctionDefinition.ts";
 import * as Protocol from "./Protocol.ts";
-import type { AnyFunction, HandlerFunction } from "./Resonate.ts";
 
 /**
  * Registered durable function definition and implementation.
