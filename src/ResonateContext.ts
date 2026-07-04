@@ -236,6 +236,16 @@ interface PromiseOptions<P extends PromiseDeclaration> {
   readonly options?: Pick<ContextOptions, "id" | "timeout" | "tags">;
 }
 
+interface ChildIdOptions {
+  readonly parent: Protocol.PromiseId;
+  readonly seq: number;
+}
+
+interface RequestHeadOptions {
+  readonly corrId: string;
+  readonly origin?: Protocol.PromiseId;
+}
+
 export class EngineDone extends Schema.Class<EngineDone>("ExecutionEngine/Done")({
   _tag: Schema.tag("Done"),
   promise: Protocol.PromiseRecord,
@@ -268,21 +278,19 @@ const rejectedState = Schema.Literal("rejected").make("rejected");
 
 const timestamp = (millis: number): Protocol.Timestamp => Schema.decodeUnknownSync(Protocol.Timestamp)(millis);
 
-const childId = ({ parent, seq }: { readonly parent: Protocol.PromiseId; readonly seq: number }): Protocol.PromiseId =>
-  Protocol.PromiseId.make(`${parent}.${seq}`);
+const childId = (options: ChildIdOptions): Protocol.PromiseId => {
+  const { parent, seq } = options;
+  return Protocol.PromiseId.make(`${parent}.${seq}`);
+};
 
-const requestHead = ({
-  corrId,
-  origin,
-}: {
-  readonly corrId: string;
-  readonly origin?: Protocol.PromiseId;
-}): Protocol.RequestHead =>
-  Protocol.RequestHead.make({
+const requestHead = (options: RequestHeadOptions): Protocol.RequestHead => {
+  const { corrId, origin } = options;
+  return Protocol.RequestHead.make({
     corrId: Protocol.CorrelationId.make(corrId),
     version: Protocol.protocolVersion,
     ...(Predicate.isNotUndefined(origin) ? { "resonate:origin": origin } : {}),
   });
+};
 
 const isExternalPromise = (promise: Protocol.PromiseRecord): boolean =>
   Predicate.isNotUndefined(promise.tags.reserved["resonate:target"]) ||
