@@ -34,6 +34,14 @@ export * as DurablePromise from "./DurablePromise.ts";
 export * as Errors from "./Errors.ts";
 
 /**
+ * Shared invocation payload schemas.
+ *
+ * @category modules
+ * @since 0.0.0
+ */
+export * as Invocation from "./Invocation.ts";
+
+/**
  * Runtime-neutral Resonate network service interface.
  *
  * @category modules
@@ -80,6 +88,14 @@ export * as Registry from "./Registry.ts";
  * @since 0.0.0
  */
 export * as Resonate from "./Resonate.ts";
+
+/**
+ * High-level durable schedule authoring API.
+ *
+ * @category modules
+ * @since 0.0.0
+ */
+export * as ScheduleDefinition from "./ScheduleDefinition.ts";
 
 /**
  * Durable execution context available inside registered handlers.

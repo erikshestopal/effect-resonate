@@ -32,16 +32,13 @@ import {
   Array as Arr,
   Clock,
   Context,
-  Cron,
   Crypto,
   Duration,
   Effect,
   Exit,
   Layer,
   Match,
-  Number as Num,
   Option,
-  Order,
   Pipeable,
   Predicate,
   Schema,
@@ -49,6 +46,7 @@ import {
 import type * as HttpClient from "effect/unstable/http/HttpClient";
 import { DurablePromises } from "./DurablePromise.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, type EncodingError } from "./Errors.ts";
+import { InvocationParam } from "./Invocation.ts";
 import * as NetworkHttp from "./network/http.ts";
 import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
@@ -56,7 +54,6 @@ import { Registry, type RegistryItem } from "./Registry.ts";
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";
 import type { ResonateContext } from "./ResonateContext.ts";
-import { Schedules } from "./Schedule.ts";
 import { Tasks } from "./Task.ts";
 
 export * as Worker from "./Worker.ts";
@@ -110,6 +107,8 @@ const FunctionGroupTypeId = "effect-resonate/FunctionGroup";
 
 export { Registry };
 export type { RegistryItem };
+export { schedule } from "./ScheduleDefinition.ts";
+export type { ScheduleOptions, ScheduleValue } from "./ScheduleDefinition.ts";
 
 export interface FunctionGroup<Fns extends ReadonlyArray<AnyFunction>> {
   readonly [FunctionGroupTypeId]: typeof FunctionGroupTypeId;
@@ -216,139 +215,6 @@ export const group = <const Fns extends ReadonlyArray<AnyFunction>>(...fns: Fns)
     }
     return yield* Registry.make(items);
   }),
-});
-
-export interface ScheduleOptions<F extends AnyFunction> {
-  readonly id: Protocol.ScheduleId;
-  readonly cron: Cron.Cron;
-  readonly function: F;
-  readonly payload: PayloadArgs<F>;
-  readonly timeout?: Duration.Duration;
-  readonly target?: Protocol.WorkerGroup;
-  readonly tags?: Protocol.Tags;
-  readonly version?: Protocol.FunctionVersionOrLatest;
-  readonly retryPolicy?: RetryPolicy.RetryPolicy;
-}
-
-export interface ScheduleValue<F extends AnyFunction = AnyFunction> {
-  readonly id: Protocol.ScheduleId;
-  readonly cron: Cron.Cron;
-  readonly definition: F;
-  readonly payload: PayloadArgs<F>;
-  readonly create: Effect.Effect<Protocol.ScheduleRecord, unknown, Schedules | ResonateNetwork>;
-  readonly get: Effect.Effect<Protocol.ScheduleRecord, unknown, Schedules>;
-  readonly delete: Effect.Effect<void, unknown, Schedules>;
-  readonly layer: Layer.Layer<never, unknown, Schedules | ResonateNetwork>;
-}
-
-const fullCronSegment = (options: {
-  readonly values: ReadonlySet<number>;
-  readonly min: number;
-  readonly max: number;
-}): boolean => {
-  if (options.values.size === 0) {
-    return true;
-  }
-  if (options.values.size !== Num.increment(options.max - options.min)) {
-    return false;
-  }
-  return Arr.every(Arr.range(options.min, options.max), (value) => options.values.has(value));
-};
-
-const cronSegment = (options: {
-  readonly values: ReadonlySet<number>;
-  readonly min: number;
-  readonly max: number;
-}): string => {
-  if (fullCronSegment(options)) {
-    return "*";
-  }
-  return Arr.sort(options.values, Order.Number).join(",");
-};
-
-const fiveFieldCronExpression = (cron: Cron.Cron): Effect.Effect<string, never> => {
-  if (cron.seconds.size !== 1 || !cron.seconds.has(0)) {
-    return Effect.die("Resonate schedules only support five-field cron expressions");
-  }
-  return Effect.succeed(
-    [
-      cronSegment({ values: cron.minutes, min: 0, max: 59 }),
-      cronSegment({ values: cron.hours, min: 0, max: 23 }),
-      cronSegment({ values: cron.days, min: 1, max: 31 }),
-      cronSegment({ values: cron.months, min: 1, max: 12 }),
-      cronSegment({ values: cron.weekdays, min: 0, max: 6 }),
-    ].join(" "),
-  );
-};
-
-/**
- * Defines a durable schedule for invoking a function on a cron expression.
- *
- * @category constructors
- * @since 0.0.0
- */
-export const schedule = <F extends AnyFunction>(options: ScheduleOptions<F>): ScheduleValue<F> => {
-  const timeout = options.timeout ?? Duration.hours(24);
-  const tags = options.tags ?? Protocol.emptyTags;
-  const version = options.version ?? options.function.version;
-  const retry = options.retryPolicy;
-
-  const create: ScheduleValue<F>["create"] = Effect.gen(function* () {
-    const schedules = yield* Schedules;
-    const codec = yield* currentCodec;
-    const network = yield* ResonateNetwork;
-    const encodedArgs = yield* Schema.encodeUnknownEffect(options.function.payload)(options.payload).pipe(
-      Effect.catchCause(() =>
-        options.payload.length === 1
-          ? Schema.encodeUnknownEffect(options.function.payload)(options.payload[0])
-          : Effect.die("Invalid function payload"),
-      ),
-    );
-    const encoded = yield* codec.encode(
-      InvocationParam.make({
-        func: options.function.name,
-        args: Arr.ensure(encodedArgs),
-        version,
-        ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
-      }),
-    );
-    const target = network.match(options.target ?? Protocol.WorkerGroup.make("default"));
-    return yield* schedules.create({
-      id: options.id,
-      cron: yield* fiveFieldCronExpression(options.cron),
-      promiseId: "{{.id}}.{{.timestamp}}",
-      promiseTimeout: timeout,
-      promiseParam: withSchemaHeader({ value: encoded, schemaName: options.function.name }),
-      promiseTags: Protocol.Tags.make({
-        reserved: {
-          ...tags.reserved,
-          "resonate:target": target,
-          "resonate:scope": globalScope,
-        },
-        unrecognized: tags.unrecognized,
-        user: tags.user,
-      }),
-    });
-  });
-
-  const value = {
-    id: options.id,
-    cron: options.cron,
-    definition: options.function,
-    payload: options.payload,
-    create,
-    get: Schedules.pipe(Effect.flatMap((schedules) => schedules.get(options.id))),
-    delete: Schedules.pipe(Effect.flatMap((schedules) => schedules.delete(options.id))),
-    layer: Layer.effectDiscard(create),
-  };
-  return value;
-};
-
-const InvocationParam = Schema.Struct({
-  func: Schema.String,
-  args: Schema.Array(Schema.Unknown),
-  version: Protocol.FunctionVersionFromWire,
-  retry: Schema.optionalKey(RetryPolicy.RetryPolicyFromWire),
 });
 
 export interface InvocationOptions {

@@ -31,6 +31,7 @@ import {
 } from "effect";
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, EncodingError } from "./Errors.ts";
+import { InvocationParam } from "./Invocation.ts";
 import * as Protocol from "./Protocol.ts";
 import type { Registry } from "./Registry.ts";
 import type { AnyFunction, PayloadArgs, PromiseDeclaration, PromiseSuccess } from "./Resonate.ts";
@@ -46,13 +47,6 @@ class SuspendedExecution extends Schema.TaggedErrorClass<SuspendedExecution>()("
 }) {}
 
 const isSuspendedExecution = SchemaParser.is(SuspendedExecution);
-
-const InvocationParam = Schema.Struct({
-  func: Schema.String,
-  args: Schema.Array(Schema.Unknown),
-  version: Protocol.FunctionVersionFromWire,
-  retry: Schema.optionalKey(RetryPolicy.RetryPolicyFromWire),
-});
 
 /**
  * Options shared by durable context operations.
