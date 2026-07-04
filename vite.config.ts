@@ -1,9 +1,11 @@
 import { defineConfig } from "vite-plus";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   resolve: {
     alias: {
       "@vitest/runner": "@voidzero-dev/vite-plus-test/plugins/runner",
+      "effect-resonate": fileURLToPath(new URL("./src/index.ts", import.meta.url)),
     },
   },
   staged: {

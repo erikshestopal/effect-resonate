@@ -1,0 +1,21 @@
+{
+  "name": "effect-resonate-examples",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsgo --noEmit -p tsconfig.json",
+    "example:async-http-api": "bun example-async-http-api.ts",
+    "example:durable-entity": "bun example-durable-entity.ts"
+  },
+  "dependencies": {
+    "@effect/platform-bun": "4.0.0-beta.93",
+    "effect": "4.0.0-beta.93",
+    "effect-resonate": "file:.."
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.12",
+    "@typescript/native-preview": "^7.0.0-dev.20260702.3"
+  },
+  "peerDependencies": {},
+  "packageManager": "bun@1.3.13"
+}

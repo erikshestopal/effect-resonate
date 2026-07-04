@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Effect-TS/tsgo/refs/heads/main/schema.json",
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "effect-resonate": ["../src/index.ts"],
+      "effect-resonate/*": ["../src/*.ts"]
+    },
+    "rootDir": ".."
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules"]
+}

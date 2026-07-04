@@ -23,8 +23,8 @@ const waitForExternalResumePoint = async (id) => {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const snap = await request("debug.snap");
     const rootSuspended = snap.tasks.some((task) => task.id === id && task.state === "suspended");
-    const afterSleepUntil = snap.promises.some((promise) => promise.id === `${id}.8`);
-    if (rootSuspended && afterSleepUntil) {
+    const awaitsExternal = snap.callbacks.some((callback) => callback.awaiter === id && callback.awaited === `${id}.0`);
+    if (rootSuspended && awaitsExternal) {
       return;
     }
     await sleep(100);

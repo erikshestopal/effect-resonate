@@ -1,3 +1,4 @@
+/// <reference types="bun" />
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import { Clock, DateTime, Duration, Effect, Layer, Schema } from "effect";
@@ -30,8 +31,11 @@ const waitForExternalResumePoint = async (id: string) => {
     const rootSuspended = snap.tasks.some(
       (task: { readonly id: string; readonly state: string }) => task.id === id && task.state === "suspended",
     );
-    const afterSleepUntil = snap.promises.some((promise: { readonly id: string }) => promise.id === `${id}.8`);
-    if (rootSuspended && afterSleepUntil) {
+    const awaitsExternal = snap.callbacks.some(
+      (callback: { readonly awaiter: string; readonly awaited: string }) =>
+        callback.awaiter === id && callback.awaited === `${id}.0`,
+    );
+    if (rootSuspended && awaitsExternal) {
       return;
     }
     await sleep(100);
