@@ -26,7 +26,7 @@ const contextLayer = Layer.succeed(
       Effect.succeed({
         id: Protocol.PromiseId.make("test.0"),
         await: Effect.void,
-        poll: Effect.succeed(Option.none()),
+        poll: Effect.succeedNone,
         cancel: Effect.void,
       }),
     all: (effects) => Effect.forEach(effects, (effect) => effect),
@@ -38,7 +38,7 @@ const contextLayer = Layer.succeed(
       Effect.succeed({
         id: Protocol.PromiseId.make("test.1"),
         await: Effect.void,
-        poll: Effect.succeed(Option.none()),
+        poll: Effect.succeedNone,
         cancel: Effect.void,
       }),
     rpc: () => Effect.void,
@@ -46,14 +46,14 @@ const contextLayer = Layer.succeed(
       Effect.succeed({
         id: Protocol.PromiseId.make("test.2"),
         await: Effect.void,
-        poll: Effect.succeed(Option.none()),
+        poll: Effect.succeedNone,
         cancel: Effect.void,
       }),
     promise: () =>
       Effect.succeed({
         id: Protocol.PromiseId.make("test.3"),
         await: Effect.void,
-        poll: Effect.succeed(Option.none()),
+        poll: Effect.succeedNone,
         cancel: Effect.void,
       }),
     panic: (message) => Effect.die(message),

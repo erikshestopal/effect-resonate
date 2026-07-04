@@ -704,7 +704,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             poll: Deferred.poll(deferred).pipe(
               Effect.flatMap(
                 Option.match({
-                  onNone: () => Effect.succeed(Option.none()),
+                  onNone: () => Effect.succeedNone,
                   onSome: (awaited) => awaited.pipe(Effect.exit, Effect.map(Option.some)),
                 }),
               ),

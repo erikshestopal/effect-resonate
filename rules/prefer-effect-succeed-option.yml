@@ -1,0 +1,11 @@
+id: prefer-effect-succeed-option
+language: TypeScript
+severity: error
+message: "Use Effect.succeedNone / Effect.succeedSome(value) instead of Effect.succeed(Option.none()) / Effect.succeed(Option.some(value))."
+files:
+  - src/**/*.ts
+  - examples/**/*.ts
+rule:
+  any:
+    - pattern: Effect.succeed(Option.none())
+    - pattern: Effect.succeed(Option.some($VALUE))

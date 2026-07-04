@@ -226,7 +226,7 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
             .pipe(
               Effect.flatMap((promise) =>
                 promise.state === "pending"
-                  ? Effect.succeed(Option.none())
+                  ? Effect.succeedNone
                   : decodeSettled(promise).pipe(Effect.exit, Effect.map(Option.some)),
               ),
             ),
