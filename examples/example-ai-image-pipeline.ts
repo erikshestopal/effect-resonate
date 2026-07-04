@@ -34,7 +34,7 @@ const handlers = App.toLayer(
             effect: Effect.logInfo(`abstract ${input.prompt}`).pipe(Effect.as(`abstract ${input.prompt}`)),
           }),
         );
-        yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
         return { repo, functionName, results };
       }),
   }),

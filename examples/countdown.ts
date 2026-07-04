@@ -17,7 +17,7 @@ const handlers = App.toLayer(
         for (let remaining = count; remaining > 0; remaining = remaining - 1) {
           const message = `Countdown: ${remaining}`;
           yield* ctx.run({ effect: Effect.logInfo(message).pipe(Effect.as(message)) });
-          yield* ctx.sleep(Duration.seconds(seconds));
+          yield* ctx.sleep({ for: Duration.seconds(seconds) });
         }
         yield* ctx.run({ effect: Effect.logInfo("Done!").pipe(Effect.as("Done!")) });
         return "done";

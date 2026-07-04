@@ -24,7 +24,7 @@ const handlers = App.toLayer(
             effect: Effect.logInfo(`browser worker ${input}`).pipe(Effect.as(`browser worker ${input}`)),
           }),
         );
-        yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
         return { repo, functionName, results };
       }),
   }),

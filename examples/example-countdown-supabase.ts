@@ -20,7 +20,7 @@ const handlers = App.toLayer(
         const ctx = yield* ResonateContext.ResonateContext;
         for (let i = count; i > 0; i -= 1) {
           yield* ctx.run({ effect: Effect.logInfo(`Countdown: ${i} -> ${notificationUrl}`) });
-          yield* ctx.sleep(Duration.seconds(delay));
+          yield* ctx.sleep({ for: Duration.seconds(delay) });
         }
         yield* ctx.run({ effect: Effect.logInfo(`Done -> ${notificationUrl}`) });
       }),

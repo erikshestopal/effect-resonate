@@ -24,7 +24,7 @@ const handlers = App.toLayer(
             effect: Effect.logInfo(`encrypted payload received`).pipe(Effect.as(`encrypted payload received`)),
           }),
         );
-        yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
         return { repo, functionName, results };
       }),
   }),

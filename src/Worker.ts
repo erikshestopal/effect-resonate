@@ -41,8 +41,8 @@ import {
   Stream,
 } from "effect";
 import type * as HttpClient from "effect/unstable/http/HttpClient";
-import * as NetworkHttp from "./network/http.ts";
-import { ResonateNetwork } from "./network/network.ts";
+import * as NetworkHttp from "./network/Http.ts";
+import { ResonateNetwork } from "./network/Network.ts";
 import * as Protocol from "./Protocol.ts";
 import { type AnyFunction, type FunctionGroup, type Handler } from "./Resonate.ts";
 import { ExecutionEngine } from "./ResonateContext.ts";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Predicate, Schema, SchemaParser } from "effect";
-import { decodeResponse, encodeRequest } from "../src/network/network.ts";
+import { decodeResponse, encodeRequest } from "../src/network/Network.ts";
 import * as Protocol from "../src/Protocol.ts";
 
 const serverPort = 8013;
@@ -279,6 +279,70 @@ const runClientApiParity = async () => {
   expect(native).toMatchSnapshot("client-apis");
 };
 
+interface DriverParityCase {
+  readonly name: string;
+  readonly nativeCommand: ReadonlyArray<string>;
+  readonly effectCommand: ReadonlyArray<string>;
+  readonly pid: string;
+}
+
+const driverCases: ReadonlyArray<DriverParityCase> = [
+  {
+    name: "versions-targets",
+    nativeCommand: ["bun", "test/interop/native-versions-targets-driver.js"],
+    effectCommand: ["bun", "test/interop/effect-versions-targets-driver.ts"],
+    pid: "versions-targets-worker",
+  },
+  {
+    name: "context-apis",
+    nativeCommand: ["bun", "test/interop/native-context-apis-driver.js"],
+    effectCommand: ["bun", "test/interop/effect-context-apis-driver.ts"],
+    pid: "context-apis-worker",
+  },
+  {
+    name: "failure-modes",
+    nativeCommand: ["bun", "test/interop/native-failure-modes-driver.js"],
+    effectCommand: ["bun", "test/interop/effect-failure-modes-driver.ts"],
+    pid: "failure-modes-worker",
+  },
+  {
+    name: "timers-schedules",
+    nativeCommand: ["bun", "test/interop/native-timers-schedules-driver.js"],
+    effectCommand: ["bun", "test/interop/effect-timers-schedules-driver.ts"],
+    pid: "timers-schedules-worker",
+  },
+];
+
+const runDriverSide = async (options: {
+  readonly name: string;
+  readonly command: ReadonlyArray<string>;
+  readonly pid: string;
+}) => {
+  const observed = stripTimestamps(
+    parseJsonOutput(
+      await run(options.command, {
+        RESONATE_URL: serverUrl,
+        RESONATE_GROUP: group,
+        RESONATE_PID: options.pid,
+      }),
+    ),
+  );
+  return {
+    observed,
+    snapshot: await debugSnap(),
+  };
+};
+
+const runDriverParityCase = async (entry: DriverParityCase) => {
+  const native = await runDriverSide({ name: `${entry.name} native`, command: entry.nativeCommand, pid: entry.pid });
+  await debugReset();
+  const effect = await runDriverSide({ name: `${entry.name} effect`, command: entry.effectCommand, pid: entry.pid });
+
+  expect(effect.observed).toEqual(native.observed);
+  expect(effect.snapshot).toEqual(native.snapshot);
+  expect(native).toMatchSnapshot(entry.name);
+};
+
 describe("debug snapshot parity", () => {
   it("matches the native TypeScript SDK fanout graph against a debug server", async () => {
     if (Bun.which("resonate") === null) {
@@ -303,6 +367,11 @@ describe("debug snapshot parity", () => {
         await debugReset();
       }
       await runClientApiParity();
+      await debugReset();
+      for (const entry of driverCases) {
+        await runDriverParityCase(entry);
+        await debugReset();
+      }
     } finally {
       kill(server);
     }

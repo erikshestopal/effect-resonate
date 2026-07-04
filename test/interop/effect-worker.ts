@@ -30,7 +30,7 @@ const worker = Layer.unwrap(
             const ctx = yield* ResonateContext;
             for (let remaining = count; remaining > 0; remaining = remaining - 1) {
               yield* ctx.run({ effect: Effect.logInfo(`Countdown: ${remaining}`) });
-              yield* ctx.sleep(Duration.seconds(seconds));
+              yield* ctx.sleep({ for: Duration.seconds(seconds) });
             }
             return "done";
           }),

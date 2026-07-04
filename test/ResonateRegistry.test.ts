@@ -19,7 +19,7 @@ const contextLayer = Layer.succeed(
       parentId: Protocol.PromiseId.make("test"),
       branchId: Protocol.PromiseId.make("test"),
       timeoutAt: Schema.decodeUnknownSync(Protocol.Timestamp)(60_000),
-      version: Protocol.TaskVersion.make(1),
+      version: Protocol.FunctionVersion.make(1),
     },
     run: Effect.succeed,
     beginRun: (effect) =>
@@ -33,7 +33,6 @@ const contextLayer = Layer.succeed(
     now: Effect.succeed(DateTime.makeUnsafe(0)),
     random: Effect.succeed(0),
     sleep: () => Effect.void,
-    sleepUntil: () => Effect.void,
     beginRpc: () =>
       Effect.succeed({
         id: Protocol.PromiseId.make("test.1"),

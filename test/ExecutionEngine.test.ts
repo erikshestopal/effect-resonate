@@ -5,9 +5,9 @@ import { TestClock } from "effect/testing";
 import { currentCodec, ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import { DurablePromiseTimedOut } from "../src/Errors.ts";
-import { ResonateNetwork } from "../src/network/network.ts";
+import { ResonateNetwork } from "../src/network/Network.ts";
 import { makeRequestHead } from "./support/testing.ts";
-import * as NetworkLocal from "../src/network/local.ts";
+import * as NetworkLocal from "../src/network/Local.ts";
 import * as Protocol from "../src/Protocol.ts";
 import * as Resonate from "../src/Resonate.ts";
 import { ExecutionEngine, ResonateContext } from "../src/ResonateContext.ts";
@@ -400,7 +400,7 @@ describe("ExecutionEngine", () => {
     }).pipe(Effect.provide(layer)),
   );
 
-  it.effect("creates named external promises and resumes after typed resolution", () =>
+  it.effect("creates sequence-based external promises and resumes after typed resolution", () =>
     Effect.gen(function* () {
       const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
@@ -431,16 +431,16 @@ describe("ExecutionEngine", () => {
       const suspended = yield* engine.execute({ task: root.task, promise: root.promise, registry });
       expect(Predicate.isTagged(suspended, "Suspended")).toBe(true);
       if (Predicate.isTagged(suspended, "Suspended")) {
-        expect(suspended.awaited).toEqual(["engine-external-1.approval"]);
+        expect(suspended.awaited).toEqual(["engine-external-1.0"]);
       }
 
       yield* client.resolve({
         declaration: Approval,
-        id: Approval.id(Protocol.ExecutionId.make("engine-external-1")),
+        id: Protocol.PromiseId.make("engine-external-1.0"),
         value: { approvedBy: "erik" },
       });
       const state = yield* snap();
-      const settled = state.promises.find((promise) => promise.id === "engine-external-1.approval");
+      const settled = state.promises.find((promise) => promise.id === "engine-external-1.0");
       if (Predicate.isUndefined(settled)) {
         return yield* Effect.die("approval promise missing");
       }
@@ -451,9 +451,9 @@ describe("ExecutionEngine", () => {
       const exit = yield* completed.await.pipe(Effect.exit);
       expect(Exit.isSuccess(exit)).toBe(true);
       if (Exit.isSuccess(exit)) {
-        expect(exit.value).toBe("engine-external-1.approval:erik");
+        expect(exit.value).toBe("engine-external-1.0:erik");
       }
-      const approval = state.promises.find((promise) => promise.id === "engine-external-1.approval");
+      const approval = state.promises.find((promise) => promise.id === "engine-external-1.0");
       expect(yield* codec.decode(approval?.value ?? Protocol.emptyValue)).toEqual({ approvedBy: "erik" });
     }).pipe(Effect.provide(layer)),
   );
@@ -489,11 +489,11 @@ describe("ExecutionEngine", () => {
       yield* engine.execute({ task: root.task, promise: root.promise, registry });
       yield* client.reject({
         declaration: Approval,
-        id: Approval.id(Protocol.ExecutionId.make("engine-external-reject-1")),
+        id: Protocol.PromiseId.make("engine-external-reject-1.0"),
         error: new ApprovalDenied({ reason: "nope" }),
       });
       const state = yield* snap();
-      const settled = state.promises.find((promise) => promise.id === "engine-external-reject-1.approval");
+      const settled = state.promises.find((promise) => promise.id === "engine-external-reject-1.0");
       if (Predicate.isUndefined(settled)) {
         return yield* Effect.die("approval promise missing");
       }
@@ -543,7 +543,7 @@ describe("ExecutionEngine", () => {
       const root = yield* acquiredRoot(handle.id);
       yield* engine.execute({ task: root.task, promise: root.promise, registry });
       const state = yield* snap();
-      const pending = state.promises.find((promise) => promise.id === "engine-external-timeout-1.approval");
+      const pending = state.promises.find((promise) => promise.id === "engine-external-timeout-1.0");
       if (Predicate.isUndefined(pending)) {
         return yield* Effect.die("approval promise missing");
       }
@@ -560,11 +560,11 @@ describe("ExecutionEngine", () => {
       yield* engine.execute({ task: root.task, promise: root.promise, registry, preload: [approval] });
       const completed = yield* promises.get(handle.id);
       expect(completed.state).toBe("resolved");
-      expect(yield* codec.decode(completed.value)).toBe("timed-out:engine-external-timeout-1.approval");
+      expect(yield* codec.decode(completed.value)).toBe("timed-out:engine-external-timeout-1.0");
     }).pipe(Effect.provide(layer)),
   );
 
-  it.effect("keeps named external promise ids stable when earlier steps are inserted", () =>
+  it.effect("supports explicit external promise ids when stable names are required", () =>
     Effect.gen(function* () {
       const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
@@ -574,7 +574,10 @@ describe("ExecutionEngine", () => {
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
               yield* ctx.run({ effect: Effect.succeed("before") });
-              const approval = yield* ctx.promise({ declaration: Approval });
+              const approval = yield* ctx.promise({
+                declaration: Approval,
+                options: { id: Approval.id(Protocol.ExecutionId.make("engine-external-stable-1")) },
+              });
               return approval.id;
             }),
         }),
@@ -633,11 +636,11 @@ describe("ExecutionEngine", () => {
       yield* TestClock.setTime(99_000);
       yield* client.resolve({
         declaration: Approval,
-        id: Approval.id(Protocol.ExecutionId.make("engine-now-1")),
+        id: Protocol.PromiseId.make("engine-now-1.1"),
         value: { approvedBy: "erik" },
       });
       const replayState = yield* snap();
-      const approval = replayState.promises.find((promise) => promise.id === "engine-now-1.approval");
+      const approval = replayState.promises.find((promise) => promise.id === "engine-now-1.1");
       if (Predicate.isUndefined(approval) || Predicate.isUndefined(recordedNow)) {
         return yield* Effect.die("recorded promises missing");
       }
@@ -691,7 +694,7 @@ describe("ExecutionEngine", () => {
     }).pipe(Effect.provide(layer)),
   );
 
-  it.effect("defects on duplicate named external promises without explicit ids", () =>
+  it.effect("uses sequence ids for repeated external promise declarations without explicit ids", () =>
     Effect.gen(function* () {
       const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
@@ -715,13 +718,15 @@ describe("ExecutionEngine", () => {
       });
       const root = yield* acquiredRoot(handle.id);
       const outcome = yield* engine.execute({ task: root.task, promise: root.promise, registry });
-      expect(Predicate.isTagged(outcome, "Done")).toBe(true);
-      const completed = yield* client.get({
-        fn: ExternalWorkflow,
-        id: Protocol.ExecutionId.make("engine-external-duplicate-1"),
-      });
-      const exit = yield* completed.await.pipe(Effect.exit);
-      expect(Exit.isFailure(exit)).toBe(true);
+      expect(Predicate.isTagged(outcome, "Suspended")).toBe(true);
+      if (Predicate.isTagged(outcome, "Suspended")) {
+        expect(outcome.awaited).toHaveLength(2);
+        expect(outcome.awaited).toContain("engine-external-duplicate-1.0");
+        expect(outcome.awaited).toContain("engine-external-duplicate-1.1");
+      }
+      const state = yield* snap();
+      expect(state.promises.some((promise) => promise.id === "engine-external-duplicate-1.0")).toBe(true);
+      expect(state.promises.some((promise) => promise.id === "engine-external-duplicate-1.1")).toBe(true);
     }).pipe(Effect.provide(layer)),
   );
 
@@ -752,7 +757,7 @@ describe("ExecutionEngine", () => {
       const root = yield* acquiredRoot(handle.id);
       yield* engine.execute({ task: root.task, promise: root.promise, registry });
       const settled = yield* promises.settle({
-        id: Approval.id(Protocol.ExecutionId.make("engine-external-malformed-1")),
+        id: Protocol.PromiseId.make("engine-external-malformed-1.0"),
         state: Schema.Literal("resolved").make("resolved"),
         value: yield* codec.encode({ wrong: true }),
       });
@@ -804,7 +809,7 @@ describe("ExecutionEngine", () => {
       expect(Predicate.isTagged(outcome, "Done")).toBe(true);
 
       const completed = yield* DurablePromises.pipe(Effect.flatMap((promises) => promises.get(handle.id)));
-      expect(yield* codec.decode(completed.value)).toBe(2);
+      expect(yield* codec.decode(completed.value)).toBe(3);
       expect(calls).toBe(3);
     }).pipe(Effect.provide(layer)),
   );
@@ -881,7 +886,7 @@ describe("ExecutionEngine", () => {
       });
       const root = yield* acquiredRoot(handle.id);
       yield* engine.execute({ task: root.task, promise: root.promise, registry });
-      expect(calls).toBe(2);
+      expect(calls).toBe(1);
     }).pipe(Effect.provide(layer)),
   );
 });

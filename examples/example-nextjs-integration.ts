@@ -24,7 +24,7 @@ const handlers = App.toLayer(
             effect: Effect.logInfo(`next order ${input.id}`).pipe(Effect.as(`next order ${input.id}`)),
           }),
         );
-        yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
         return { repo, functionName, results };
       }),
   }),

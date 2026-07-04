@@ -49,7 +49,7 @@ function* kitchenSink(ctx, input) {
   const rpc = yield* ctx.rpc(remoteChild, "rpc", ctx.options({ target: group }));
   const pendingRpc = yield* ctx.beginRpc(remoteChild, "beginRpc", ctx.options({ target: group }));
   const detached = yield* ctx.detached(detachedChild, "detached", ctx.options({ target: group }));
-  yield* ctx.sleep(1);
+  yield* ctx.sleep({ for: 1 });
   yield* ctx.sleep({ until: new Date(Date.now() + 1) });
   return {
     local,

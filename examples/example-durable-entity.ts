@@ -43,7 +43,7 @@ const handlers = App.toLayer(
             effect: Effect.logInfo(`expired ${input.sessionId}`).pipe(Effect.as(`expired ${input.sessionId}`)),
           }),
         );
-        yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
         return { repo, functionName, results };
       }),
   }),

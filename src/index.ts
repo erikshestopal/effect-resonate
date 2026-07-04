@@ -47,7 +47,7 @@ export * as FunctionDefinition from "./FunctionDefinition.ts";
  * @category modules
  * @since 0.0.0
  */
-export * as Network from "./network/network.ts";
+export * as Network from "./network/Network.ts";
 
 /**
  * HTTP implementation of the Resonate network service.
@@ -55,7 +55,7 @@ export * as Network from "./network/network.ts";
  * @category modules
  * @since 0.0.0
  */
-export * as NetworkHttp from "./network/http.ts";
+export * as NetworkHttp from "./network/Http.ts";
 
 /**
  * In-memory Resonate network implementation for local execution.
@@ -63,7 +63,7 @@ export * as NetworkHttp from "./network/http.ts";
  * @category modules
  * @since 0.0.0
  */
-export * as NetworkLocal from "./network/local.ts";
+export * as NetworkLocal from "./network/Local.ts";
 
 /**
  * Schema-first Resonate protocol model and wire codecs.

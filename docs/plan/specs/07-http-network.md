@@ -11,7 +11,7 @@ stream for `messages`, with mandatory reconnect backoff.
 
 ## References
 
-- `repos/resonate-sdk-ts/src/network/http.ts` (`HttpNetwork`, `PollMessageSource`) —
+- `repos/resonate-sdk-ts/src/network/Http.ts` (`HttpNetwork`, `PollMessageSource`) —
   wire behavior to replicate
 - Handbook: `talking-to-the-server.mdx`, `production-concerns.mdx`
 - effect-smol `HttpClient` + `ai-docs/src/50_http-client`, `Stream` docs

@@ -22,7 +22,7 @@ import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import { DurablePromises } from "./DurablePromise.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, type EncodingError } from "./Errors.ts";
 import { InvocationParam, type AnyFunction, type PayloadArgs } from "./FunctionDefinition.ts";
-import { ResonateNetwork } from "./network/network.ts";
+import { ResonateNetwork } from "./network/Network.ts";
 import * as Protocol from "./Protocol.ts";
 import type { PromiseDeclaration, PromiseFailure, PromiseSuccess } from "./PromiseDefinition.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";
@@ -174,7 +174,10 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           return yield* encodeInvocation({
             name: target.name,
             args: Arr.ensure(encodedArgs),
-            version: options.callOptions?.version ?? target.version,
+            version:
+              options.callOptions?.version === "latest"
+                ? target.version
+                : (options.callOptions?.version ?? target.version),
             retry: options.callOptions?.retryPolicy,
           });
         });

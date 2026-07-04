@@ -24,7 +24,7 @@ const handlers = App.toLayer(
             effect: Effect.logInfo(`one click buy ${input.itemId}`).pipe(Effect.as(`one click buy ${input.itemId}`)),
           }),
         );
-        yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
         return { repo, functionName, results };
       }),
   }),

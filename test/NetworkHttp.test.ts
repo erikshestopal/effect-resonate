@@ -6,9 +6,9 @@ import { Duration, Effect, Exit, Fiber, Layer, Option, Predicate, Ref, Schema, S
 import { TestClock } from "effect/testing";
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
 import { TransportError } from "../src/Errors.ts";
-import { ResonateNetwork } from "../src/network/network.ts";
+import { ResonateNetwork } from "../src/network/Network.ts";
 import { makeRequestHead } from "./support/testing.ts";
-import * as NetworkHttp from "../src/network/http.ts";
+import * as NetworkHttp from "../src/network/Http.ts";
 import * as Protocol from "../src/Protocol.ts";
 
 const isGot = SchemaParser.is(Protocol.PromiseGetResponse.members[0]);

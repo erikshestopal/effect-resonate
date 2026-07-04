@@ -10,7 +10,7 @@ import { Duration, Effect, Filter, HashSet, Layer, Option, Schedule, Schema, Str
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { TransportError } from "../Errors.ts";
 import * as Protocol from "../Protocol.ts";
-import { decodeResponse, encodeRequest, ResonateNetwork } from "./network.ts";
+import { decodeResponse, encodeRequest, ResonateNetwork } from "./Network.ts";
 
 /**
  * Options for connecting to a Resonate server over HTTP.

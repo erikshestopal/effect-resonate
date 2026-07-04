@@ -30,8 +30,8 @@
  */
 import { Layer } from "effect";
 import type * as HttpClient from "effect/unstable/http/HttpClient";
-import * as NetworkHttp from "./network/http.ts";
-import { ResonateNetwork } from "./network/network.ts";
+import * as NetworkHttp from "./network/Http.ts";
+import { ResonateNetwork } from "./network/Network.ts";
 
 export * as Worker from "./Worker.ts";
 

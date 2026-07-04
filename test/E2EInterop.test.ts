@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, Schema, SchemaParser } from "effect";
 import { ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
-import { decodeResponse, encodeRequest } from "../src/network/network.ts";
+import { decodeResponse, encodeRequest } from "../src/network/Network.ts";
 import * as Protocol from "../src/Protocol.ts";
 
 const serverPort = 8011;
@@ -184,7 +184,7 @@ describe("E2E interop", () => {
 
       await invoke(`${group}-effect-external`, "EffectAwaitsExternal", ["unused"], target);
       await sleep(1_000);
-      await resolveString(`${group}-effect-external.approval`, "approved-by-native-shape");
+      await resolveString(`${group}-effect-external.0`, "approved-by-native-shape");
       expect(await decodeValue((await waitForSettled(`${group}-effect-external`)).value)).toBe(
         "approved-by-native-shape",
       );

@@ -19,7 +19,7 @@ const handlers = App.toLayer(
       Effect.gen(function* () {
         const ctx = yield* ResonateContext.ResonateContext;
         yield* ctx.run({ effect: Effect.logInfo("fetched forecast point") });
-        yield* ctx.sleep(Duration.seconds(1));
+        yield* ctx.sleep({ for: Duration.seconds(1) });
         yield* ctx.run({ effect: Effect.logInfo("fetched detailed forecast") });
         return `Today: 65°F, 10 mph W. Forecast for ${latitude},${longitude}`;
       }),

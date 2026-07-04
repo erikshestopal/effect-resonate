@@ -34,7 +34,7 @@ const handlers = App.toLayer(
             effect: Effect.logInfo(`${input.orderId}:delivered`).pipe(Effect.as(`${input.orderId}:delivered`)),
           }),
         );
-        yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
         return { repo, functionName, results };
       }),
   }),

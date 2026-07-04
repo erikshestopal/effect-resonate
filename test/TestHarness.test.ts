@@ -25,7 +25,7 @@ describe("ResonateTest", () => {
           Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
             const ctx = yield* ResonateContext;
             for (let remaining = count; remaining > 0; remaining = remaining - 1) {
-              yield* ctx.sleep(Duration.seconds(seconds));
+              yield* ctx.sleep({ for: Duration.seconds(seconds) });
             }
             return "done";
           }),
@@ -68,7 +68,7 @@ describe("ResonateTest", () => {
             Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
               const ctx = yield* ResonateContext;
               yield* ctx.run({ effect: Ref.update(stepCalls, (calls) => calls + 1) });
-              yield* ctx.sleep(Duration.seconds(seconds));
+              yield* ctx.sleep({ for: Duration.seconds(seconds) });
               return "replayed";
             }),
         }),

@@ -25,7 +25,7 @@ const handlers = App.toLayer(
           for (let page = 0; page < 2; page += 1) {
             yield* ctx.run({ effect: Effect.logInfo(`fetched followers page ${page + 1} for ${profile.handle}`) });
             followers.push(`${profile.did}:follower:${page + 1}`);
-            yield* ctx.sleep(Duration.millis(500));
+            yield* ctx.sleep({ for: Duration.millis(500) });
           }
         }
         return { profile, followersQueued: followers };

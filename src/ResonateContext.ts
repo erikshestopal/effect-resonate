@@ -19,7 +19,6 @@ import {
   Exit,
   Fiber,
   HashMap,
-  HashSet,
   Layer,
   Match,
   Number as Num,
@@ -73,8 +72,12 @@ export interface ContextInfo {
   readonly parentId: Protocol.PromiseId;
   readonly branchId: Protocol.PromiseId;
   readonly timeoutAt: Protocol.Timestamp;
-  readonly version: Protocol.TaskVersion;
+  readonly version: Protocol.FunctionVersion;
 }
+
+export type SleepOptions =
+  | { readonly for: Duration.Input; readonly until?: never }
+  | { readonly for?: never; readonly until: DateTime.Utc };
 
 /**
  * Handle returned for durable work created from inside a handler.
@@ -104,11 +107,11 @@ interface RuntimeState {
   readonly prefixId: Protocol.PromiseId;
   readonly parentId: Protocol.PromiseId;
   readonly branchId: Protocol.PromiseId;
+  functionVersion: Protocol.FunctionVersion;
   cache: HashMap.HashMap<Protocol.PromiseId, Protocol.PromiseRecord>;
   readonly children: Array<RunningChild>;
   attachedRemote: HashMap.HashMap<Protocol.PromiseId, SuspendedExecution>;
   awaiting: HashMap.HashMap<Protocol.PromiseId, SuspendedExecution>;
-  externalPromises: HashSet.HashSet<string>;
   attempt: number;
   seq: number;
 }
@@ -122,22 +125,26 @@ namespace RuntimeState {
 
   export const make = (options: MakeOptions): RuntimeState => {
     const rootTarget = options.promise.tags.reserved["resonate:target"];
+    const originId = Protocol.promiseOrigin(options.promise);
     return {
       root: options.promise.id,
       version: options.task.version,
       timeoutAt: options.promise.timeoutAt,
       targetTransport: rootTarget?.transport ?? "poll",
       targetGroup: rootTarget?.group ?? Protocol.WorkerGroup.make("default"),
-      originId: Protocol.promiseOrigin(options.promise),
+      originId,
       prefixId: options.promise.tags.reserved["resonate:prefix"] ?? options.promise.id,
-      parentId: options.promise.tags.reserved["resonate:parent"] ?? options.promise.id,
+      parentId:
+        originId === options.promise.id
+          ? options.promise.id
+          : (options.promise.tags.reserved["resonate:parent"] ?? options.promise.id),
       branchId: options.promise.tags.reserved["resonate:branch"] ?? options.promise.id,
+      functionVersion: Protocol.FunctionVersion.make(1),
       cache: HashMap.fromIterable(Arr.map(options.preload ?? [], (promise) => [promise.id, promise] as const)),
       children: [],
       attachedRemote: HashMap.empty(),
       awaiting: HashMap.empty(),
-      externalPromises: HashSet.empty(),
-      attempt: 0,
+      attempt: 1,
       seq: 0,
     };
   };
@@ -277,6 +284,7 @@ const globalScope = Schema.Literal("global").make("global");
 const timerTag = Schema.Literal("true").make("true");
 const resolvedState = Schema.Literal("resolved").make("resolved");
 const rejectedState = Schema.Literal("rejected").make("rejected");
+const canceledState = Schema.Literal("rejected_canceled").make("rejected_canceled");
 
 const timestamp = (millis: number): Protocol.Timestamp => Schema.decodeUnknownSync(Protocol.Timestamp)(millis);
 
@@ -320,8 +328,7 @@ export interface ResonateContextService {
   ) => Effect.Effect<ReadonlyArray<unknown>, unknown>;
   readonly now: Effect.Effect<DateTime.Utc, unknown>;
   readonly random: Effect.Effect<number, unknown>;
-  readonly sleep: (duration: Duration.Input) => Effect.Effect<void, unknown>;
-  readonly sleepUntil: (instant: DateTime.Utc) => Effect.Effect<void, unknown>;
+  readonly sleep: (options: SleepOptions) => Effect.Effect<void, unknown>;
   readonly beginRpc: {
     <F extends AnyFunction>(options: {
       readonly target: F;
@@ -436,16 +443,31 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           });
         });
 
+        const cancelPromise = Effect.fn("ExecutionEngine.cancelPromise")(function* (id: Protocol.PromiseId) {
+          const value = yield* codec.encode(undefined);
+          return yield* fence({
+            action: Protocol.PromiseSettleRequest.make({
+              head: requestHead({ corrId: `${state.root}:${id}:cancel`, origin: state.originId }),
+              data: Protocol.PromiseSettleData.make({ id, state: canceledState, value }),
+            }),
+          });
+        });
+
         const fulfillRoot = Effect.fn("ExecutionEngine.fulfillRoot")(function* (options: FulfillRootOptions) {
           const { exit } = options;
           const settled = Exit.isSuccess(exit) ? resolvedState : rejectedState;
-          const value = yield* codec.encode(
-            Exit.isSuccess(exit)
-              ? exit.value
-              : Result.match(Cause.findError(exit.cause), {
-                  onSuccess: (error) => error,
-                  onFailure: Cause.squash,
-                }),
+          const value = yield* Match.value(exit).pipe(
+            Match.when(Exit.isSuccess, (exit) => codec.encode(exit.value)),
+            Match.when(Exit.isFailure, (exit) =>
+              Result.match(Cause.findError(exit.cause), {
+                onSuccess: (error) =>
+                  SchemaParser.is(DurablePromiseCanceled)(error) || SchemaParser.is(DurablePromiseTimedOut)(error)
+                    ? codec.encode(undefined)
+                    : codec.encode(error),
+                onFailure: (cause) => codec.encode(Cause.squash(cause)),
+              }),
+            ),
+            Match.exhaustive,
           );
           const promise = yield* tasks.fulfill({
             data: Protocol.TaskFulfillData.make({
@@ -505,7 +527,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           return yield* encodeInvocation({
             name: target.name,
             args: Arr.ensure(encodedArgs),
-            version: options?.version ?? target.version,
+            version: options?.version === "latest" ? target.version : (options?.version ?? target.version),
             retry: options?.retryPolicy,
           });
         });
@@ -597,14 +619,11 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         const createExternalPromise = Effect.fn("ExecutionEngine.createExternalPromise")(function* (
           input: CreateExternalPromiseOptions,
         ) {
-          const { declaration, options } = input;
+          const { options } = input;
+          const id = options?.id ?? childId({ parent: state.root, seq: state.seq });
           if (Predicate.isUndefined(options?.id)) {
-            if (HashSet.has(state.externalPromises, declaration.name)) {
-              return yield* Effect.die(`Promise declaration '${declaration.name}' was created more than once`);
-            }
-            state.externalPromises = HashSet.add(state.externalPromises, declaration.name);
+            state.seq = Num.increment(state.seq);
           }
-          const id = options?.id ?? declaration.id(state.root);
           const cached = HashMap.get(state.cache, id);
           if (Option.isSome(cached)) {
             if (cached.value.state === "pending") {
@@ -735,9 +754,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
                 }),
               ),
             ),
-            cancel: settle({ id: promise.id, exit: Exit.fail(new DurablePromiseCanceled({ id: promise.id })) }).pipe(
-              Effect.asVoid,
-            ),
+            cancel: cancelPromise(promise.id).pipe(Effect.asVoid),
           };
         };
 
@@ -766,8 +783,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
                 Effect.die(new EncodingError({ direction: "decode", id: Option.some(promise.id), cause })),
               ),
               Effect.flatMap((value) => {
+                const decoded = Option.isOption(value) ? Option.getOrUndefined(value) : value;
                 if (promise.state === "resolved") {
-                  return Schema.decodeUnknownEffect(declaration.success)(value).pipe(
+                  return Schema.decodeUnknownEffect(declaration.success)(decoded).pipe(
                     Effect.catch((cause) =>
                       Effect.die(new EncodingError({ direction: "decode", id: Option.some(promise.id), cause })),
                     ),
@@ -778,7 +796,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
                     new EncodingError({ direction: "decode", id: Option.some(promise.id), cause: value }),
                   );
                 }
-                return Schema.decodeUnknownEffect(declaration.error)(value).pipe(
+                return Schema.decodeUnknownEffect(declaration.error)(decoded).pipe(
                   Effect.catch((cause) =>
                     Effect.die(new EncodingError({ direction: "decode", id: Option.some(promise.id), cause })),
                   ),
@@ -791,10 +809,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             id: promise.id,
             await: awaitExternal,
             poll: awaitExternal.pipe(Effect.exit, Effect.map(Option.some)),
-            cancel: settle({
-              id: promise.id,
-              exit: Exit.fail(new DurablePromiseCanceled({ id: promise.id })),
-            }).pipe(Effect.asVoid),
+            cancel: cancelPromise(promise.id).pipe(Effect.asVoid),
           };
         };
 
@@ -827,7 +842,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             }
             return yield* runAttempt(Num.increment(attempt));
           });
-          return yield* runAttempt(0);
+          return yield* runAttempt(1);
         });
 
         const drainChildren = Effect.fn("ExecutionEngine.drainChildren")(function* () {
@@ -861,7 +876,9 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               parentId: state.parentId,
               branchId: state.branchId,
               timeoutAt: state.timeoutAt,
-              version: state.version,
+              get version() {
+                return state.functionVersion;
+              },
             },
             beginRun: Effect.fn("ResonateContext.beginRun")(function* (
               input: BeginRunOptions,
@@ -909,7 +926,16 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
                 .run({ effect: Random.next })
                 .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.Finite)));
             },
-            sleepUntil: Effect.fn("ResonateContext.sleepUntil")(function* (instant) {
+            sleep: Effect.fn("ResonateContext.sleep")(function* (options) {
+              const instant = yield* Effect.gen(function* () {
+                if (Predicate.isNotUndefined(options.for)) {
+                  return timestamp((yield* Clock.currentTimeMillis) + Duration.toMillis(options.for));
+                }
+                if (Predicate.isNotUndefined(options.until)) {
+                  return options.until;
+                }
+                return yield* Effect.die("Invalid sleep options");
+              });
               const promise = yield* createSleep({ instant });
               if (promise.state !== "pending") {
                 yield* decodeSettled(promise);
@@ -922,11 +948,6 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               const suspended = new SuspendedExecution({ awaited: [promise.id] });
               state.awaiting = HashMap.set(state.awaiting, promise.id, suspended);
               return yield* suspended;
-            }),
-            sleep: Effect.fn("ResonateContext.sleep")(function* (duration) {
-              return yield* service.sleepUntil(
-                timestamp((yield* Clock.currentTimeMillis) + Duration.toMillis(duration)),
-              );
             }),
             beginRpc: beginRpcImpl,
             rpc: Effect.fn("ResonateContext.rpc")(function* (
@@ -1011,6 +1032,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               onSome: Effect.succeed,
             },
           );
+          state.functionVersion = item.definition.version;
           const decoded = yield* Schema.decodeUnknownEffect(item.definition.payload)(invocation.args).pipe(
             Effect.catchCause(() => Schema.decodeUnknownEffect(item.definition.payload)(invocation.args[0])),
           );
@@ -1025,7 +1047,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               Effect.map((value) => new CompletedExecution({ value })),
               Effect.catch((error) => (isSuspendedExecution(error) ? Effect.succeed(error) : Effect.fail(error))),
             ),
-            policy: invocation.retry ?? RetryPolicy.never(),
+            policy: RetryPolicy.never(),
             nonRetryableErrors: [SuspendedExecution],
           });
           yield* session.drainChildren();

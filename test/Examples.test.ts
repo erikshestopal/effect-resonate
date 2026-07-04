@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Effect, SchemaParser } from "effect";
 import * as Protocol from "../src/Protocol.ts";
-import { decodeResponse, encodeRequest } from "../src/network/network.ts";
+import { decodeResponse, encodeRequest } from "../src/network/Network.ts";
 
 const serverPort = 8012;
 const serverUrl = `http://127.0.0.1:${serverPort}`;

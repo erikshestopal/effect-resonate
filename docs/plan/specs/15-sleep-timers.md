@@ -1,4 +1,4 @@
-# 15 — Sleep / Timers (`ctx.sleep`, `ctx.sleepUntil`)
+# 15 — Sleep / Timers (`ctx.sleep`)
 
 ## Objective
 
@@ -16,7 +16,7 @@ Durable sleep as `resonate:timer` promises — free to replay, suspension-friend
 
 ## Key facts
 
-- `ctx.sleep(duration)` / `sleepUntil(instant)`: create a promise with seq id, tags
+- `ctx.sleep({ for: duration })` / `ctx.sleep({ until: instant })`: create a promise with seq id, tags
   `resonate:timer: "true"` + lineage + `resonate:scope: "global"`, NO target,
   `timeoutAt = wake time` (clamped to parent deadline — a sleep never outlives its
   parent). The server RESOLVES (not rejects) timer promises at timeoutAt.
@@ -28,7 +28,7 @@ Durable sleep as `resonate:timer` promises — free to replay, suspension-friend
 
 ## Deliverables
 
-- `ctx.sleep`/`ctx.sleepUntil` on `ResonateContext`.
+- `ctx.sleep` on `ResonateContext`, using the native SDK option-object shape.
 
 ## Tests (local oracle + TestClock)
 
@@ -45,5 +45,5 @@ Durable sleep as `resonate:timer` promises — free to replay, suspension-friend
 
 ## Notes
 
-- Implemented in `ResonateContext.sleep`/`sleepUntil`; timer promises use `resonate:branch` equal to the timer id, matching the native SDK.
+- Implemented in `ResonateContext.sleep`; timer promises use `resonate:branch` equal to the timer id, matching the native SDK.
 - Replay after wake is driven by idempotent `promise.create` for the same timer id returning the already-resolved timer record.

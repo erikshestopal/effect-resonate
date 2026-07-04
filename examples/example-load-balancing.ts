@@ -24,7 +24,7 @@ const handlers = App.toLayer(
             effect: Effect.logInfo(`computed ${input.computeCost}`).pipe(Effect.as(`computed ${input.computeCost}`)),
           }),
         );
-        yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
         return { repo, functionName, results };
       }),
   }),

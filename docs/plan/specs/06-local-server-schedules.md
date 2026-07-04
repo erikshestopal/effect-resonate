@@ -13,7 +13,7 @@ as the `nextCron` implementation.
 
 - `repos/resonate-specification/spec/02-actions/S-01…S-03`, `02-timeouts.lean`
   (`catchUp`, `onScheduleTimeout`)
-- `repos/resonate-sdk-ts/src/network/local.ts` (`scheduleCreate`, cron-parser usage,
+- `repos/resonate-sdk-ts/src/network/Local.ts` (`scheduleCreate`, cron-parser usage,
   template expansion `{{.id}}`/`{{.timestamp}}`)
 - `docs/DESIGN.md` §4.8
 

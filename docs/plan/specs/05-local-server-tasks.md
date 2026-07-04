@@ -14,7 +14,7 @@ that all conformance tests call after every operation.
 
 - `repos/resonate-specification/spec/02-actions/T-01…T-10`, `00-resume.lean`,
   `02-timeouts.lean` (task timeouts)
-- `repos/resonate-sdk-ts/src/network/local.ts` (`triggerSettlement` phases,
+- `repos/resonate-sdk-ts/src/network/Local.ts` (`triggerSettlement` phases,
   task handlers)
 - `docs/DESIGN.md` §8 (the seven invariants)
 

@@ -14,7 +14,7 @@ The in-memory server's promise half: P-01…P-05 handlers, timeout projection,
 
 - `repos/resonate-specification/spec/02-actions/P-01…P-05` and `02-timeouts.lean` —
   the authoritative handler semantics; implement them 1:1
-- `repos/resonate-sdk-ts/src/network/local.ts` — the annotated reference implementation
+- `repos/resonate-sdk-ts/src/network/Local.ts` — the annotated reference implementation
   ("spec transition #N" comments); follow it where the Lean model is silent
 - `docs/DESIGN.md` §8
 

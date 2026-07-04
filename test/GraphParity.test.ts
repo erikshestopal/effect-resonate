@@ -24,7 +24,7 @@ const handlers = GraphFns.toLayer(
         const local = yield* ctx.beginRun({ effect: Effect.succeed(Number(value) + 2) });
         const remote = yield* ctx.beginRpc({ target: GraphChild, args: [Number(value) + 3] });
         yield* ctx.detached({ target: GraphChild, args: [Number(value) + 4] });
-        yield* ctx.sleep(Duration.seconds(60));
+        yield* ctx.sleep({ for: Duration.seconds(60) });
         const values = yield* ctx.all([local.await, remote.await]);
         return Number(values[0]) + Number(values[1]);
       }),

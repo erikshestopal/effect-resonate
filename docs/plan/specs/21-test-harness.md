@@ -13,7 +13,7 @@ driven by `TestClock`, plus crash/replay ergonomics.
 
 | Native source                                | Symbol                                 | Becomes                                                |
 | -------------------------------------------- | -------------------------------------- | ------------------------------------------------------ |
-| `repos/resonate-sdk-ts/src/network/local.ts` | `LocalNetwork` + `debug.tick` interval | `NetworkLocal` driven by `Clock`/`TestClock` (spec 04) |
+| `repos/resonate-sdk-ts/src/network/Local.ts` | `LocalNetwork` + `debug.tick` interval | `NetworkLocal` driven by `Clock`/`TestClock` (spec 04) |
 | `repos/resonate-sdk-ts` `sim/` debug ops     | `debug.start/reset/tick/snap`          | `ResonateTest` helpers (snapshot, restartWorker)       |
 
 ## References

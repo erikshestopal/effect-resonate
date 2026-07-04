@@ -259,7 +259,7 @@ export const HandlersLive = AppFns.toLayer({
 
     for (let i = count; i > 0; i--) {
       yield* ctx.run(Effect.sync(() => console.log(`Countdown: ${i}`)));
-      yield* ctx.sleep(Duration.seconds(delay));
+      yield* ctx.sleep({ for: Duration.seconds(delay) });
     }
 
     yield* Effect.logInfo("Done!");
@@ -319,8 +319,8 @@ export class ResonateContext extends Context.Service<ResonateContext, {
 
   // ── Time and events ─────────────────────────────────────────────────────
   /** Durable sleep — a resonate:timer promise; costs nothing to replay. */
-  readonly sleep: (duration: Duration.DurationInput) => Effect.Effect<void, ResonateError>
-  readonly sleepUntil: (instant: DateTime.Utc) => Effect.Effect<void, ResonateError>
+  readonly sleep: (options: { readonly "for": Duration.DurationInput } | { readonly until: DateTime.Utc }) =>
+    Effect.Effect<void, ResonateError>
 
   /** A latent durable promise settled by external means (native ctx.promise) — see §4.5. */
   readonly promise: <P extends AnyResonatePromise>(declaration: P, options?: PromiseOptions) =>

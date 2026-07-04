@@ -41,8 +41,8 @@ const handlers = App.toLayer(
           target: DetachedChild,
           args: ["detached"],
         });
-        yield* ctx.sleep(Duration.millis(1));
-        yield* ctx.sleepUntil(DateTime.makeUnsafe((yield* Clock.currentTimeMillis) + 1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
+        yield* ctx.sleep({ until: DateTime.makeUnsafe((yield* Clock.currentTimeMillis) + 1) });
         return {
           local,
           begunLocal: yield* pendingLocal.await,

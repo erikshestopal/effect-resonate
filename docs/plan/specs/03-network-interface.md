@@ -13,8 +13,8 @@ every transport implementation behaves identically at the boundary.
 ## References
 
 - `docs/DESIGN.md` §3.1 (binding)
-- `repos/resonate-sdk-ts/src/network/network.ts` (Send/Recv interfaces),
-  `src/network/http.ts` (the protocol-status allowlist idea)
+- `repos/resonate-sdk-ts/src/network/Network.ts` (Send/Recv interfaces),
+  `src/network/Http.ts` (the protocol-status allowlist idea)
 - Handbook: `talking-to-the-server.mdx` (envelope, corrId multiplexing)
 
 ## Key facts
@@ -57,7 +57,7 @@ every transport implementation behaves identically at the boundary.
   verification helpers every transport uses.
 - `anycast(group)` includes the process id (native derives
   `poll://any@{group}/{pid}`); `match(target)` does not (`poll://any@{target}`)
-  — both mirror `network/http.ts` exactly.
+  — both mirror `network/Http.ts` exactly.
 - `TestNetwork` (in `testing.ts`) encodes each scripted response through
   `Protocol.ResponseFromWire` and decodes it via `decodeResponse`, so stubbed
   exchanges exercise the exact transport decode/validate path (and stay

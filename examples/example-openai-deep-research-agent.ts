@@ -29,7 +29,7 @@ const handlers = App.toLayer(
             effect: Effect.logInfo(`write report ${input.topic}`).pipe(Effect.as(`write report ${input.topic}`)),
           }),
         );
-        yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
         return { repo, functionName, results };
       }),
   }),

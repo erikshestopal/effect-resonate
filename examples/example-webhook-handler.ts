@@ -44,7 +44,7 @@ const handlers = App.toLayer(
             effect: Effect.logInfo(`ledger ${input.event_id}`).pipe(Effect.as(`ledger ${input.event_id}`)),
           }),
         );
-        yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
         return { repo, functionName, results };
       }),
   }),

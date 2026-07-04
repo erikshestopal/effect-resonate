@@ -69,7 +69,7 @@ const runProgramCorpus = Effect.fn("DstSimulator.runProgramCorpus")(function* (s
         Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
           const ctx = yield* ResonateContext;
           yield* ctx.run({ effect: Ref.update(sideEffects, (count) => count + 1) });
-          yield* ctx.sleep(Duration.seconds(60));
+          yield* ctx.sleep({ for: Duration.seconds(60) });
           return Number(value) + 1;
         }),
       DstFanout: (value) =>
@@ -83,7 +83,7 @@ const runProgramCorpus = Effect.fn("DstSimulator.runProgramCorpus")(function* (s
       DstSleep: (value) =>
         Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext> {
           const ctx = yield* ResonateContext;
-          yield* ctx.sleep(Duration.seconds(Number(value)));
+          yield* ctx.sleep({ for: Duration.seconds(Number(value)) });
           return Number(value);
         }),
     }),

@@ -32,7 +32,7 @@ const handlers = App.toLayer(
         results.push(
           yield* ctx.run({ effect: Effect.logInfo(`ship ${input.itemId}`).pipe(Effect.as(`ship ${input.itemId}`)) }),
         );
-        yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
         return { repo, functionName, results };
       }),
   }),

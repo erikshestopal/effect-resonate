@@ -2,7 +2,7 @@ import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import { Duration, Effect, Layer, Schema } from "effect";
 import { currentCodec } from "../../src/Codec.ts";
-import * as NetworkHttp from "../../src/network/http.ts";
+import * as NetworkHttp from "../../src/network/Http.ts";
 import * as Protocol from "../../src/Protocol.ts";
 import * as Resonate from "../../src/Resonate.ts";
 import { ResonateContext } from "../../src/ResonateContext.ts";

@@ -23,7 +23,7 @@ const handlers = App.toLayer(
           yield* ctx.run({ effect: Effect.logInfo(`Countdown ${count}`).pipe(Effect.as(`Countdown ${count}`)) }),
         );
         results.push(yield* ctx.run({ effect: Effect.logInfo(`Done!`).pipe(Effect.as(`Done!`)) }));
-        yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleep({ for: Duration.millis(1) });
         return { repo, functionName, results };
       }),
   }),

@@ -4,9 +4,9 @@ import { DateTime, Duration, Effect, Layer, Option, Schema, SchemaParser } from 
 import { TestClock } from "effect/testing";
 import { currentCodec, ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
-import { ResonateNetwork } from "../src/network/network.ts";
+import { ResonateNetwork } from "../src/network/Network.ts";
 import { makeRequestHead } from "./support/testing.ts";
-import * as NetworkLocal from "../src/network/local.ts";
+import * as NetworkLocal from "../src/network/Local.ts";
 import * as Protocol from "../src/Protocol.ts";
 import * as Resonate from "../src/Resonate.ts";
 import { ExecutionEngine, ResonateContext } from "../src/ResonateContext.ts";
@@ -73,7 +73,7 @@ const handlerLayer = group.toLayer(
     SleepWorkflow: (hours) =>
       Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext> {
         const ctx = yield* ResonateContext;
-        yield* ctx.sleep(Duration.hours(Number(hours)));
+        yield* ctx.sleep({ for: Duration.hours(Number(hours)) });
         return "awake";
       }),
     WorkerRemoteRoot: (value) =>
