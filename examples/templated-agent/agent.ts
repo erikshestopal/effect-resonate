@@ -1,5 +1,5 @@
 import { Duration, Effect, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import { calculate, lookup } from "./tools.ts";
 import { AgentRequest, AgentResponse, ToolCall } from "./types.ts";
 export const repo = "templated-agent-ts";
@@ -10,8 +10,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof AgentResponse.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof AgentResponse.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         const facts = yield* ctx
           .run({ name: "lookup", effect: lookup(input.prompt) })
           .pipe(Effect.flatMap(SchemaParser.decodeUnknownEffect(ToolCall)));

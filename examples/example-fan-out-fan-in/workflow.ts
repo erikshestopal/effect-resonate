@@ -1,5 +1,5 @@
 import { Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import { ChannelResult, OrderEvent, sendEmail, sendPush, sendSlack, sendSms } from "./channels.ts";
 
 export const repo = "example-fan-out-fan-in-ts";
@@ -21,12 +21,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (event) =>
-      Effect.gen(function* (): Effect.fn.Return<
-        typeof NotificationSummary.Type,
-        unknown,
-        ResonateContext.ResonateContext
-      > {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof NotificationSummary.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         const decodeChannelResult = SchemaParser.decodeUnknownEffect(ChannelResult);
         const email = yield* ctx
           .run({ name: `email-${event.orderId}`, effect: sendEmail(event) })

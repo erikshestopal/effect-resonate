@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import { generateReport, ReportPayload } from "./report.ts";
 
 export const repo = "example-schedule-ts";
@@ -12,8 +12,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (userId) =>
-      Effect.gen(function* (): Effect.fn.Return<unknown, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<unknown, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         return yield* ctx.run({ effect: generateReport(userId) });
       }),
   }),

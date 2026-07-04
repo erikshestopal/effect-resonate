@@ -2,7 +2,7 @@ import { BunRuntime } from "@effect/platform-bun";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import { Config, Duration, Effect, Layer, Schema } from "effect";
-import { Protocol, Resonate, ResonateContext, Worker } from "effect-resonate";
+import { Protocol, Resonate } from "effect-resonate";
 
 export const repo = "example-mcp-tools-ts";
 export const functionName = "getForecast";
@@ -17,7 +17,7 @@ const handlers = App.toLayer(
   App.of({
     [functionName]: (latitude, longitude) =>
       Effect.gen(function* () {
-        const ctx = yield* ResonateContext.ResonateContext;
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ effect: Effect.logInfo("fetched forecast point") });
         yield* ctx.sleep({ for: Duration.seconds(1) });
         yield* ctx.run({ effect: Effect.logInfo("fetched detailed forecast") });
@@ -33,7 +33,7 @@ const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault(`${repo}-worker`));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(30) } }).pipe(
+    return Resonate.Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(30) } }).pipe(
       Layer.provideMerge(handlers),
       Layer.provideMerge(BunHttpClient.layer),
       Layer.provideMerge(BunCrypto.layer),

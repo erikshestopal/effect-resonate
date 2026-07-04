@@ -1,7 +1,7 @@
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import { Config, Duration, Effect, Layer } from "effect";
-import { Protocol, Worker } from "effect-resonate";
+import { Protocol, Resonate } from "effect-resonate";
 import { App, handlers } from "./workflow.ts";
 
 export const worker = Layer.unwrap(
@@ -13,7 +13,7 @@ export const worker = Layer.unwrap(
     );
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+    return Resonate.Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
       Layer.provideMerge(handlers),
       Layer.provideMerge(BunHttpClient.layer),
       Layer.provideMerge(BunCrypto.layer),

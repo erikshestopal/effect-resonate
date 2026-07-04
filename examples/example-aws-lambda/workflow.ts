@@ -1,5 +1,5 @@
 import { DateTime, Effect, Match, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 export const repo = "example-aws-lambda-ts";
 export const functionName = "processDocument";
 export const DocumentJob = Schema.Struct({
@@ -61,8 +61,8 @@ const notifyRequester = (job: typeof DocumentJob.Type) =>
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (job) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof DocumentResult.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof DocumentResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         const pageCount = yield* ctx
           .run({ name: "download", effect: downloadDocument(job) })
           .pipe(Effect.flatMap(SchemaParser.decodeUnknownEffect(Schema.Finite)));

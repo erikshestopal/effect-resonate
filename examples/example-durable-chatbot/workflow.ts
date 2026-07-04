@@ -1,5 +1,5 @@
 import { Duration, Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import { callClaude, ChatMessage } from "./llm.ts";
 export { ChatMessage } from "./llm.ts";
 export const repo = "example-durable-chatbot-ts";
@@ -20,8 +20,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof ChatTurn.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof ChatTurn.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         const history = input.history.map((content) => ChatMessage.make({ role: "user", content }));
         const response = yield* ctx
           .run({

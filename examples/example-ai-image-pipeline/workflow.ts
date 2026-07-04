@@ -1,5 +1,5 @@
 import { Duration, Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import { GeneratedImage, generateImage, ImageStyle } from "./providers.ts";
 export const repo = "example-ai-image-pipeline-ts";
 export const functionName = "runImagePipeline";
@@ -16,8 +16,8 @@ const styles = [ImageStyle.make("photorealistic"), ImageStyle.make("cartoon"), I
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof PipelineResult.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof PipelineResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         const images: Array<typeof GeneratedImage.Type> = [];
         for (const style of styles) {
           images.push(

@@ -1,5 +1,5 @@
 import { Array as Arr, Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import { Job, JobResult, executeJob, jobOrder } from "./jobs.ts";
 export const repo = "example-priority-queue-ts";
 export const functionName = "processQueue";
@@ -22,8 +22,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof QueueResult.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof QueueResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         const results: Array<JobResult> = [];
         const sorted = Arr.sort(input.jobs, jobOrder);
         for (let index = 0; index < sorted.length; index = index + 1) {

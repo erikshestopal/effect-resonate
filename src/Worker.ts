@@ -10,9 +10,9 @@
  * import { Duration, Layer } from "effect"
  * import * as BunCrypto from "@effect/platform-bun/BunCrypto"
  * import * as BunHttpClient from "@effect/platform-bun/BunHttpClient"
- * import { Worker } from "effect-resonate"
+ * import { Resonate } from "effect-resonate"
  *
- * const worker = Worker.layerHttp({
+ * const worker = Resonate.Worker.layerHttp({
  *   group: App,
  *   http: { url: "http://127.0.0.1:8001", group: "default", ttl: Duration.seconds(30) }
  * }).pipe(

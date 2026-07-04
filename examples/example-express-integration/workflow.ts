@@ -1,5 +1,5 @@
 import { Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import {
   Order,
   OrderResult,
@@ -25,8 +25,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (order) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof OrderResult.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof OrderResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: `validate-${order.id}`, effect: validateOrder(order) });
         yield* ctx.run({ name: `reserve-${order.id}`, effect: reserveInventory(order) });
         const chargeId = yield* ctx

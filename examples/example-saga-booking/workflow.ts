@@ -1,5 +1,5 @@
 import { Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import { bookCarRental, bookFlight, bookHotel, cancelFlight, cancelHotel } from "./services.ts";
 export const repo = "example-saga-booking-ts";
 export const functionName = "bookTrip";
@@ -19,8 +19,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof BookingResult.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof BookingResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         let flightId = "";
         let hotelId = "";
         const compensated: Array<string> = [];

@@ -1,5 +1,5 @@
 import { Duration, Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 export const repo = "example-openai-deep-research-agent-ts";
 export const functionName = "research";
 export const sampleArgs = [{ topic: "resonate" }] as const;
@@ -30,8 +30,8 @@ export const writeReport = (topic: string, query: string, sources: ReadonlyArray
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof Report.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof Report.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         const query = yield* ctx
           .run({ name: "plan-query", effect: planQuery(input.topic) })
           .pipe(Effect.flatMap(SchemaParser.decodeUnknownEffect(Schema.String)));

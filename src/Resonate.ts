@@ -33,6 +33,8 @@ import type * as HttpClient from "effect/unstable/http/HttpClient";
 import * as NetworkHttp from "./network/Http.ts";
 import { ResonateNetwork } from "./network/Network.ts";
 
+export { ResonateContext as Context } from "./ResonateContext.ts";
+export type { ContextInfo, ContextOptions, ResonateContextService as ContextService } from "./ResonateContext.ts";
 export * as Worker from "./Worker.ts";
 
 /**

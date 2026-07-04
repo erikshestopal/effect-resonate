@@ -1,5 +1,5 @@
 import { Duration, Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 export const repo = "example-distributed-mutex-ts";
 export const functionName = "exclusiveResourceAccess";
 export const sampleArgs = [
@@ -29,8 +29,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof MutexResult.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof MutexResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         const processed: Array<typeof WorkResult.Type> = [];
         for (let index = 0; index < input.workers.length; index = index + 1) {
           const workerId = input.workers[index]!;

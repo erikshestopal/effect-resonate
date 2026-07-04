@@ -1,5 +1,5 @@
 import { Duration, Effect, Predicate, Schema } from "effect";
-import { Resonate, ResonateContext, RetryPolicy } from "effect-resonate";
+import { Resonate, RetryPolicy } from "effect-resonate";
 import {
   ActivityInput,
   SessionState,
@@ -54,8 +54,8 @@ export const makeHandlers = Effect.fn("makeDurableEntityHandlers")(function* () 
   return App.toLayer(
     App.of({
       [functionName]: (input) =>
-        Effect.gen(function* (): Effect.fn.Return<SessionResult, unknown, ResonateContext.ResonateContext> {
-          const ctx = yield* ResonateContext.ResonateContext;
+        Effect.gen(function* (): Effect.fn.Return<SessionResult, unknown, Resonate.Context> {
+          const ctx = yield* Resonate.Context;
           let state: SessionStateType = yield* Schema.decodeUnknownEffect(SessionState)(
             yield* ctx.run({
               effect: operations.loginSession(input.sessionId, input.userId),

@@ -1,5 +1,5 @@
 import { Config, Duration, Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import { analyzeStory, notifySlack, searchStories } from "./agent.ts";
 import { Analysis, ScanResult, Story } from "./types.ts";
 export const repo = "example-hackernews-research-agent-ts";
@@ -11,8 +11,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (keyword, seenIds) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof ScanResult.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof ScanResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         const slackWebhook = yield* Config.string("SLACK_WEBHOOK").pipe(Config.withDefault(""));
         const stories = yield* ctx
           .run({ name: "search-stories", effect: searchStories(keyword) })

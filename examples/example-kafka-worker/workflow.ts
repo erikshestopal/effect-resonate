@@ -1,5 +1,5 @@
 import { Duration, Effect, Schema } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import { TOPIC_DELETED } from "./kafka-config.ts";
 export const repo = "example-kafka-worker-ts";
 export const functionName = "workflow";
@@ -27,8 +27,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof WorkflowResult.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof WorkflowResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         let batch = 1;
         let keepGoing = true;
         while (keepGoing) {

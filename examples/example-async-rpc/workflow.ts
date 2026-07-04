@@ -1,5 +1,5 @@
 import { Config, Effect, Schema } from "effect";
-import { Protocol, Resonate, ResonateContext } from "effect-resonate";
+import { Protocol, Resonate } from "effect-resonate";
 
 export const repo = "example-async-rpc-ts";
 export const functionName = "foo";
@@ -28,8 +28,8 @@ export const targetGroup = (name: string) =>
 export const handlers = App.toLayer(
   App.of({
     foo: (_input) =>
-      Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<number, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: "log-foo", effect: Effect.logInfo("running function foo") });
         const result = yield* ctx
           .rpc({ target: bar, args: [], options: { target: yield* targetGroup("service-b") } })
@@ -37,8 +37,8 @@ export const handlers = App.toLayer(
         return result + 1;
       }),
     bar: () =>
-      Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<number, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: "log-bar", effect: Effect.logInfo("running function bar") });
         const result = yield* ctx
           .rpc({ target: baz, args: [], options: { target: yield* targetGroup("service-c") } })
@@ -46,31 +46,31 @@ export const handlers = App.toLayer(
         return result + 1;
       }),
     baz: () =>
-      Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<number, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: "log-baz", effect: Effect.logInfo("running function baz") });
         return 1;
       }),
     qux: (arg) =>
-      Effect.gen(function* (): Effect.fn.Return<void, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<void, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: "log-qux", effect: Effect.logInfo("running function qux") });
         yield* ctx.detached({ target: quz, args: [arg + 1], options: { target: yield* targetGroup("service-e") } });
       }),
     quz: (arg) =>
-      Effect.gen(function* (): Effect.fn.Return<void, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<void, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: "log-quz", effect: Effect.logInfo("running function quz") });
         yield* ctx.detached({ target: cog, args: [arg + 1], options: { target: yield* targetGroup("service-f") } });
       }),
     cog: (arg) =>
-      Effect.gen(function* (): Effect.fn.Return<void, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<void, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: "log-cog", effect: Effect.logInfo(`running function cog ${arg}`) });
       }),
     zim: (arg) =>
-      Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<number, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: "log-zim", effect: Effect.logInfo("running function zim") });
         const futureRax = yield* ctx.beginRpc({
           target: rax,
@@ -87,14 +87,14 @@ export const handlers = App.toLayer(
         return resultRax + resultDop + arg;
       }),
     rax: () =>
-      Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<number, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: "log-rax", effect: Effect.logInfo("running function rax") });
         return 1;
       }),
     dop: () =>
-      Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<number, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: "log-dop", effect: Effect.logInfo("running function dop") });
         return 1;
       }),

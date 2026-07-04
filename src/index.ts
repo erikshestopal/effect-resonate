@@ -1,10 +1,9 @@
 /**
  * Effect-native SDK for the Resonate durable execution protocol.
  *
- * The package is organized as small public modules. Use {@link Resonate} for
- * the high-level client and function definition API, {@link Worker} to run
- * registered handlers, and {@link Protocol} when integrating with the Resonate
- * wire protocol directly.
+ * Use {@link Resonate} for the high-level client, worker, context, and
+ * function definition API, and {@link Protocol} when integrating with the
+ * Resonate wire protocol directly.
  *
  * @since 0.0.0
  */
@@ -98,28 +97,12 @@ export * as Registry from "./Registry.ts";
 export * as Resonate from "./Resonate.ts";
 
 /**
- * Resonate client service for starting and controlling durable work.
- *
- * @category modules
- * @since 0.0.0
- */
-export * as Client from "./ResonateClient.ts";
-
-/**
  * High-level durable schedule authoring API.
  *
  * @category modules
  * @since 0.0.0
  */
 export * as ScheduleDefinition from "./ScheduleDefinition.ts";
-
-/**
- * Durable execution context available inside registered handlers.
- *
- * @category modules
- * @since 0.0.0
- */
-export * as ResonateContext from "./ResonateContext.ts";
 
 /**
  * Retry policy constructors and wire codecs.
@@ -144,11 +127,3 @@ export * as ResonateSchedule from "./Schedule.ts";
  * @since 0.0.0
  */
 export * as Task from "./Task.ts";
-
-/**
- * Worker layers for executing registered function handlers.
- *
- * @category modules
- * @since 0.0.0
- */
-export * as Worker from "./Worker.ts";

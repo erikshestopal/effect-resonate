@@ -1,5 +1,5 @@
 import { Duration, Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import { ApiRequest, ApiResponse, callExternalApi } from "./api.ts";
 export const repo = "example-rate-limiter-ts";
 export const functionName = "rateLimitedBatch";
@@ -24,8 +24,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof RateLimitResult.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof RateLimitResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         const responses: Array<typeof ApiResponse.Type> = [];
         const interval = Duration.millis(Math.max(1, Math.floor(1000 / input.ratePerSec)));
         for (let index = 0; index < input.requests.length; index = index + 1) {

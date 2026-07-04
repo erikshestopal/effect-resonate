@@ -2,11 +2,11 @@ import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import { BunRuntime } from "@effect/platform-bun";
 import { Config, Duration, Effect, Layer } from "effect";
-import { Client, NetworkHttp, Protocol } from "effect-resonate";
+import { Protocol, Resonate, NetworkHttp } from "effect-resonate";
 import { workflow } from "./workflow.ts";
 
 export const runSleepClient = Effect.gen(function* () {
-  const client = yield* Client.ResonateClient;
+  const client = yield* Resonate.Client;
   const result = yield* client.rpc({
     executionId: Protocol.ExecutionId.make("sleep-workflow-2"),
     targetFunction: workflow,
@@ -27,7 +27,7 @@ export const clientLayer = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault("example-durable-sleep-client"));
     return Layer.effectDiscard(runSleepClient).pipe(
       Layer.provide(
-        Client.ResonateClient.layer({
+        Resonate.Client.layer({
           group: Protocol.WorkerGroup.make(groupName),
           pid: Protocol.ProcessId.make(pidName),
         }),

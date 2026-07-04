@@ -2,7 +2,7 @@ import { BunRuntime } from "@effect/platform-bun";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import { Config, DateTime, Duration, Effect, HashMap, Layer, Option, Ref, Schema } from "effect";
-import { Protocol, Resonate, ResonateContext, Worker } from "effect-resonate";
+import { Protocol, Resonate } from "effect-resonate";
 
 export const repo = "example-food-delivery-ts";
 export const functionName = "deliverFood";
@@ -56,7 +56,7 @@ const worker = Layer.unwrap(
       App.of({
         [functionName]: (order, crashMidDelivery) =>
           Effect.gen(function* () {
-            const ctx = yield* ResonateContext.ResonateContext;
+            const ctx = yield* Resonate.Context;
             const orderId = order.id;
 
             yield* ctx.run({
@@ -128,7 +128,7 @@ const worker = Layer.unwrap(
           }),
       }),
     );
-    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+    return Resonate.Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
       Layer.provideMerge(handlers),
       Layer.provideMerge(BunHttpClient.layer),
       Layer.provideMerge(BunCrypto.layer),

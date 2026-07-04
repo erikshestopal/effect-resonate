@@ -1,5 +1,5 @@
 import { DateTime, Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 export const repo = "example-supabase-edge-ts";
 export const functionName = "onboardUser";
 export const UserRecord = Schema.Struct({
@@ -41,12 +41,8 @@ const notifyCRM = (user: typeof UserRecord.Type, workspaceId: string) =>
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (user) =>
-      Effect.gen(function* (): Effect.fn.Return<
-        typeof OnboardingResult.Type,
-        unknown,
-        ResonateContext.ResonateContext
-      > {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof OnboardingResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: "validate", effect: validateUser(user) });
         yield* ctx.run({ name: "email", effect: sendWelcomeEmail(user) });
         const workspaceId = yield* ctx

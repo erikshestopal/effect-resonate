@@ -1,5 +1,5 @@
 import { Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import { PaymentResult, WebhookEvent, chargeCard, sendReceipt, updateLedger, validateEvent } from "./handlers.ts";
 export const repo = "example-webhook-handler-ts";
 export const functionName = "processPayment";
@@ -11,8 +11,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (event) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof PaymentResult.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof PaymentResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: `validate-${event.event_id}`, effect: validateEvent(event) });
         const chargeId = yield* ctx
           .run({ name: `charge-${event.event_id}`, effect: chargeCard(event) })

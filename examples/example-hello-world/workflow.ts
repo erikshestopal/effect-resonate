@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 export const repo = "example-hello-world-ts";
 export const functionName = "foo";
 export const sampleArgs = ["World"] as const;
@@ -12,8 +12,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (greetee) =>
-      Effect.gen(function* (): Effect.fn.Return<string, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<string, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* Effect.logInfo("running foo");
         const fooGreeting = `Hello ${greetee} from foo!`;
         const barGreeting = yield* ctx.run({ name: "bar", effect: bar(greetee) });

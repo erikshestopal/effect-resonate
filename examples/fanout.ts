@@ -2,7 +2,7 @@ import { BunRuntime } from "@effect/platform-bun";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import { Config, Duration, Effect, Layer, Schema } from "effect";
-import { Protocol, Resonate, ResonateContext, Worker } from "effect-resonate";
+import { Protocol, Resonate } from "effect-resonate";
 
 const OrderEvent = Schema.Struct({
   orderId: Schema.String,
@@ -18,8 +18,8 @@ const App = Resonate.group(notifyAll);
 const handlers = App.toLayer(
   App.of({
     notifyAll: (event) =>
-      Effect.gen(function* (): Effect.fn.Return<ReadonlyArray<unknown>, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<ReadonlyArray<unknown>, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         const email = yield* ctx.beginRun({
           effect: Effect.logInfo(`email:${event.email}`).pipe(
             Effect.as({ channel: "email", destination: event.email, ok: true }),
@@ -52,7 +52,7 @@ const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault("fanout-worker"));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+    return Resonate.Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
       Layer.provideMerge(handlers),
       Layer.provideMerge(BunHttpClient.layer),
       Layer.provideMerge(BunCrypto.layer),

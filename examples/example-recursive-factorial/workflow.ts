@@ -1,5 +1,5 @@
 import { Config, Effect, Schema } from "effect";
-import { Protocol, Resonate, ResonateContext } from "effect-resonate";
+import { Protocol, Resonate } from "effect-resonate";
 
 export const repo = "example-recursive-factorial-ts";
 export const functionName = "factorial";
@@ -17,8 +17,8 @@ const workerGroup = Effect.gen(function* () {
 export const handlers = App.toLayer(
   App.of({
     factorial: (n) =>
-      Effect.gen(function* (): Effect.fn.Return<number, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<number, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({ name: `log-factorial-${n}`, effect: Effect.logInfo(`Calculating factorial(${n})`) });
         if (n <= 1) {
           return 1;

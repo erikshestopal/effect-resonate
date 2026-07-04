@@ -1,5 +1,5 @@
 import { Duration, Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 
 export const repo = "example-countdown-ts";
 export const functionName = "countdown";
@@ -17,8 +17,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (count, delay, url) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof CountdownResult.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof CountdownResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         const notifications: Array<typeof Notification.Type> = [];
         for (let index = count; index > 0; index = index - 1) {
           notifications.push(

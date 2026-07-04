@@ -26,7 +26,7 @@ export default defineConfig({
         command: "sg scan src test examples",
       },
       "check:test": {
-        command: "bunx --bun vp test run",
+        command: "bunx --bun vp test run --no-file-parallelism",
       },
       differential: {
         command: "bunx --bun vp test run test/Differential.test.ts",

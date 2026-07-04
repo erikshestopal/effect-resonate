@@ -1,7 +1,7 @@
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
 import { Config, Duration, Effect, Layer, Schema } from "effect";
-import { Protocol, Resonate, ResonateContext, Worker } from "effect-resonate";
+import { Protocol, Resonate } from "effect-resonate";
 import { ComputeRequest } from "./client.ts";
 export const repo = "example-load-balancing-ts";
 export const functionName = "computeSomething";
@@ -16,8 +16,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<typeof ComputeResult.Type, unknown, ResonateContext.ResonateContext> {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof ComputeResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         yield* ctx.run({
           name: `compute-${input.id}`,
           effect: Effect.logInfo(`${input.id} computed with cost ${input.computeCost}`),
@@ -33,7 +33,7 @@ export const worker = Layer.unwrap(
     const pidName = yield* Config.string("RESONATE_PID").pipe(Config.withDefault(`${repo}-worker`));
     const group = Protocol.WorkerGroup.make(groupName);
     const pid = Protocol.ProcessId.make(pidName);
-    return Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
+    return Resonate.Worker.layerHttp({ group: App, http: { url, group, pid, ttl: Duration.seconds(5) } }).pipe(
       Layer.provideMerge(handlers),
       Layer.provideMerge(BunHttpClient.layer),
       Layer.provideMerge(BunCrypto.layer),

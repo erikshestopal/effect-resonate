@@ -1,5 +1,5 @@
 import { Effect, Schema, SchemaParser } from "effect";
-import { Resonate, ResonateContext } from "effect-resonate";
+import { Resonate } from "effect-resonate";
 import { AccountProjection, UserEvent, applyEvent, initialProjection, makeSampleEvents } from "./events.ts";
 
 export const repo = "example-event-sourcing-ts";
@@ -16,12 +16,8 @@ export const App = Resonate.group(workflow);
 export const handlers = App.toLayer(
   App.of({
     [functionName]: (input) =>
-      Effect.gen(function* (): Effect.fn.Return<
-        typeof ProjectionResult.Type,
-        unknown,
-        ResonateContext.ResonateContext
-      > {
-        const ctx = yield* ResonateContext.ResonateContext;
+      Effect.gen(function* (): Effect.fn.Return<typeof ProjectionResult.Type, unknown, Resonate.Context> {
+        const ctx = yield* Resonate.Context;
         let projection = initialProjection(input.userId);
         for (let index = 0; index < input.events.length; index = index + 1) {
           const event = input.events[index]!;
