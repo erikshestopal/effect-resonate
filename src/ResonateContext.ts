@@ -31,8 +31,7 @@ import {
 } from "effect";
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, EncodingError } from "./Errors.ts";
-import type { AnyFunction, PayloadArgs } from "./FunctionDefinition.ts";
-import { InvocationParam } from "./Invocation.ts";
+import { InvocationParam, type AnyFunction, type PayloadArgs } from "./FunctionDefinition.ts";
 import * as Protocol from "./Protocol.ts";
 import type { PromiseDeclaration, PromiseSuccess } from "./PromiseDefinition.ts";
 import type { Registry } from "./Registry.ts";

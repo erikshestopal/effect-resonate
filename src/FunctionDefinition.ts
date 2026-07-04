@@ -7,6 +7,20 @@ import { Array as Arr, Context, Effect, Layer, Option, Pipeable, Schema } from "
 import * as Protocol from "./Protocol.ts";
 import { Registry, type RegistryItem } from "./Registry.ts";
 import type { ResonateContext } from "./ResonateContext.ts";
+import * as RetryPolicy from "./RetryPolicy.ts";
+
+/**
+ * Encoded durable function invocation payload.
+ *
+ * @category schemas
+ * @since 0.0.0
+ */
+export const InvocationParam = Schema.Struct({
+  func: Schema.String,
+  args: Schema.Array(Schema.Unknown),
+  version: Protocol.FunctionVersionFromWire,
+  retry: Schema.optionalKey(RetryPolicy.RetryPolicyFromWire),
+});
 
 /**
  * Describes a durable function name, payload schema, and version.

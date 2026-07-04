@@ -42,14 +42,6 @@ export * as Errors from "./Errors.ts";
 export * as FunctionDefinition from "./FunctionDefinition.ts";
 
 /**
- * Shared invocation payload schemas.
- *
- * @category modules
- * @since 0.0.0
- */
-export * as Invocation from "./Invocation.ts";
-
-/**
  * Runtime-neutral Resonate network service interface.
  *
  * @category modules

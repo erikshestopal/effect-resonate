@@ -20,8 +20,7 @@ import {
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import { DurablePromises } from "./DurablePromise.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, type EncodingError } from "./Errors.ts";
-import type { AnyFunction, PayloadArgs } from "./FunctionDefinition.ts";
-import { InvocationParam } from "./Invocation.ts";
+import { InvocationParam, type AnyFunction, type PayloadArgs } from "./FunctionDefinition.ts";
 import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
 import type { PromiseDeclaration, PromiseFailure, PromiseSuccess } from "./PromiseDefinition.ts";

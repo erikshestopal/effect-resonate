@@ -5,8 +5,7 @@
  */
 import { Array as Arr, Cron, Duration, Effect, Layer, Number as Num, Order, Predicate, Schema } from "effect";
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
-import type { AnyFunction, PayloadArgs } from "./FunctionDefinition.ts";
-import { InvocationParam } from "./Invocation.ts";
+import { InvocationParam, type AnyFunction, type PayloadArgs } from "./FunctionDefinition.ts";
 import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";
