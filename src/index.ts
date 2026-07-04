@@ -106,6 +106,14 @@ export * as Registry from "./Registry.ts";
 export * as Resonate from "./Resonate.ts";
 
 /**
+ * Resonate client service for starting and controlling durable work.
+ *
+ * @category modules
+ * @since 0.0.0
+ */
+export * as ResonateClient from "./ResonateClient.ts";
+
+/**
  * High-level durable schedule authoring API.
  *
  * @category modules
