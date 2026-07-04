@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
-import { Cron, DateTime, Duration, Effect, Layer, Option, Schema, SchemaParser } from "effect";
+import { DateTime, Duration, Effect, Layer, Option, Schema, SchemaParser } from "effect";
 import { TestClock } from "effect/testing";
 import { currentCodec, ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { DurablePromises } from "../src/DurablePromise.ts";
@@ -329,7 +329,7 @@ describe("Worker", () => {
   it.effect("creates schedules through Resonate.schedule.layer and executes fired promises", () => {
     const scheduled = Resonate.schedule({
       id: Protocol.ScheduleId.make("api-nightly"),
-      cron: Cron.parseUnsafe("* * * * *"),
+      cron: "* * * * *",
       function: Scheduled,
       payload: [{ id: "order-1" }],
       timeout: Duration.seconds(30),
@@ -370,14 +370,14 @@ describe("Worker", () => {
       const schedules = yield* Schedules;
       const initial = Resonate.schedule({
         id: Protocol.ScheduleId.make("api-idempotent"),
-        cron: Cron.parseUnsafe("* * * * *"),
+        cron: "* * * * *",
         function: Scheduled,
         payload: [{ id: "first" }],
         target: Protocol.WorkerGroup.make("workers"),
       });
       const changed = Resonate.schedule({
         id: Protocol.ScheduleId.make("api-idempotent"),
-        cron: Cron.parseUnsafe("*/5 * * * *"),
+        cron: "*/5 * * * *",
         function: Scheduled,
         payload: [{ id: "changed" }],
         target: Protocol.WorkerGroup.make("workers"),

@@ -3,7 +3,7 @@
  *
  * @since 0.0.0
  */
-import { Array as Arr, Cron, Duration, Effect, Layer, Number as Num, Order, Predicate, Schema } from "effect";
+import { Array as Arr, Duration, Effect, Layer, Predicate, Schema } from "effect";
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import { InvocationParam, type AnyFunction, type PayloadArgs } from "./FunctionDefinition.ts";
 import { ResonateNetwork } from "./network/network.ts";
@@ -13,6 +13,8 @@ import { Schedules } from "./Schedule.ts";
 
 const globalScope = Schema.Literal("global").make("global");
 
+export type CronExpression = string;
+
 /**
  * Options for defining a durable schedule.
  *
@@ -21,7 +23,7 @@ const globalScope = Schema.Literal("global").make("global");
  */
 export interface ScheduleOptions<F extends AnyFunction> {
   readonly id: Protocol.ScheduleId;
-  readonly cron: Cron.Cron;
+  readonly cron: CronExpression;
   readonly function: F;
   readonly payload: PayloadArgs<F>;
   readonly timeout?: Duration.Duration;
@@ -39,7 +41,7 @@ export interface ScheduleOptions<F extends AnyFunction> {
  */
 export interface ScheduleValue<F extends AnyFunction = AnyFunction> {
   readonly id: Protocol.ScheduleId;
-  readonly cron: Cron.Cron;
+  readonly cron: CronExpression;
   readonly definition: F;
   readonly payload: PayloadArgs<F>;
   readonly create: Effect.Effect<Protocol.ScheduleRecord, unknown, Schedules | ResonateNetwork>;
@@ -47,44 +49,6 @@ export interface ScheduleValue<F extends AnyFunction = AnyFunction> {
   readonly delete: Effect.Effect<void, unknown, Schedules>;
   readonly layer: Layer.Layer<never, unknown, Schedules | ResonateNetwork>;
 }
-
-interface CronSegmentOptions {
-  readonly values: ReadonlySet<number>;
-  readonly min: number;
-  readonly max: number;
-}
-
-const fullCronSegment = (options: CronSegmentOptions): boolean => {
-  if (options.values.size === 0) {
-    return true;
-  }
-  if (options.values.size !== Num.increment(options.max - options.min)) {
-    return false;
-  }
-  return Arr.every(Arr.range(options.min, options.max), (value) => options.values.has(value));
-};
-
-const cronSegment = (options: CronSegmentOptions): string => {
-  if (fullCronSegment(options)) {
-    return "*";
-  }
-  return Arr.sort(options.values, Order.Number).join(",");
-};
-
-const fiveFieldCronExpression = (cron: Cron.Cron): Effect.Effect<string, never> => {
-  if (cron.seconds.size !== 1 || !cron.seconds.has(0)) {
-    return Effect.die("Resonate schedules only support five-field cron expressions");
-  }
-  return Effect.succeed(
-    [
-      cronSegment({ values: cron.minutes, min: 0, max: 59 }),
-      cronSegment({ values: cron.hours, min: 0, max: 23 }),
-      cronSegment({ values: cron.days, min: 1, max: 31 }),
-      cronSegment({ values: cron.months, min: 1, max: 12 }),
-      cronSegment({ values: cron.weekdays, min: 0, max: 6 }),
-    ].join(" "),
-  );
-};
 
 /**
  * Defines a durable schedule for invoking a function on a cron expression.
@@ -120,7 +84,7 @@ export const schedule = <F extends AnyFunction>(options: ScheduleOptions<F>): Sc
     const target = network.match(options.target ?? Protocol.WorkerGroup.make("default"));
     return yield* schedules.create({
       id: options.id,
-      cron: yield* fiveFieldCronExpression(options.cron),
+      cron: options.cron,
       promiseId: "{{.id}}.{{.timestamp}}",
       promiseTimeout: timeout,
       promiseParam: withSchemaHeader({ value: encoded, schemaName: options.function.name }),
