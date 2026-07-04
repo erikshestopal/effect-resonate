@@ -82,22 +82,24 @@ export const schedule = <F extends AnyFunction>(options: ScheduleOptions<F>): Sc
       }),
     );
     const target = network.match(options.target ?? Protocol.WorkerGroup.make("default"));
-    return yield* schedules.create({
-      id: options.id,
-      cron: options.cron,
-      promiseId: "{{.id}}.{{.timestamp}}",
-      promiseTimeout: timeout,
-      promiseParam: withSchemaHeader({ value: encoded, schemaName: options.function.name }),
-      promiseTags: Protocol.Tags.make({
-        reserved: {
-          ...tags.reserved,
-          "resonate:target": target,
-          "resonate:scope": globalScope,
-        },
-        unrecognized: tags.unrecognized,
-        user: tags.user,
+    return yield* schedules.create(
+      Protocol.ScheduleCreateData.make({
+        id: options.id,
+        cron: options.cron,
+        promiseId: "{{.id}}.{{.timestamp}}",
+        promiseTimeout: timeout,
+        promiseParam: withSchemaHeader({ value: encoded, schemaName: options.function.name }),
+        promiseTags: Protocol.Tags.make({
+          reserved: {
+            ...tags.reserved,
+            "resonate:target": target,
+            "resonate:scope": globalScope,
+          },
+          unrecognized: tags.unrecognized,
+          user: tags.user,
+        }),
       }),
-    });
+    );
   });
 
   return {

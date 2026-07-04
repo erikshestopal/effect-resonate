@@ -88,7 +88,9 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
       const held = yield* Ref.make(HashMap.empty<Protocol.TaskId, HeldTask>());
 
       const heartbeat = Ref.get(held).pipe(
-        Effect.flatMap((current) => tasks.heartbeat({ pid, tasks: HashMap.toValues(current) })),
+        Effect.flatMap((current) =>
+          tasks.heartbeat(Protocol.TaskHeartbeatData.make({ pid, tasks: HashMap.toValues(current) })),
+        ),
         Effect.catchCause((cause) => Effect.logWarning("Worker heartbeat failed", cause)),
         Effect.schedule(Schedule.spaced(heartbeatEvery)),
       );
@@ -105,7 +107,7 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
           return;
         }
         const result = yield* tasks.suspend({
-          data: {
+          data: Protocol.TaskSuspendData.make({
             id: task.id,
             version: task.version,
             actions: Arr.map(outcome.awaited, (id) =>
@@ -114,10 +116,10 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
                   corrId: Protocol.CorrelationId.make(`${task.id}:${id}:callback`),
                   version: Protocol.protocolVersion,
                 }),
-                data: { awaited: id, awaiter: task.id },
+                data: Protocol.PromiseRegisterCallbackData.make({ awaited: id, awaiter: task.id }),
               }),
             ),
-          },
+          }),
           options: {
             origin: Protocol.promiseOrigin(promise),
           },
@@ -131,7 +133,12 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
       const handleExecute = Effect.fn("Worker.handleExecute")(function* (message: Protocol.ExecuteMessage) {
         const acquired = yield* tasks
           .acquire({
-            data: { id: message.data.task.id, version: message.data.task.version, pid, ttl },
+            data: Protocol.TaskAcquireData.make({
+              id: message.data.task.id,
+              version: message.data.task.version,
+              pid,
+              ttl,
+            }),
             options: { origin: message.data.task.id },
           })
           .pipe(
@@ -150,7 +157,7 @@ export const layer = <const Fns extends ReadonlyArray<AnyFunction>>(config: {
         yield* Ref.update(held, HashMap.set(claim.task.id, { id: claim.task.id, version: claim.task.version }));
         const releaseBestEffort = tasks
           .release({
-            data: { id: claim.task.id, version: claim.task.version },
+            data: Protocol.TaskReleaseData.make({ id: claim.task.id, version: claim.task.version }),
             options: { origin: Protocol.promiseOrigin(claim.promise) },
           })
           .pipe(Effect.ignore);

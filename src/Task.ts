@@ -98,33 +98,31 @@ const taskError = (options: {
 export interface TasksService {
   readonly get: (id: Protocol.TaskId) => Effect.Effect<Protocol.TaskRecord, ResonateProtocolError | TransportError>;
   readonly create: (
-    data: Protocol.TaskCreateRequest["data"],
+    data: Protocol.TaskCreateData,
   ) => Effect.Effect<TaskCreateResult, ResonateProtocolError | TransportError>;
   readonly acquire: (request: {
-    readonly data: Protocol.TaskAcquireRequest["data"];
+    readonly data: Protocol.TaskAcquireData;
     readonly options?: TaskRequestOptions;
   }) => Effect.Effect<TaskClaimResult, ResonateProtocolError | TransportError>;
   readonly release: (request: {
-    readonly data: Protocol.TaskReleaseRequest["data"];
+    readonly data: Protocol.TaskReleaseData;
     readonly options?: TaskRequestOptions;
   }) => Effect.Effect<void, ResonateProtocolError | TransportError>;
   readonly suspend: (request: {
-    readonly data: Protocol.TaskSuspendRequest["data"];
+    readonly data: Protocol.TaskSuspendData;
     readonly options?: TaskRequestOptions;
   }) => Effect.Effect<SuspendResult, ResonateProtocolError | TransportError>;
   readonly halt: (id: Protocol.TaskId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
   readonly continue: (id: Protocol.TaskId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
   readonly fulfill: (request: {
-    readonly data: Protocol.TaskFulfillRequest["data"];
+    readonly data: Protocol.TaskFulfillData;
     readonly options?: TaskRequestOptions;
   }) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
   readonly fence: (request: {
-    readonly data: Protocol.TaskFenceRequest["data"];
+    readonly data: Protocol.TaskFenceData;
     readonly options?: TaskRequestOptions;
   }) => Effect.Effect<FenceResult, ResonateProtocolError | TransportError>;
-  readonly heartbeat: (
-    data: Protocol.TaskHeartbeatRequest["data"],
-  ) => Effect.Effect<void, ResonateProtocolError | TransportError>;
+  readonly heartbeat: (data: Protocol.TaskHeartbeatData) => Effect.Effect<void, ResonateProtocolError | TransportError>;
 }
 
 /**

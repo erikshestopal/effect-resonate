@@ -49,16 +49,16 @@ export interface DurablePromisesService {
     id: Protocol.PromiseId,
   ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
   readonly create: (
-    data: Protocol.PromiseCreateRequest["data"],
+    data: Protocol.PromiseCreateData,
   ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
   readonly settle: (
-    data: Protocol.PromiseSettleRequest["data"],
+    data: Protocol.PromiseSettleData,
   ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
   readonly registerCallback: (
-    data: Protocol.PromiseRegisterCallbackRequest["data"],
+    data: Protocol.PromiseRegisterCallbackData,
   ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
   readonly registerListener: (
-    data: Protocol.PromiseRegisterListenerRequest["data"],
+    data: Protocol.PromiseRegisterListenerData,
   ) => Effect.Effect<Protocol.PromiseRecord, ResonateProtocolError | TransportError>;
   readonly awaitSettled: (
     id: Protocol.PromiseId,
@@ -127,7 +127,9 @@ export class DurablePromises extends Context.Service<DurablePromises, DurablePro
         }),
         awaitSettled: Effect.fn("DurablePromises.awaitSettled")(function* (id) {
           const observed = yield* Effect.gen(function* () {
-            const promise = yield* service.registerListener({ awaited: id, address: network.unicast });
+            const promise = yield* service.registerListener(
+              Protocol.PromiseRegisterListenerData.make({ awaited: id, address: network.unicast }),
+            );
             if (promise.state !== "pending") {
               return Option.some(promise);
             }

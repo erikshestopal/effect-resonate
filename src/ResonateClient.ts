@@ -219,7 +219,9 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
                   : decodeSettled(promise).pipe(Effect.exit, Effect.map(Option.some)),
               ),
             ),
-          cancel: promises.settle({ id, state: canceledState, value: Protocol.emptyValue }).pipe(Effect.asVoid),
+          cancel: promises
+            .settle(Protocol.PromiseSettleData.make({ id, state: canceledState, value: Protocol.emptyValue }))
+            .pipe(Effect.asVoid),
         });
 
         const timeoutAt = Effect.fn("ResonateClient.timeoutAt")(function* (timeout: Duration.Duration) {
@@ -240,12 +242,14 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
             args: options.args,
             callOptions: options.options,
           });
-          yield* promises.create({
-            id,
-            timeoutAt: yield* timeoutAt(options.options?.timeout ?? defaultTimeout),
-            param,
-            tags: rootTags({ id, target, extra: options.options?.tags ?? Protocol.emptyTags }),
-          });
+          yield* promises.create(
+            Protocol.PromiseCreateData.make({
+              id,
+              timeoutAt: yield* timeoutAt(options.options?.timeout ?? defaultTimeout),
+              param,
+              tags: rootTags({ id, target, extra: options.options?.tags ?? Protocol.emptyTags }),
+            }),
+          );
           return handle(id);
         });
 
@@ -261,26 +265,28 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
             args: options.args,
             callOptions: options.options,
           });
-          yield* tasks.create({
-            pid,
-            ttl,
-            action: Protocol.PromiseCreateRequest.make({
-              head: Protocol.RequestHead.make({
-                corrId: Protocol.CorrelationId.make(`${id}:create`),
-                version: Protocol.protocolVersion,
-              }),
-              data: {
-                id,
-                timeoutAt: yield* timeoutAt(options.options?.timeout ?? defaultTimeout),
-                param,
-                tags: rootTags({
-                  id,
-                  target: network.anycast(groupName),
-                  extra: options.options?.tags ?? Protocol.emptyTags,
+          yield* tasks.create(
+            Protocol.TaskCreateData.make({
+              pid,
+              ttl,
+              action: Protocol.PromiseCreateRequest.make({
+                head: Protocol.RequestHead.make({
+                  corrId: Protocol.CorrelationId.make(`${id}:create`),
+                  version: Protocol.protocolVersion,
                 }),
-              },
+                data: Protocol.PromiseCreateData.make({
+                  id,
+                  timeoutAt: yield* timeoutAt(options.options?.timeout ?? defaultTimeout),
+                  param,
+                  tags: rootTags({
+                    id,
+                    target: network.anycast(groupName),
+                    extra: options.options?.tags ?? Protocol.emptyTags,
+                  }),
+                }),
+              }),
             }),
-          });
+          );
           return handle(id);
         });
 
@@ -308,11 +314,13 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           resolve: Effect.fn("ResonateClient.resolve")(function* (options) {
             const encoded = yield* Schema.encodeUnknownEffect(options.declaration.success)(options.value);
             const protocolValue = yield* codec.encode(encoded);
-            yield* promises.settle({
-              id: options.id,
-              state: resolvedState,
-              value: withSchemaHeader({ value: protocolValue, schemaName: options.declaration.name }),
-            });
+            yield* promises.settle(
+              Protocol.PromiseSettleData.make({
+                id: options.id,
+                state: resolvedState,
+                value: withSchemaHeader({ value: protocolValue, schemaName: options.declaration.name }),
+              }),
+            );
           }),
           reject: Effect.fn("ResonateClient.reject")(function* (options) {
             if (Predicate.isUndefined(options.declaration.error)) {
@@ -320,11 +328,13 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
             }
             const encoded = yield* Schema.encodeUnknownEffect(options.declaration.error)(options.error);
             const protocolValue = yield* codec.encode(encoded);
-            yield* promises.settle({
-              id: options.id,
-              state: rejectedState,
-              value: withSchemaHeader({ value: protocolValue, schemaName: options.declaration.name }),
-            });
+            yield* promises.settle(
+              Protocol.PromiseSettleData.make({
+                id: options.id,
+                state: rejectedState,
+                value: withSchemaHeader({ value: protocolValue, schemaName: options.declaration.name }),
+              }),
+            );
           }),
           get: Effect.fn("ResonateClient.get")(function* <F extends AnyFunction>(options: {
             readonly fn: F;
@@ -333,7 +343,9 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
             return handle(Protocol.PrefixedId.make({ id: options.id, prefix: idPrefix }));
           }),
           cancel: Effect.fn("ResonateClient.cancel")(function* (id) {
-            yield* promises.settle({ id, state: canceledState, value: Protocol.emptyValue });
+            yield* promises.settle(
+              Protocol.PromiseSettleData.make({ id, state: canceledState, value: Protocol.emptyValue }),
+            );
           }),
         });
       }),

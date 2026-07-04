@@ -551,46 +551,58 @@ export const PromiseGetRequest = Schema.Struct({
 });
 export type PromiseGetRequest = typeof PromiseGetRequest.Type;
 
+export const PromiseCreateData = Schema.Struct({
+  id: PromiseId,
+  timeoutAt: Timestamp,
+  param: Value,
+  tags: TagsFromWire,
+});
+export type PromiseCreateData = typeof PromiseCreateData.Type;
+
 export const PromiseCreateRequest = Schema.Struct({
   kind: Schema.tag("promise.create"),
   head: RequestHead,
-  data: Schema.Struct({
-    id: PromiseId,
-    timeoutAt: Timestamp,
-    param: Value,
-    tags: TagsFromWire,
-  }),
+  data: PromiseCreateData,
 });
 export type PromiseCreateRequest = typeof PromiseCreateRequest.Type;
+
+export const PromiseSettleData = Schema.Struct({
+  id: PromiseId,
+  state: Schema.Literals(["resolved", "rejected", "rejected_canceled"]),
+  value: Value,
+});
+export type PromiseSettleData = typeof PromiseSettleData.Type;
 
 export const PromiseSettleRequest = Schema.Struct({
   kind: Schema.tag("promise.settle"),
   head: RequestHead,
-  data: Schema.Struct({
-    id: PromiseId,
-    state: Schema.Literals(["resolved", "rejected", "rejected_canceled"]),
-    value: Value,
-  }),
+  data: PromiseSettleData,
 });
 export type PromiseSettleRequest = typeof PromiseSettleRequest.Type;
+
+export const PromiseRegisterCallbackData = Schema.Struct({
+  awaited: PromiseId,
+  awaiter: PromiseId,
+});
+export type PromiseRegisterCallbackData = typeof PromiseRegisterCallbackData.Type;
 
 export const PromiseRegisterCallbackRequest = Schema.Struct({
   kind: Schema.tag("promise.register_callback"),
   head: RequestHead,
-  data: Schema.Struct({
-    awaited: PromiseId,
-    awaiter: PromiseId,
-  }),
+  data: PromiseRegisterCallbackData,
 });
 export type PromiseRegisterCallbackRequest = typeof PromiseRegisterCallbackRequest.Type;
+
+export const PromiseRegisterListenerData = Schema.Struct({
+  awaited: PromiseId,
+  address: TargetAddressFromString,
+});
+export type PromiseRegisterListenerData = typeof PromiseRegisterListenerData.Type;
 
 export const PromiseRegisterListenerRequest = Schema.Struct({
   kind: Schema.tag("promise.register_listener"),
   head: RequestHead,
-  data: Schema.Struct({
-    awaited: PromiseId,
-    address: TargetAddressFromString,
-  }),
+  data: PromiseRegisterListenerData,
 });
 export type PromiseRegisterListenerRequest = typeof PromiseRegisterListenerRequest.Type;
 
@@ -613,44 +625,56 @@ export const TaskGetRequest = Schema.Struct({
 });
 export type TaskGetRequest = typeof TaskGetRequest.Type;
 
+export const TaskCreateData = Schema.Struct({
+  pid: ProcessId,
+  ttl: Ttl,
+  action: PromiseCreateRequest,
+});
+export type TaskCreateData = typeof TaskCreateData.Type;
+
 export const TaskCreateRequest = Schema.Struct({
   kind: Schema.tag("task.create"),
   head: RequestHead,
-  data: Schema.Struct({
-    pid: ProcessId,
-    ttl: Ttl,
-    action: PromiseCreateRequest,
-  }),
+  data: TaskCreateData,
 });
 export type TaskCreateRequest = typeof TaskCreateRequest.Type;
+
+export const TaskAcquireData = Schema.Struct({
+  id: TaskId,
+  version: TaskVersion,
+  pid: ProcessId,
+  ttl: Ttl,
+});
+export type TaskAcquireData = typeof TaskAcquireData.Type;
 
 export const TaskAcquireRequest = Schema.Struct({
   kind: Schema.tag("task.acquire"),
   head: RequestHead,
-  data: Schema.Struct({
-    id: TaskId,
-    version: TaskVersion,
-    pid: ProcessId,
-    ttl: Ttl,
-  }),
+  data: TaskAcquireData,
 });
 export type TaskAcquireRequest = typeof TaskAcquireRequest.Type;
+
+export const TaskReleaseData = Schema.Struct({ id: TaskId, version: TaskVersion });
+export type TaskReleaseData = typeof TaskReleaseData.Type;
 
 export const TaskReleaseRequest = Schema.Struct({
   kind: Schema.tag("task.release"),
   head: RequestHead,
-  data: Schema.Struct({ id: TaskId, version: TaskVersion }),
+  data: TaskReleaseData,
 });
 export type TaskReleaseRequest = typeof TaskReleaseRequest.Type;
+
+export const TaskSuspendData = Schema.Struct({
+  id: TaskId,
+  version: TaskVersion,
+  actions: Schema.Array(PromiseRegisterCallbackRequest),
+});
+export type TaskSuspendData = typeof TaskSuspendData.Type;
 
 export const TaskSuspendRequest = Schema.Struct({
   kind: Schema.tag("task.suspend"),
   head: RequestHead,
-  data: Schema.Struct({
-    id: TaskId,
-    version: TaskVersion,
-    actions: Schema.Array(PromiseRegisterCallbackRequest),
-  }),
+  data: TaskSuspendData,
 });
 export type TaskSuspendRequest = typeof TaskSuspendRequest.Type;
 
@@ -668,35 +692,44 @@ export const TaskContinueRequest = Schema.Struct({
 });
 export type TaskContinueRequest = typeof TaskContinueRequest.Type;
 
+export const TaskFulfillData = Schema.Struct({
+  id: TaskId,
+  version: TaskVersion,
+  action: PromiseSettleRequest,
+});
+export type TaskFulfillData = typeof TaskFulfillData.Type;
+
 export const TaskFulfillRequest = Schema.Struct({
   kind: Schema.tag("task.fulfill"),
   head: RequestHead,
-  data: Schema.Struct({
-    id: TaskId,
-    version: TaskVersion,
-    action: PromiseSettleRequest,
-  }),
+  data: TaskFulfillData,
 });
 export type TaskFulfillRequest = typeof TaskFulfillRequest.Type;
+
+export const TaskFenceData = Schema.Struct({
+  id: TaskId,
+  version: TaskVersion,
+  action: Schema.Union([PromiseCreateRequest, PromiseSettleRequest]),
+});
+export type TaskFenceData = typeof TaskFenceData.Type;
 
 export const TaskFenceRequest = Schema.Struct({
   kind: Schema.tag("task.fence"),
   head: RequestHead,
-  data: Schema.Struct({
-    id: TaskId,
-    version: TaskVersion,
-    action: Schema.Union([PromiseCreateRequest, PromiseSettleRequest]),
-  }),
+  data: TaskFenceData,
 });
 export type TaskFenceRequest = typeof TaskFenceRequest.Type;
+
+export const TaskHeartbeatData = Schema.Struct({
+  pid: ProcessId,
+  tasks: Schema.Array(Schema.Struct({ id: TaskId, version: TaskVersion })),
+});
+export type TaskHeartbeatData = typeof TaskHeartbeatData.Type;
 
 export const TaskHeartbeatRequest = Schema.Struct({
   kind: Schema.tag("task.heartbeat"),
   head: RequestHead,
-  data: Schema.Struct({
-    pid: ProcessId,
-    tasks: Schema.Array(Schema.Struct({ id: TaskId, version: TaskVersion })),
-  }),
+  data: TaskHeartbeatData,
 });
 export type TaskHeartbeatRequest = typeof TaskHeartbeatRequest.Type;
 
@@ -718,17 +751,20 @@ export const ScheduleGetRequest = Schema.Struct({
 });
 export type ScheduleGetRequest = typeof ScheduleGetRequest.Type;
 
+export const ScheduleCreateData = Schema.Struct({
+  id: ScheduleId,
+  cron: Schema.String,
+  promiseId: Schema.NonEmptyString,
+  promiseTimeout: Ttl,
+  promiseParam: Value,
+  promiseTags: TagsFromWire,
+});
+export type ScheduleCreateData = typeof ScheduleCreateData.Type;
+
 export const ScheduleCreateRequest = Schema.Struct({
   kind: Schema.tag("schedule.create"),
   head: RequestHead,
-  data: Schema.Struct({
-    id: ScheduleId,
-    cron: Schema.String,
-    promiseId: Schema.NonEmptyString,
-    promiseTimeout: Ttl,
-    promiseParam: Value,
-    promiseTags: TagsFromWire,
-  }),
+  data: ScheduleCreateData,
 });
 export type ScheduleCreateRequest = typeof ScheduleCreateRequest.Type;
 

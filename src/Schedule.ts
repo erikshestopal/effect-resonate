@@ -38,7 +38,7 @@ export interface SchedulesService {
     id: Protocol.ScheduleId,
   ) => Effect.Effect<Protocol.ScheduleRecord, ResonateProtocolError | TransportError>;
   readonly create: (
-    data: Protocol.ScheduleCreateRequest["data"],
+    data: Protocol.ScheduleCreateData,
   ) => Effect.Effect<Protocol.ScheduleRecord, ResonateProtocolError | TransportError>;
   readonly delete: (id: Protocol.ScheduleId) => Effect.Effect<void, ResonateProtocolError | TransportError>;
 }

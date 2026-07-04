@@ -398,7 +398,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         const fence = Effect.fn("ExecutionEngine.fence")(function* (options: FenceOptions) {
           const { action } = options;
           const result = yield* tasks.fence({
-            data: { id: state.root, version: state.version, action },
+            data: Protocol.TaskFenceData.make({ id: state.root, version: state.version, action }),
             options: { origin: state.originId },
           });
           state.cache = HashMap.setMany(
@@ -420,7 +420,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           return yield* fence({
             action: Protocol.PromiseSettleRequest.make({
               head: requestHead({ corrId: `${state.root}:${id}:settle`, origin: state.originId }),
-              data: { id, state: settled, value },
+              data: Protocol.PromiseSettleData.make({ id, state: settled, value }),
             }),
           });
         });
@@ -430,14 +430,14 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           const settled = Exit.isSuccess(exit) ? resolvedState : rejectedState;
           const value = yield* codec.encode(Exit.isSuccess(exit) ? exit.value : exit.cause);
           const promise = yield* tasks.fulfill({
-            data: {
+            data: Protocol.TaskFulfillData.make({
               id: state.root,
               version: state.version,
               action: Protocol.PromiseSettleRequest.make({
                 head: requestHead({ corrId: `${state.root}:fulfill`, origin: state.originId }),
-                data: { id: state.root, state: settled, value },
+                data: Protocol.PromiseSettleData.make({ id: state.root, state: settled, value }),
               }),
-            },
+            }),
             options: { origin: state.originId },
           });
           state.cache = HashMap.set(state.cache, promise.id, promise);
@@ -519,7 +519,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           return yield* fence({
             action: Protocol.PromiseCreateRequest.make({
               head: requestHead({ corrId: `${state.root}:${id}:create`, origin: state.originId }),
-              data: {
+              data: Protocol.PromiseCreateData.make({
                 id,
                 timeoutAt: yield* timeoutAt({
                   parent: state.timeoutAt,
@@ -531,7 +531,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
                   extra: options?.tags ?? Protocol.emptyTags,
                   breaksLineage: Predicate.isNotUndefined(options?.id),
                 }),
-              },
+              }),
             }),
           });
         });
@@ -547,7 +547,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           return yield* fence({
             action: Protocol.PromiseCreateRequest.make({
               head: requestHead({ corrId: `${state.root}:${id}:sleep`, origin: state.originId }),
-              data: {
+              data: Protocol.PromiseCreateData.make({
                 id,
                 timeoutAt: timestamp(Num.min(DateTime.toEpochMillis(instant), DateTime.toEpochMillis(state.timeoutAt))),
                 param: Protocol.emptyValue,
@@ -563,7 +563,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
                   unrecognized: {},
                   user: {},
                 }),
-              },
+              }),
             }),
           });
         });
@@ -593,7 +593,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           const promise = yield* fence({
             action: Protocol.PromiseCreateRequest.make({
               head: requestHead({ corrId: `${state.root}:${id}:promise`, origin: state.originId }),
-              data: {
+              data: Protocol.PromiseCreateData.make({
                 id,
                 timeoutAt: yield* timeoutAt({
                   parent: state.timeoutAt,
@@ -612,7 +612,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
                   unrecognized: options?.tags?.unrecognized ?? {},
                   user: options?.tags?.user ?? {},
                 }),
-              },
+              }),
             }),
           });
           if (promise.state === "pending") {
@@ -652,7 +652,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           const promise = yield* fence({
             action: Protocol.PromiseCreateRequest.make({
               head: requestHead({ corrId: `${state.root}:${id}:rpc`, origin: state.originId }),
-              data: {
+              data: Protocol.PromiseCreateData.make({
                 id,
                 timeoutAt:
                   mode === "detached"
@@ -672,7 +672,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
                   unrecognized: options?.tags?.unrecognized ?? {},
                   user: options?.tags?.user ?? {},
                 }),
-              },
+              }),
             }),
           });
           if (mode === "attached" && promise.state === "pending") {
