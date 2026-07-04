@@ -63,6 +63,27 @@ export const detachedPromiseId = (options: { readonly prefix: PromiseId; readonl
 export const ExecutionId = Schema.NonEmptyString.pipe(Schema.brand("ExecutionId"));
 export type ExecutionId = typeof ExecutionId.Type;
 
+export namespace PrefixedId {
+  export interface MakeOptions {
+    readonly id: ExecutionId;
+    readonly prefix: Option.Option<string>;
+  }
+
+  /**
+   * Builds the root promise id used by clients, applying the optional client id prefix.
+   *
+   * @category constructors
+   * @since 0.0.0
+   */
+  export const make = (options: MakeOptions): PromiseId =>
+    PromiseId.make(
+      Option.match(options.prefix, {
+        onNone: () => options.id,
+        onSome: (prefix) => `${prefix}:${options.id}`,
+      }),
+    );
+}
+
 export const ScheduleId = Schema.NonEmptyString.pipe(Schema.brand("ScheduleId"));
 export type ScheduleId = typeof ScheduleId.Type;
 

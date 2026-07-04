@@ -86,17 +86,6 @@ const resolvedState = Schema.Literal("resolved").make("resolved");
 const rejectedState = Schema.Literal("rejected").make("rejected");
 const canceledState = Schema.Literal("rejected_canceled").make("rejected_canceled");
 
-const prefixedId = (options: {
-  readonly id: Protocol.ExecutionId;
-  readonly prefix: Option.Option<string>;
-}): Protocol.PromiseId =>
-  Protocol.PromiseId.make(
-    Option.match(options.prefix, {
-      onNone: () => options.id,
-      onSome: (prefix) => `${prefix}:${options.id}`,
-    }),
-  );
-
 export interface ResonateClientService {
   readonly beginRun: InvocationMethods;
   readonly run: AwaitInvocationMethods;
@@ -244,7 +233,7 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           readonly args: ReadonlyArray<unknown>;
           readonly options?: InvocationOptions;
         }): Effect.fn.Return<DurableHandle, unknown> {
-          const id = prefixedId({ id: options.executionId, prefix: idPrefix });
+          const id = Protocol.PrefixedId.make({ id: options.executionId, prefix: idPrefix });
           const target = network.match(options.options?.target ?? groupName);
           const param = yield* encodeTargetPayload({
             target: options.targetFunction,
@@ -266,7 +255,7 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           readonly args: ReadonlyArray<unknown>;
           readonly options?: InvocationOptions;
         }): Effect.fn.Return<DurableHandle, unknown> {
-          const id = prefixedId({ id: options.executionId, prefix: idPrefix });
+          const id = Protocol.PrefixedId.make({ id: options.executionId, prefix: idPrefix });
           const param = yield* encodeTargetPayload({
             target: options.targetFunction,
             args: options.args,
@@ -341,7 +330,7 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
             readonly fn: F;
             readonly id: Protocol.ExecutionId;
           }): Effect.fn.Return<DurableHandle> {
-            return handle(prefixedId({ id: options.id, prefix: idPrefix }));
+            return handle(Protocol.PrefixedId.make({ id: options.id, prefix: idPrefix }));
           }),
           cancel: Effect.fn("ResonateClient.cancel")(function* (id) {
             yield* promises.settle({ id, state: canceledState, value: Protocol.emptyValue });
