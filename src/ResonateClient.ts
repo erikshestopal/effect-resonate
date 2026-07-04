@@ -142,7 +142,7 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
             ...(Predicate.isNotUndefined(options.retry) ? { retry: options.retry } : {}),
           });
           const encoded = yield* codec.encode(invocation);
-          return withSchemaHeader({ value: encoded, schemaName: options.name });
+          return encoded;
         });
 
         const encodeTargetPayload = Effect.fn("ResonateClient.encodeTargetPayload")(function* (options: {

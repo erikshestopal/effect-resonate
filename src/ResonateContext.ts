@@ -29,9 +29,9 @@ import {
   Schema,
   SchemaParser,
 } from "effect";
-import { currentCodec, withSchemaHeader } from "./Codec.ts";
+import { currentCodec } from "./Codec.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, EncodingError } from "./Errors.ts";
-import { InvocationParam, type AnyFunction, type PayloadArgs } from "./FunctionDefinition.ts";
+import { InvocationParam, LocalInvocationParam, type AnyFunction, type PayloadArgs } from "./FunctionDefinition.ts";
 import * as Protocol from "./Protocol.ts";
 import type { PromiseDeclaration, PromiseSuccess } from "./PromiseDefinition.ts";
 import type { Registry } from "./Registry.ts";
@@ -180,6 +180,8 @@ interface LocalTagsOptions {
 }
 
 interface CreateLocalOptions {
+  readonly name: string | undefined;
+  readonly version: Protocol.FunctionVersionOrLatest | undefined;
   readonly options: ContextOptions | undefined;
 }
 
@@ -222,6 +224,8 @@ interface BeginRpcOptions {
 }
 
 interface BeginRunOptions {
+  readonly name?: string;
+  readonly version?: Protocol.FunctionVersionOrLatest;
   readonly effect: Effect.Effect<unknown, unknown>;
   readonly options?: ContextOptions;
 }
@@ -297,10 +301,14 @@ const isPromiseSettleSuccess = SchemaParser.is(Protocol.PromiseSettleSuccessResp
 export interface ResonateContextService {
   readonly info: ContextInfo;
   readonly run: (options: {
+    readonly name?: string;
+    readonly version?: Protocol.FunctionVersionOrLatest;
     readonly effect: Effect.Effect<unknown, unknown>;
     readonly options?: ContextOptions;
   }) => Effect.Effect<unknown, unknown>;
   readonly beginRun: (options: {
+    readonly name?: string;
+    readonly version?: Protocol.FunctionVersionOrLatest;
     readonly effect: Effect.Effect<unknown, unknown>;
     readonly options?: ContextOptions;
   }) => Effect.Effect<LocalDurableHandle, unknown>;
@@ -462,7 +470,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
             }),
           );
-          return withSchemaHeader({ value: encoded, schemaName: name });
+          return encoded;
         });
 
         const encodeTargetPayload = Effect.fn("ExecutionEngine.encodeTargetPayload")(function* (
@@ -509,13 +517,21 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         };
 
         const createLocal = Effect.fn("ExecutionEngine.createLocal")(function* (input: CreateLocalOptions) {
-          const { options } = input;
+          const { name, options } = input;
           const id = options?.id ?? childId({ parent: state.root, seq: state.seq });
           state.seq = Num.increment(state.seq);
           const cached = HashMap.get(state.cache, id);
           if (Option.isSome(cached)) {
             return cached.value;
           }
+          const param = Predicate.isUndefined(name)
+            ? Protocol.emptyValue
+            : yield* codec.encode(
+                LocalInvocationParam.make({
+                  func: name,
+                  version: input.version ?? Protocol.FunctionVersion.make(1),
+                }),
+              );
           return yield* fence({
             action: Protocol.PromiseCreateRequest.make({
               head: requestHead({ corrId: `${state.root}:${id}:create`, origin: state.originId }),
@@ -525,7 +541,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
                   parent: state.timeoutAt,
                   duration: options?.timeout ?? Duration.hours(24),
                 }),
-                param: Protocol.emptyValue,
+                param,
                 tags: localTags({
                   id,
                   extra: options?.tags ?? Protocol.emptyTags,
@@ -550,7 +566,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               data: Protocol.PromiseCreateData.make({
                 id,
                 timeoutAt: timestamp(Num.min(DateTime.toEpochMillis(instant), DateTime.toEpochMillis(state.timeoutAt))),
-                param: Protocol.emptyValue,
+                param: yield* codec.encode(""),
                 tags: Protocol.Tags.make({
                   reserved: {
                     "resonate:origin": state.originId,
@@ -836,8 +852,8 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             beginRun: Effect.fn("ResonateContext.beginRun")(function* (
               input: BeginRunOptions,
             ): Effect.fn.Return<LocalDurableHandle, unknown> {
-              const { effect, options } = input;
-              const promise = yield* createLocal({ options });
+              const { effect, name, options, version } = input;
+              const promise = yield* createLocal({ name, options, version });
               const deferred = yield* Deferred.make<unknown, unknown>();
               if (promise.state !== "pending") {
                 const settled = yield* decodeSettled(promise).pipe(Effect.exit);
@@ -865,8 +881,8 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               return makeHandle({ promise, deferred });
             }),
             run: Effect.fn("ResonateContext.run")(function* (input: BeginRunOptions) {
-              const { effect, options } = input;
-              const handle = yield* service.beginRun({ effect, options });
+              const { effect, name, options, version } = input;
+              const handle = yield* service.beginRun({ effect, name, options, version });
               return yield* handle.await;
             }),
             get now() {

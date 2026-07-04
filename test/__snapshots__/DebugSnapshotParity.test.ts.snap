@@ -1,0 +1,405 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`debug snapshot parity > matches the native TypeScript SDK fanout graph against a debug server > fanout 1`] = `
+{
+  "callbacks": [],
+  "listeners": [],
+  "messages": [],
+  "promiseTimeouts": [],
+  "promises": [
+    {
+      "id": "<root>",
+      "param": {
+        "data": {
+          "args": [
+            {
+              "email": "ada@example.com",
+              "orderId": "order-1",
+              "phone": "+15550100",
+            },
+          ],
+          "func": "notifyAll",
+          "version": 1,
+        },
+        "headers": {},
+      },
+      "state": "resolved",
+      "tags": {
+        "resonate:target": "poll://any@debug-snapshot-parity",
+      },
+      "value": {
+        "data": [
+          {
+            "channel": "email",
+            "destination": "ada@example.com",
+            "ok": true,
+          },
+          {
+            "channel": "sms",
+            "destination": "+15550100",
+            "ok": true,
+          },
+          {
+            "channel": "slack",
+            "destination": "order-1",
+            "ok": true,
+          },
+          {
+            "channel": "push",
+            "destination": "order-1",
+            "ok": true,
+          },
+        ],
+        "headers": {},
+      },
+    },
+    {
+      "id": "<root>.0",
+      "param": {
+        "data": {
+          "func": "sendEmail",
+          "version": 1,
+        },
+        "headers": {},
+      },
+      "state": "resolved",
+      "tags": {
+        "resonate:branch": "<root>",
+        "resonate:origin": "<root>",
+        "resonate:parent": "<root>",
+        "resonate:prefix": "<root>",
+        "resonate:scope": "local",
+      },
+      "value": {
+        "data": {
+          "channel": "email",
+          "destination": "ada@example.com",
+          "ok": true,
+        },
+        "headers": {},
+      },
+    },
+    {
+      "id": "<root>.1",
+      "param": {
+        "data": {
+          "func": "sendSms",
+          "version": 1,
+        },
+        "headers": {},
+      },
+      "state": "resolved",
+      "tags": {
+        "resonate:branch": "<root>",
+        "resonate:origin": "<root>",
+        "resonate:parent": "<root>",
+        "resonate:prefix": "<root>",
+        "resonate:scope": "local",
+      },
+      "value": {
+        "data": {
+          "channel": "sms",
+          "destination": "+15550100",
+          "ok": true,
+        },
+        "headers": {},
+      },
+    },
+    {
+      "id": "<root>.2",
+      "param": {
+        "data": {
+          "func": "sendSlack",
+          "version": 1,
+        },
+        "headers": {},
+      },
+      "state": "resolved",
+      "tags": {
+        "resonate:branch": "<root>",
+        "resonate:origin": "<root>",
+        "resonate:parent": "<root>",
+        "resonate:prefix": "<root>",
+        "resonate:scope": "local",
+      },
+      "value": {
+        "data": {
+          "channel": "slack",
+          "destination": "order-1",
+          "ok": true,
+        },
+        "headers": {},
+      },
+    },
+    {
+      "id": "<root>.3",
+      "param": {
+        "data": {
+          "func": "sendPush",
+          "version": 1,
+        },
+        "headers": {},
+      },
+      "state": "resolved",
+      "tags": {
+        "resonate:branch": "<root>",
+        "resonate:origin": "<root>",
+        "resonate:parent": "<root>",
+        "resonate:prefix": "<root>",
+        "resonate:scope": "local",
+      },
+      "value": {
+        "data": {
+          "channel": "push",
+          "destination": "order-1",
+          "ok": true,
+        },
+        "headers": {},
+      },
+    },
+  ],
+  "taskTimeouts": [],
+  "tasks": [
+    {
+      "id": "<root>",
+      "resumes": 0,
+      "state": "fulfilled",
+      "version": 1,
+    },
+  ],
+}
+`;
+
+exports[`debug snapshot parity > matches the native TypeScript SDK fanout graph against a debug server > kitchen-sink 1`] = `
+{
+  "callbacks": [],
+  "listeners": [],
+  "messages": [],
+  "promiseTimeouts": [],
+  "promises": [
+    {
+      "id": "<root>",
+      "param": {
+        "data": {
+          "args": [
+            "input",
+          ],
+          "func": "kitchenSink",
+          "version": 1,
+        },
+        "headers": {},
+      },
+      "state": "resolved",
+      "tags": {
+        "resonate:target": "poll://any@debug-snapshot-parity",
+      },
+      "value": {
+        "data": {
+          "begunLocal": {
+            "input": "input",
+            "step": "localAsync",
+          },
+          "begunRpc": {
+            "input": "beginRpc",
+            "step": "remoteChild",
+          },
+          "detached": {
+            "input": "detached",
+            "step": "detachedChild",
+          },
+          "local": {
+            "input": "input",
+            "step": "localStep",
+          },
+          "rpc": {
+            "input": "rpc",
+            "step": "remoteChild",
+          },
+        },
+        "headers": {},
+      },
+    },
+    {
+      "id": "<root>.0",
+      "param": {
+        "data": {
+          "func": "localStep",
+          "version": 1,
+        },
+        "headers": {},
+      },
+      "state": "resolved",
+      "tags": {
+        "resonate:branch": "<root>",
+        "resonate:origin": "<root>",
+        "resonate:parent": "<root>",
+        "resonate:prefix": "<root>",
+        "resonate:scope": "local",
+      },
+      "value": {
+        "data": {
+          "input": "input",
+          "step": "localStep",
+        },
+        "headers": {},
+      },
+    },
+    {
+      "id": "<root>.1",
+      "param": {
+        "data": {
+          "func": "localAsync",
+          "version": 1,
+        },
+        "headers": {},
+      },
+      "state": "resolved",
+      "tags": {
+        "resonate:branch": "<root>",
+        "resonate:origin": "<root>",
+        "resonate:parent": "<root>",
+        "resonate:prefix": "<root>",
+        "resonate:scope": "local",
+      },
+      "value": {
+        "data": {
+          "input": "input",
+          "step": "localAsync",
+        },
+        "headers": {},
+      },
+    },
+    {
+      "id": "<root>.2",
+      "param": {
+        "data": {
+          "args": [
+            "rpc",
+          ],
+          "func": "remoteChild",
+          "version": 1,
+        },
+        "headers": {},
+      },
+      "state": "resolved",
+      "tags": {
+        "resonate:branch": "<root>.2",
+        "resonate:origin": "<root>",
+        "resonate:parent": "<root>",
+        "resonate:prefix": "<root>",
+        "resonate:scope": "global",
+        "resonate:target": "poll://any@debug-snapshot-parity",
+      },
+      "value": {
+        "data": {
+          "input": "rpc",
+          "step": "remoteChild",
+        },
+        "headers": {},
+      },
+    },
+    {
+      "id": "<root>.3",
+      "param": {
+        "data": {
+          "args": [
+            "beginRpc",
+          ],
+          "func": "remoteChild",
+          "version": 1,
+        },
+        "headers": {},
+      },
+      "state": "resolved",
+      "tags": {
+        "resonate:branch": "<root>.3",
+        "resonate:origin": "<root>",
+        "resonate:parent": "<root>",
+        "resonate:prefix": "<root>",
+        "resonate:scope": "global",
+        "resonate:target": "poll://any@debug-snapshot-parity",
+      },
+      "value": {
+        "data": {
+          "input": "beginRpc",
+          "step": "remoteChild",
+        },
+        "headers": {},
+      },
+    },
+    {
+      "id": "<root>.5",
+      "param": {
+        "data": "",
+        "headers": {},
+      },
+      "state": "resolved",
+      "tags": {
+        "resonate:branch": "<root>.5",
+        "resonate:origin": "<root>",
+        "resonate:parent": "<root>",
+        "resonate:prefix": "<root>",
+        "resonate:scope": "global",
+        "resonate:timer": "true",
+      },
+      "value": {},
+    },
+    {
+      "id": "<root>.d0bb49eb4bf4ea5",
+      "param": {
+        "data": {
+          "args": [
+            "detached",
+          ],
+          "func": "detachedChild",
+          "version": 1,
+        },
+        "headers": {},
+      },
+      "state": "resolved",
+      "tags": {
+        "resonate:branch": "<root>.d0bb49eb4bf4ea5",
+        "resonate:origin": "<root>.d0bb49eb4bf4ea5",
+        "resonate:parent": "<root>",
+        "resonate:prefix": "<root>",
+        "resonate:scope": "global",
+        "resonate:target": "poll://any@debug-snapshot-parity",
+      },
+      "value": {
+        "data": {
+          "input": "detached",
+          "step": "detachedChild",
+        },
+        "headers": {},
+      },
+    },
+  ],
+  "taskTimeouts": [],
+  "tasks": [
+    {
+      "id": "<root>",
+      "resumes": 0,
+      "state": "fulfilled",
+      "version": 3,
+    },
+    {
+      "id": "<root>.2",
+      "resumes": 0,
+      "state": "fulfilled",
+      "version": 1,
+    },
+    {
+      "id": "<root>.3",
+      "resumes": 0,
+      "state": "fulfilled",
+      "version": 1,
+    },
+    {
+      "id": "<root>.d0bb49eb4bf4ea5",
+      "resumes": 0,
+      "state": "fulfilled",
+      "version": 1,
+    },
+  ],
+}
+`;

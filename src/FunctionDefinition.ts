@@ -23,6 +23,19 @@ export const InvocationParam = Schema.Struct({
 });
 
 /**
+ * Encoded local durable step payload.
+ *
+ * Native local calls record the function name and version but not arguments.
+ *
+ * @category schemas
+ * @since 0.0.0
+ */
+export const LocalInvocationParam = Schema.Struct({
+  func: Schema.String,
+  version: Protocol.FunctionVersionFromWire,
+});
+
+/**
  * Describes a durable function name, payload schema, and version.
  *
  * @category models

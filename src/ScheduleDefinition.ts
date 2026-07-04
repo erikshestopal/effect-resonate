@@ -4,7 +4,7 @@
  * @since 0.0.0
  */
 import { Array as Arr, Duration, Effect, Layer, Predicate, Schema } from "effect";
-import { currentCodec, withSchemaHeader } from "./Codec.ts";
+import { currentCodec } from "./Codec.ts";
 import { InvocationParam, type AnyFunction, type PayloadArgs } from "./FunctionDefinition.ts";
 import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
@@ -88,7 +88,7 @@ export const schedule = <F extends AnyFunction>(options: ScheduleOptions<F>): Sc
         cron: options.cron,
         promiseId: "{{.id}}.{{.timestamp}}",
         promiseTimeout: timeout,
-        promiseParam: withSchemaHeader({ value: encoded, schemaName: options.function.name }),
+        promiseParam: encoded,
         promiseTags: Protocol.Tags.make({
           reserved: {
             ...tags.reserved,
