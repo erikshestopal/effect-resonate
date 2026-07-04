@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import * as BunCrypto from "@effect/platform-bun/BunCrypto";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { Duration, Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { currentCodec, ResonateCodec } from "../src/Codec.ts";
@@ -7,6 +7,7 @@ import { DurablePromises } from "../src/DurablePromise.ts";
 import * as Protocol from "../src/Protocol.ts";
 import * as Resonate from "../src/Resonate.ts";
 import { ResonateContext } from "../src/ResonateContext.ts";
+import { spawnSync } from "./support/process.ts";
 import { ResonateTest, restartWorker, snapshot } from "./support/testing.ts";
 
 const GraphRoot = Resonate.function({ name: "GraphRoot", payload: Schema.Number });
@@ -82,7 +83,7 @@ describe("graph parity", () => {
         version: 1,
       });
     }).pipe(
-      Effect.provide(ResonateTest.layer({ group: GraphFns, handlers: handlers }).pipe(Layer.provide(BunCrypto.layer))),
+      Effect.provide(ResonateTest.layer({ group: GraphFns, handlers: handlers }).pipe(Layer.provide(NodeCrypto.layer))),
     ),
   );
 
@@ -126,17 +127,17 @@ describe("graph parity", () => {
         "graph-replay-1.d0f956885dab743",
       ]);
     }).pipe(
-      Effect.provide(ResonateTest.layer({ group: GraphFns, handlers: handlers }).pipe(Layer.provide(BunCrypto.layer))),
+      Effect.provide(ResonateTest.layer({ group: GraphFns, handlers: handlers }).pipe(Layer.provide(NodeCrypto.layer))),
     ),
   );
 
   it("has the resonate tree CLI available for shipped-server graph checks", async () => {
-    const result = Bun.spawnSync(["resonate", "tree", "--help"], { stdout: "pipe", stderr: "pipe" });
-    if (!result.success) {
+    const result = spawnSync(["resonate", "tree", "--help"]);
+    if (result.status !== 0) {
       console.error("[GRAPH PARITY SKIPPED] resonate CLI not found; install it to run native/tree parity.");
-      expect(result.success).toBe(false);
+      expect(result.status).not.toBe(0);
       return;
     }
-    expect(result.success).toBe(true);
+    expect(result.status).toBe(0);
   });
 });

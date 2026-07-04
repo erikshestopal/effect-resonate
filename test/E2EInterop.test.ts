@@ -3,31 +3,25 @@ import { Effect, Schema, SchemaParser } from "effect";
 import { ResonateCodec, ResonateEncryptor } from "../src/Codec.ts";
 import { decodeResponse, encodeRequest } from "../src/network/Network.ts";
 import * as Protocol from "../src/Protocol.ts";
+import { commandExists, spawn, streamText, type Subprocess } from "./support/process.ts";
 
 const serverPort = 8011;
 const serverUrl = `http://127.0.0.1:${serverPort}`;
 
 const sleep = (millis: number) => new Promise((resolve) => setTimeout(resolve, millis));
 
-const kill = (process: Bun.Subprocess) => {
+const kill = (process: Subprocess) => {
   process.kill();
 };
 
 const isPromiseGetSuccess = SchemaParser.is(Protocol.PromiseGetResponse.members[0]);
 
-const spawn = (command: Array<string>, env: Record<string, string> = {}) =>
-  Bun.spawn(command, {
-    env: { ...Bun.env, ...env },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
 const run = async (command: Array<string>) => {
-  const process = Bun.spawn(command, { stdout: "pipe", stderr: "pipe" });
+  const process = spawn(command);
   const [exitCode, stdout, stderr] = await Promise.all([
     process.exited,
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
+    streamText(process.stdout),
+    streamText(process.stderr),
   ]);
   expect({ command, exitCode, stderr }).toMatchObject({ exitCode: 0 });
   return stdout;
@@ -136,15 +130,17 @@ const createSchedule = (id: string, group: string) =>
 
 describe("E2E interop", () => {
   it("runs the shipped-server quickstart, cross-SDK interop, external promises, schedules, and tree gate", async () => {
-    if (Bun.which("resonate") === null) {
+    if (!commandExists("resonate")) {
       console.error("[E2E SKIPPED] resonate CLI not found; install it to run shipped-server interop.");
-      expect(Bun.which("resonate")).toBeNull();
+      expect(commandExists("resonate")).toBe(false);
       return;
     }
 
     const group = `e2e-${Date.now()}`;
     const target = `poll://any@${group}`;
     const server = spawn(["resonate", "dev", "--server-port", String(serverPort), "--observability-metrics-port", "0"]);
+    void streamText(server.stdout);
+    void streamText(server.stderr);
     await sleep(2_000);
 
     let effectWorker = spawn(["bun", "test/interop/effect-worker.ts"], {
@@ -152,11 +148,15 @@ describe("E2E interop", () => {
       RESONATE_GROUP: group,
       RESONATE_PID: "effect-1",
     });
+    void streamText(effectWorker.stdout);
+    void streamText(effectWorker.stderr);
     const nativeWorker = spawn(["bun", "test/interop/native-worker.js"], {
       RESONATE_URL: serverUrl,
       RESONATE_GROUP: group,
       RESONATE_PID: "native-1",
     });
+    void streamText(nativeWorker.stdout);
+    void streamText(nativeWorker.stderr);
 
     try {
       await sleep(2_000);
@@ -170,6 +170,8 @@ describe("E2E interop", () => {
         RESONATE_GROUP: group,
         RESONATE_PID: "effect-2",
       });
+      void streamText(effectWorker.stdout);
+      void streamText(effectWorker.stderr);
       const countdown = await waitForSettled(`${group}-countdown`);
       expect(await decodeValue(countdown.value)).toBe("done");
       expect(await run(["resonate", "tree", "--server", serverUrl, `${group}-countdown`])).toContain(

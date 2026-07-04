@@ -1,7 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
-import * as BunCrypto from "@effect/platform-bun/BunCrypto";
-import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
-import * as BunHttpServer from "@effect/platform-bun/BunHttpServer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
+import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
+import { createServer } from "node:http";
 import { Duration, Effect, Exit, Fiber, Layer, Option, Predicate, Ref, Schema, SchemaParser, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
@@ -40,11 +41,14 @@ const responseJson = (response: Protocol.Response, status = response.head.status
   });
 
 const networkLayer = (url: string, options?: Omit<NetworkHttp.NetworkHttpOptions, "url">) =>
-  NetworkHttp.layer({ url, ...options }).pipe(Layer.provide(BunHttpClient.layer));
+  NetworkHttp.layer({ url, ...options }).pipe(Layer.provide(NodeHttpClient.layerFetch));
 
 const serverUrl = HttpServer.addressFormattedWith((url) => Effect.succeed(url));
 
-const serverLayer = Layer.mergeAll(BunHttpServer.layer({ port: 0 }), BunCrypto.layer);
+const serverLayer = Layer.mergeAll(
+  NodeHttpServer.layer(() => createServer(), { port: 0 }),
+  NodeCrypto.layer,
+);
 
 describe("NetworkHttp.send", () => {
   it.effect("POSTs the envelope to the single endpoint and decodes protocol statuses", () =>
@@ -209,8 +213,22 @@ describe("NetworkHttp.messages", () => {
       const url = yield* serverUrl;
       yield* Effect.gen(function* () {
         const network = yield* ResonateNetwork;
+        const waitForAttempts = Effect.fn("NetworkHttpTest.waitForAttempts")(function* (
+          expected: number,
+          remaining = 20,
+        ): Effect.fn.Return<void> {
+          const current = yield* Ref.get(attempts);
+          if (current >= expected) {
+            return;
+          }
+          if (remaining <= 0) {
+            return;
+          }
+          yield* Effect.yieldNow;
+          return yield* waitForAttempts(expected, remaining - 1);
+        });
         const fiber = yield* Stream.runCollect(Stream.take(network.messages, 1)).pipe(Effect.forkScoped);
-        yield* Effect.yieldNow;
+        yield* waitForAttempts(1);
 
         yield* TestClock.adjust(Duration.millis(999));
         expect(yield* Ref.get(attempts)).toBe(1);

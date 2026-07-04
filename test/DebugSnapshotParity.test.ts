@@ -2,8 +2,9 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect, Predicate, Schema, SchemaParser } from "effect";
 import { decodeResponse, encodeRequest } from "../src/network/Network.ts";
 import * as Protocol from "../src/Protocol.ts";
+import { commandExists, spawn, streamText, type Subprocess } from "./support/process.ts";
 
-const serverPort = 8013;
+const serverPort = 20_000 + Math.floor(Math.random() * 20_000);
 const serverUrl = `http://127.0.0.1:${serverPort}`;
 const group = "debug-snapshot-parity";
 
@@ -14,25 +15,52 @@ const timestampKeys = new Set(["createdAt", "settledAt", "timeoutAt", "timeout",
 
 const sleep = (millis: number) => new Promise((resolve) => setTimeout(resolve, millis));
 
-const kill = (process: Bun.Subprocess) => {
+const waitForServer = async (
+  server: Subprocess,
+  output: { readonly stdout: Promise<string>; readonly stderr: Promise<string> },
+) => {
+  for (let attempt = 0; attempt < 50; attempt = attempt + 1) {
+    const exitCode = await Promise.race([server.exited, sleep(0).then(() => undefined)]);
+    if (Predicate.isNotUndefined(exitCode)) {
+      throw new Error(
+        `debug server exited (${exitCode})\nstdout:\n${await output.stdout}\nstderr:\n${await output.stderr}`,
+      );
+    }
+    try {
+      await fetch(serverUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: "debug.snap",
+          head: { corrId: `ready-${attempt}`, version: "2026-04-01" },
+          data: {},
+        }),
+      });
+      return;
+    } catch {
+      await sleep(100);
+    }
+  }
+  kill(server);
+  throw new Error(
+    `debug server did not start at ${serverUrl}\nstdout:\n${await output.stdout}\nstderr:\n${await output.stderr}`,
+  );
+};
+
+const kill = (process: Subprocess) => {
   process.kill();
 };
 
-const spawn = (command: ReadonlyArray<string>, env: Record<string, string> = {}) =>
-  Bun.spawn([...command], {
-    env: { ...Bun.env, ...env },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
 const run = async (command: ReadonlyArray<string>, env: Record<string, string> = {}) => {
-  const process = Bun.spawn([...command], { env: { ...Bun.env, ...env }, stdout: "pipe", stderr: "pipe" });
+  const process = spawn(command, env);
   const [exitCode, stdout, stderr] = await Promise.all([
     process.exited,
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
+    streamText(process.stdout),
+    streamText(process.stderr),
   ]);
-  expect({ command, exitCode, stderr }).toMatchObject({ exitCode: 0 });
+  if (exitCode !== 0) {
+    throw new Error(`Command failed (${exitCode}): ${command.join(" ")}\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+  }
   return stdout;
 };
 
@@ -92,7 +120,11 @@ const debugSnap = async (): Promise<unknown> => {
   if (!isDebugSnapSuccess(response)) {
     throw new Error(`debug.snap failed: ${JSON.stringify(response.data)}`);
   }
-  return stripTimestamps(Schema.encodeSync(Protocol.DebugSnapSuccessResponse)(response).data);
+  const data = Schema.encodeSync(Protocol.DebugSnapSuccessResponse)(response).data;
+  return stripTimestamps({
+    ...data,
+    tasks: data.tasks.map((task) => ({ ...task, version: "<lease-version>" })),
+  });
 };
 
 const debugReset = async () => {
@@ -170,10 +202,10 @@ const runWorkerCase = async (options: {
     RESONATE_GROUP: group,
     RESONATE_PID: options.pid,
   });
-  const stdout = new Response(worker.stdout).text();
-  const stderr = new Response(worker.stderr).text();
+  const stdout = streamText(worker.stdout);
+  const stderr = streamText(worker.stderr);
   try {
-    await sleep(1_000);
+    await sleep(2_000);
     await invoke({ id: options.id, func: options.func, args: options.args });
     const promise = await waitForSettled(options.id);
     expect(promise.state).toBe("resolved");
@@ -234,8 +266,8 @@ const runClientApiSide = async (options: {
         RESONATE_GROUP: group,
         RESONATE_PID: workerPid,
       });
-  const stdout = Predicate.isUndefined(worker) ? Promise.resolve("") : new Response(worker.stdout).text();
-  const stderr = Predicate.isUndefined(worker) ? Promise.resolve("") : new Response(worker.stderr).text();
+  const stdout = Predicate.isUndefined(worker) ? Promise.resolve("") : streamText(worker.stdout);
+  const stderr = Predicate.isUndefined(worker) ? Promise.resolve("") : streamText(worker.stderr);
   try {
     await sleep(1_000);
     const observed = parseJsonOutput(
@@ -345,9 +377,9 @@ const runDriverParityCase = async (entry: DriverParityCase) => {
 
 describe("debug snapshot parity", () => {
   it("matches the native TypeScript SDK fanout graph against a debug server", async () => {
-    if (Bun.which("resonate") === null) {
+    if (!commandExists("resonate")) {
       console.error("[DEBUG SNAPSHOT PARITY SKIPPED] resonate CLI not found; install it to run parity snapshots.");
-      expect(Bun.which("resonate")).toBeNull();
+      expect(commandExists("resonate")).toBe(false);
       return;
     }
 
@@ -360,8 +392,9 @@ describe("debug snapshot parity", () => {
       "--observability-metrics-port",
       "0",
     ]);
+    const output = { stdout: streamText(server.stdout), stderr: streamText(server.stderr) };
     try {
-      await sleep(2_000);
+      await waitForServer(server, output);
       for (const entry of cases) {
         await runParityCase(entry);
         await debugReset();

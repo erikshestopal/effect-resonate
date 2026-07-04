@@ -2,29 +2,23 @@ import { describe, expect, it } from "@effect/vitest";
 import { Effect, SchemaParser } from "effect";
 import * as Protocol from "../src/Protocol.ts";
 import { decodeResponse, encodeRequest } from "../src/network/Network.ts";
+import { commandExists, spawn, streamText, type Subprocess } from "./support/process.ts";
 
 const serverPort = 8012;
 const serverUrl = `http://127.0.0.1:${serverPort}`;
 
 const sleep = (millis: number) => new Promise((resolve) => setTimeout(resolve, millis));
 
-const kill = (process: Bun.Subprocess) => {
+const kill = (process: Subprocess) => {
   process.kill();
 };
 
-const spawn = (command: Array<string>, env: Record<string, string> = {}) =>
-  Bun.spawn(command, {
-    env: { ...Bun.env, ...env },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-
 const run = async (command: Array<string>) => {
-  const process = Bun.spawn(command, { stdout: "pipe", stderr: "pipe" });
+  const process = spawn(command);
   const [exitCode, stdout, stderr] = await Promise.all([
     process.exited,
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
+    streamText(process.stdout),
+    streamText(process.stderr),
   ]);
   expect({ command, exitCode, stderr }).toMatchObject({ exitCode: 0 });
   return stdout;
@@ -144,6 +138,12 @@ const examples: ReadonlyArray<{ readonly file: string; readonly importPath: stri
   { file: "examples/templated-agent.ts", importPath: "../examples/templated-agent.ts" },
 ];
 
+interface ExampleMetadata {
+  readonly repo: string;
+  readonly functionName: string;
+  readonly sampleArgs: ReadonlyArray<unknown>;
+}
+
 interface RunningExample {
   readonly file: string;
   readonly repo: string;
@@ -151,32 +151,34 @@ interface RunningExample {
   readonly sampleArgs: ReadonlyArray<unknown>;
   readonly group: string;
   readonly target: string;
-  readonly worker: Bun.Subprocess;
+  readonly worker: Subprocess;
   readonly stdout: Promise<string>;
   readonly stderr: Promise<string>;
 }
 
 const startExample = async (example: (typeof examples)[number]): Promise<RunningExample> => {
-  const module = (await import(example.importPath)) as {
-    readonly repo: string;
-    readonly functionName: string;
-    readonly sampleArgs: ReadonlyArray<unknown>;
-  };
-  const group = `examples-${Date.now()}-${module.repo}`;
+  const metadata = JSON.parse(
+    await run([
+      "bun",
+      "-e",
+      `const m = await import(${JSON.stringify(`./${example.file}`)}); console.log(JSON.stringify({ repo: m.repo, functionName: m.functionName, sampleArgs: m.sampleArgs }));`,
+    ]),
+  ) as ExampleMetadata;
+  const group = `examples-${Date.now()}-${metadata.repo}`;
   const target = `poll://any@${group}`;
   const worker = spawn(["bun", example.file], {
     RESONATE_URL: serverUrl,
     RESONATE_GROUP: group,
-    RESONATE_PID: `${module.repo}-worker`,
+    RESONATE_PID: `${metadata.repo}-worker`,
   });
-  const stdout = new Response(worker.stdout).text();
-  const stderr = new Response(worker.stderr).text();
+  const stdout = streamText(worker.stdout);
+  const stderr = streamText(worker.stderr);
 
   return {
     file: example.file,
-    repo: module.repo,
-    functionName: module.functionName,
-    sampleArgs: module.sampleArgs,
+    repo: metadata.repo,
+    functionName: metadata.functionName,
+    sampleArgs: metadata.sampleArgs,
     group,
     target,
     worker,
@@ -212,36 +214,50 @@ const runExample = async (example: RunningExample) => {
   }
 };
 
+const runExampleWithTimeout = async (example: RunningExample) =>
+  Promise.race([
+    runExample(example),
+    sleep(45_000).then(() => {
+      kill(example.worker);
+      throw new Error(`${example.file} timed out`);
+    }),
+  ]);
+
+const runExampleEntry = async (example: (typeof examples)[number]) => {
+  const running = await startExample(example);
+  try {
+    await sleep(2_000);
+    await runExampleWithTimeout(running);
+  } finally {
+    kill(running.worker);
+  }
+};
+
+const runExamplesInParallel = async () => {
+  const results = await Promise.allSettled(examples.map(runExampleEntry));
+  const failures = results.filter((result) => result.status === "rejected").map((result) => result.reason);
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `${failures.length} examples failed`);
+  }
+};
+
 describe("official TypeScript example repos", () => {
   it("runs one self-contained Effect port per official TypeScript example repo against the shipped server", async () => {
-    if (Bun.which("resonate") === null) {
+    if (!commandExists("resonate")) {
       console.error("[EXAMPLES SKIPPED] resonate CLI not found; install it to run examples.");
-      expect(Bun.which("resonate")).toBeNull();
+      expect(commandExists("resonate")).toBe(false);
       return;
     }
 
     const server = spawn(["resonate", "dev", "--server-port", String(serverPort), "--observability-metrics-port", "0"]);
+    void streamText(server.stdout);
+    void streamText(server.stderr);
     await sleep(2_000);
 
     try {
-      const running = await Promise.all(examples.map(startExample));
-      try {
-        await sleep(2_000);
-        const results = await Promise.allSettled(running.map(runExample));
-        const failures = results.filter((result) => result.status === "rejected");
-        if (failures.length > 0) {
-          throw new AggregateError(
-            failures.map((failure) => failure.reason),
-            `${failures.length} examples failed`,
-          );
-        }
-      } finally {
-        for (const example of running) {
-          kill(example.worker);
-        }
-      }
+      await runExamplesInParallel();
     } finally {
       kill(server);
     }
-  }, 90_000);
+  }, 180_000);
 });

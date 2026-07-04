@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
-import * as BunCrypto from "@effect/platform-bun/BunCrypto";
-import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import { Duration, Effect, Layer, Schema } from "effect";
 import { DurablePromises } from "../src/DurablePromise.ts";
 import * as NetworkHttp from "../src/network/Http.ts";
@@ -8,6 +8,7 @@ import * as NetworkLocal from "../src/network/Local.ts";
 import * as Protocol from "../src/Protocol.ts";
 import { Schedules } from "../src/Schedule.ts";
 import { Tasks } from "../src/Task.ts";
+import { commandExists, spawn, streamText } from "./support/process.ts";
 
 const serverPort = 8010;
 const serverUrl = `http://127.0.0.1:${serverPort}`;
@@ -31,13 +32,13 @@ const promiseSettleData = (id: Protocol.PromiseId) => ({
 
 const localLayer = Layer.mergeAll(
   NetworkLocal.layer({ tickInterval: Duration.hours(24), retryTimeout: Duration.seconds(5) }),
-  BunCrypto.layer,
+  NodeCrypto.layer,
 );
 
 const liveBaseLayer = (pid: Protocol.ProcessId) =>
   Layer.mergeAll(
-    NetworkHttp.layer({ url: serverUrl, group: "differential", pid }).pipe(Layer.provide(BunHttpClient.layer)),
-    BunCrypto.layer,
+    NetworkHttp.layer({ url: serverUrl, group: "differential", pid }).pipe(Layer.provide(NodeHttpClient.layerFetch)),
+    NodeCrypto.layer,
   );
 
 const localClientLayer = Layer.mergeAll(DurablePromises.layer, Tasks.layer, Schedules.layer).pipe(
@@ -104,12 +105,19 @@ const scenario = Effect.fn("Differential.scenario")(function* (prefix: string) {
 
 const withResonateDev = <A, E>(effect: Effect.Effect<A, E>): Effect.Effect<A, E> =>
   Effect.acquireUseRelease(
-    Effect.sync(() =>
-      Bun.spawn(["resonate", "dev", "--server-port", String(serverPort), "--observability-metrics-port", "0"], {
-        stdout: "pipe",
-        stderr: "pipe",
-      }),
-    ),
+    Effect.sync(() => {
+      const process = spawn([
+        "resonate",
+        "dev",
+        "--server-port",
+        String(serverPort),
+        "--observability-metrics-port",
+        "0",
+      ]);
+      void streamText(process.stdout);
+      void streamText(process.stderr);
+      return process;
+    }),
     () => Effect.sleep(Duration.seconds(2)).pipe(Effect.andThen(effect)),
     (process) => Effect.sync(() => process.kill()),
   );
@@ -119,10 +127,9 @@ describe("differential harness", () => {
     "compares local oracle with shipped server when resonate CLI is installed",
     () =>
       Effect.gen(function* () {
-        const resonate = Bun.which("resonate");
-        if (resonate === null) {
+        if (!commandExists("resonate")) {
           console.warn("[DIFFERENTIAL SKIPPED] resonate CLI not found; install it to run shipped-server parity.");
-          expect(resonate).toBeNull();
+          expect(commandExists("resonate")).toBe(false);
           return;
         }
 
