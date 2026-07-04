@@ -32,6 +32,8 @@ const utf8 = new TextEncoder();
 
 const cyrb53 = (input: string): number => {
   const bytes = utf8.encode(input);
+  // Seed constants from the native TypeScript SDK's cyrb53 implementation.
+  // Keep these exact values so detached promise ids stay cross-SDK compatible.
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
   for (const byte of bytes) {
@@ -178,6 +180,11 @@ export class TargetAddress extends Schema.Class<TargetAddress>("TargetAddress")(
 const AddressTransport = Schema.Literals(["poll", "local"]);
 const AddressCast = Schema.Literals(["uni", "any"]);
 const AddressGroup = Schema.NonEmptyString.check(Schema.isPattern(/^[^/@]+$/));
+
+// Target addresses are URL-shaped protocol strings, not general URLs:
+// `poll://any@group/id` encodes transport/cast/group/id fields. Avoid WHATWG
+// URL parsing because it treats `any` as username and `group` as host, applying
+// URL normalization rules that are not part of the Resonate target grammar.
 
 const AddressPartsWithId = Schema.Struct({
   transport: AddressTransport,
