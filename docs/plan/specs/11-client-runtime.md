@@ -1,4 +1,4 @@
-# 11 — Client Runtime (`ResonateClient`)
+# 11 — Client Runtime (`Client`)
 
 ## Objective
 
@@ -40,7 +40,7 @@ semantics as an Effect service.
 
 ## Deliverables
 
-- `ResonateClient` service + layer (depends: DurablePromises/Tasks, Codec, Network,
+- `Client` service + layer (depends: DurablePromises/Tasks, Codec, Network,
   Registry for local-run dispatch); typed by definition reference; string-name
   overloads returning `unknown`.
 
@@ -58,7 +58,7 @@ semantics as an Effect service.
 
 ## Notes
 
-- Implemented `ResonateClient` in `src/Resonate.ts` as a service over `DurablePromises`, `Tasks`, `ResonateCodec`, and `ResonateNetwork`; it intentionally does not start the execution engine yet because engine/worker dispatch belongs to specs 12/13.
+- Implemented `Client` in `src/Resonate.ts` as a service over `DurablePromises`, `Tasks`, `ResonateCodec`, and `ResonateNetwork`; it intentionally does not start the execution engine yet because engine/worker dispatch belongs to specs 12/13.
 - `beginRpc` uses bare `promise.create`; `beginRun` uses `task.create` embedding `promise.create`. Both stamp root lineage tags (`origin`, `prefix`, `branch`, `parent`, `scope`, `target`) and encode invocation params through the same codec/header path as values.
 - Function definitions schema-encode arguments before invocation encoding; string-name overloads preserve native remote-call behavior by encoding raw positional args with default version 1 when no version is supplied.
 - Handle `await` delegates to `DurablePromises.awaitSettled`; `poll` is non-blocking via `promise.get`; `cancel` settles `rejected_canceled`. Canceled and timed-out terminal states map to typed errors, while rejected values decode through the codec into the error channel.

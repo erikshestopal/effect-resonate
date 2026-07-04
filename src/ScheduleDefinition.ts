@@ -11,8 +11,6 @@ import * as Protocol from "./Protocol.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";
 import { Schedules } from "./Schedule.ts";
 
-const globalScope = Schema.Literal("global").make("global");
-
 export type CronExpression = string;
 
 /**
@@ -73,14 +71,14 @@ export const schedule = <F extends AnyFunction>(options: ScheduleOptions<F>): Sc
           : Effect.die("Invalid function payload"),
       ),
     );
-    const encoded = yield* codec.encode(
-      InvocationParam.make({
-        func: options.function.name,
-        args: Arr.ensure(encodedArgs),
-        version,
-        ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
-      }),
-    );
+    const invocation = InvocationParam.make({
+      func: options.function.name,
+      args: Arr.ensure(encodedArgs),
+      version,
+      ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
+    });
+    const encodedInvocation = yield* Schema.encodeUnknownEffect(InvocationParam)(invocation);
+    const encoded = yield* codec.encode(encodedInvocation);
     const target = network.match(options.target ?? Protocol.WorkerGroup.make("default"));
     return yield* schedules.create(
       Protocol.ScheduleCreateData.make({
@@ -93,7 +91,6 @@ export const schedule = <F extends AnyFunction>(options: ScheduleOptions<F>): Sc
           reserved: {
             ...tags.reserved,
             "resonate:target": target,
-            "resonate:scope": globalScope,
           },
           unrecognized: tags.unrecognized,
           user: tags.user,

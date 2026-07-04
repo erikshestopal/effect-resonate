@@ -4,7 +4,7 @@
  * This module contains the public authoring surface: define typed function
  * declarations with {@link function}, group them into handler registries with
  * {@link group}, create schedules and external promises, and use
- * {@link ResonateClient} to start, await, resolve, reject, or cancel durable
+ * {@link Client} to start, await, resolve, reject, or cancel durable
  * executions.
  *
  * @example
@@ -66,12 +66,12 @@ export { promise } from "./PromiseDefinition.ts";
 export type { PromiseDeclaration, PromiseFailure, PromiseSuccess } from "./PromiseDefinition.ts";
 export { schedule } from "./ScheduleDefinition.ts";
 export type { ScheduleOptions, ScheduleValue } from "./ScheduleDefinition.ts";
-export { ResonateClient } from "./ResonateClient.ts";
+export { ResonateClient as Client } from "./ResonateClient.ts";
 export type {
   AwaitInvocationMethods,
+  ResonateClientOptions as ClientOptions,
+  ResonateClientService as ClientService,
   DurableHandle,
   InvocationMethods,
   InvocationOptions,
-  ResonateClientOptions,
-  ResonateClientService,
 } from "./ResonateClient.ts";

@@ -1,5 +1,403 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`debug snapshot parity > matches the native TypeScript SDK fanout graph against a debug server > client-apis 1`] = `
+{
+  "observed": {
+    "beginRpc": {
+      "input": "beginRpc",
+      "step": "clientEcho",
+    },
+    "beginRun": {
+      "input": "beginRun",
+      "step": "clientEcho",
+    },
+    "cancel": "canceled",
+    "error": "errored",
+    "get": {
+      "input": "beginRun",
+      "step": "clientEcho",
+    },
+    "reject": "rejected",
+    "resolve": {
+      "approval": "approved",
+      "input": "resolve",
+    },
+    "retry": {
+      "attempt": 1,
+      "input": "retry",
+      "step": "retryOnce",
+    },
+    "rpc": {
+      "input": "rpc",
+      "step": "clientEcho",
+    },
+    "run": {
+      "input": "run",
+      "step": "clientEcho",
+    },
+    "schedule": {
+      "cron": "* * * * *",
+      "id": "client-schedule",
+      "promiseId": "{{.id}}.{{.timestamp}}",
+      "promiseParam": {
+        "args": [
+          "schedule",
+        ],
+        "func": "clientEcho",
+        "version": 1,
+      },
+      "promiseTags": {
+        "resonate:target": "poll://any@debug-snapshot-parity",
+      },
+      "promiseTimeout": 86400000,
+    },
+  },
+  "snapshot": {
+    "callbacks": [],
+    "listeners": [],
+    "messages": [],
+    "promiseTimeouts": [
+      {
+        "id": "client-cancel.0",
+        "timeout": "<timestamp>",
+      },
+    ],
+    "promises": [
+      {
+        "createdAt": "<timestamp>",
+        "id": "client-begin-rpc",
+        "param": {
+          "data": "eyJmdW5jIjoiY2xpZW50RWNobyIsImFyZ3MiOlsiYmVnaW5ScGMiXSwidmVyc2lvbiI6MX0=",
+          "headers": {},
+        },
+        "settledAt": "<timestamp>",
+        "state": "resolved",
+        "tags": {
+          "resonate:branch": "client-begin-rpc",
+          "resonate:origin": "client-begin-rpc",
+          "resonate:parent": "client-begin-rpc",
+          "resonate:prefix": "client-begin-rpc",
+          "resonate:scope": "global",
+          "resonate:target": "poll://any@debug-snapshot-parity",
+        },
+        "timeoutAt": "<timestamp>",
+        "value": {
+          "data": "eyJzdGVwIjoiY2xpZW50RWNobyIsImlucHV0IjoiYmVnaW5ScGMifQ==",
+          "headers": {},
+        },
+      },
+      {
+        "createdAt": "<timestamp>",
+        "id": "client-begin-run",
+        "param": {
+          "data": "eyJmdW5jIjoiY2xpZW50RWNobyIsImFyZ3MiOlsiYmVnaW5SdW4iXSwidmVyc2lvbiI6MX0=",
+          "headers": {},
+        },
+        "settledAt": "<timestamp>",
+        "state": "resolved",
+        "tags": {
+          "resonate:branch": "client-begin-run",
+          "resonate:origin": "client-begin-run",
+          "resonate:parent": "client-begin-run",
+          "resonate:prefix": "client-begin-run",
+          "resonate:scope": "global",
+          "resonate:target": "poll://any@debug-snapshot-parity/client-api-worker",
+        },
+        "timeoutAt": "<timestamp>",
+        "value": {
+          "data": "eyJzdGVwIjoiY2xpZW50RWNobyIsImlucHV0IjoiYmVnaW5SdW4ifQ==",
+          "headers": {},
+        },
+      },
+      {
+        "createdAt": "<timestamp>",
+        "id": "client-cancel",
+        "param": {
+          "data": "eyJmdW5jIjoiYXdhaXRBcHByb3ZhbCIsImFyZ3MiOlsiY2FuY2VsIl0sInZlcnNpb24iOjF9",
+          "headers": {},
+        },
+        "settledAt": "<timestamp>",
+        "state": "rejected_canceled",
+        "tags": {
+          "resonate:branch": "client-cancel",
+          "resonate:origin": "client-cancel",
+          "resonate:parent": "client-cancel",
+          "resonate:prefix": "client-cancel",
+          "resonate:scope": "global",
+          "resonate:target": "poll://any@debug-snapshot-parity",
+        },
+        "timeoutAt": "<timestamp>",
+        "value": {
+          "data": "",
+          "headers": {},
+        },
+      },
+      {
+        "createdAt": "<timestamp>",
+        "id": "client-cancel.0",
+        "param": {
+          "data": "",
+          "headers": {},
+        },
+        "state": "pending",
+        "tags": {
+          "resonate:branch": "client-cancel.0",
+          "resonate:origin": "client-cancel",
+          "resonate:parent": "client-cancel",
+          "resonate:prefix": "client-cancel",
+          "resonate:scope": "global",
+        },
+        "timeoutAt": "<timestamp>",
+        "value": {},
+      },
+      {
+        "createdAt": "<timestamp>",
+        "id": "client-error",
+        "param": {
+          "data": "eyJmdW5jIjoiYWx3YXlzUmVqZWN0IiwiYXJncyI6WyJlcnJvciJdLCJ2ZXJzaW9uIjoxfQ==",
+          "headers": {},
+        },
+        "settledAt": "<timestamp>",
+        "state": "rejected",
+        "tags": {
+          "resonate:branch": "client-error",
+          "resonate:origin": "client-error",
+          "resonate:parent": "client-error",
+          "resonate:prefix": "client-error",
+          "resonate:scope": "global",
+          "resonate:target": "poll://any@debug-snapshot-parity",
+        },
+        "timeoutAt": "<timestamp>",
+        "value": {
+          "data": "eyJzdGVwIjoiYWx3YXlzUmVqZWN0IiwiaW5wdXQiOiJlcnJvciJ9",
+          "headers": {},
+        },
+      },
+      {
+        "createdAt": "<timestamp>",
+        "id": "client-reject",
+        "param": {
+          "data": "eyJmdW5jIjoiYXdhaXRBcHByb3ZhbCIsImFyZ3MiOlsicmVqZWN0Il0sInZlcnNpb24iOjF9",
+          "headers": {},
+        },
+        "settledAt": "<timestamp>",
+        "state": "rejected",
+        "tags": {
+          "resonate:branch": "client-reject",
+          "resonate:origin": "client-reject",
+          "resonate:parent": "client-reject",
+          "resonate:prefix": "client-reject",
+          "resonate:scope": "global",
+          "resonate:target": "poll://any@debug-snapshot-parity",
+        },
+        "timeoutAt": "<timestamp>",
+        "value": {
+          "data": "ImRlbmllZCI=",
+          "headers": {},
+        },
+      },
+      {
+        "createdAt": "<timestamp>",
+        "id": "client-reject.0",
+        "param": {
+          "data": "",
+          "headers": {},
+        },
+        "settledAt": "<timestamp>",
+        "state": "rejected",
+        "tags": {
+          "resonate:branch": "client-reject.0",
+          "resonate:origin": "client-reject",
+          "resonate:parent": "client-reject",
+          "resonate:prefix": "client-reject",
+          "resonate:scope": "global",
+        },
+        "timeoutAt": "<timestamp>",
+        "value": {
+          "data": "ImRlbmllZCI=",
+          "headers": {
+            "resonate:schema": "approval",
+          },
+        },
+      },
+      {
+        "createdAt": "<timestamp>",
+        "id": "client-resolve",
+        "param": {
+          "data": "eyJmdW5jIjoiYXdhaXRBcHByb3ZhbCIsImFyZ3MiOlsicmVzb2x2ZSJdLCJ2ZXJzaW9uIjoxfQ==",
+          "headers": {},
+        },
+        "settledAt": "<timestamp>",
+        "state": "resolved",
+        "tags": {
+          "resonate:branch": "client-resolve",
+          "resonate:origin": "client-resolve",
+          "resonate:parent": "client-resolve",
+          "resonate:prefix": "client-resolve",
+          "resonate:scope": "global",
+          "resonate:target": "poll://any@debug-snapshot-parity",
+        },
+        "timeoutAt": "<timestamp>",
+        "value": {
+          "data": "eyJpbnB1dCI6InJlc29sdmUiLCJhcHByb3ZhbCI6ImFwcHJvdmVkIn0=",
+          "headers": {},
+        },
+      },
+      {
+        "createdAt": "<timestamp>",
+        "id": "client-resolve.0",
+        "param": {
+          "data": "",
+          "headers": {},
+        },
+        "settledAt": "<timestamp>",
+        "state": "resolved",
+        "tags": {
+          "resonate:branch": "client-resolve.0",
+          "resonate:origin": "client-resolve",
+          "resonate:parent": "client-resolve",
+          "resonate:prefix": "client-resolve",
+          "resonate:scope": "global",
+        },
+        "timeoutAt": "<timestamp>",
+        "value": {
+          "data": "ImFwcHJvdmVkIg==",
+          "headers": {
+            "resonate:schema": "approval",
+          },
+        },
+      },
+      {
+        "createdAt": "<timestamp>",
+        "id": "client-retry",
+        "param": {
+          "data": "eyJmdW5jIjoicmV0cnlPbmNlIiwiYXJncyI6WyJyZXRyeSJdLCJyZXRyeSI6eyJ0eXBlIjoiY29uc3RhbnQiLCJkYXRhIjp7ImRlbGF5IjowLCJtYXhSZXRyaWVzIjoxfX0sInZlcnNpb24iOjF9",
+          "headers": {},
+        },
+        "settledAt": "<timestamp>",
+        "state": "resolved",
+        "tags": {
+          "resonate:branch": "client-retry",
+          "resonate:origin": "client-retry",
+          "resonate:parent": "client-retry",
+          "resonate:prefix": "client-retry",
+          "resonate:scope": "global",
+          "resonate:target": "poll://any@debug-snapshot-parity",
+        },
+        "timeoutAt": "<timestamp>",
+        "value": {
+          "data": "eyJzdGVwIjoicmV0cnlPbmNlIiwiaW5wdXQiOiJyZXRyeSIsImF0dGVtcHQiOjF9",
+          "headers": {},
+        },
+      },
+      {
+        "createdAt": "<timestamp>",
+        "id": "client-rpc",
+        "param": {
+          "data": "eyJmdW5jIjoiY2xpZW50RWNobyIsImFyZ3MiOlsicnBjIl0sInZlcnNpb24iOjF9",
+          "headers": {},
+        },
+        "settledAt": "<timestamp>",
+        "state": "resolved",
+        "tags": {
+          "resonate:branch": "client-rpc",
+          "resonate:origin": "client-rpc",
+          "resonate:parent": "client-rpc",
+          "resonate:prefix": "client-rpc",
+          "resonate:scope": "global",
+          "resonate:target": "poll://any@debug-snapshot-parity",
+        },
+        "timeoutAt": "<timestamp>",
+        "value": {
+          "data": "eyJzdGVwIjoiY2xpZW50RWNobyIsImlucHV0IjoicnBjIn0=",
+          "headers": {},
+        },
+      },
+      {
+        "createdAt": "<timestamp>",
+        "id": "client-run",
+        "param": {
+          "data": "eyJmdW5jIjoiY2xpZW50RWNobyIsImFyZ3MiOlsicnVuIl0sInZlcnNpb24iOjF9",
+          "headers": {},
+        },
+        "settledAt": "<timestamp>",
+        "state": "resolved",
+        "tags": {
+          "resonate:branch": "client-run",
+          "resonate:origin": "client-run",
+          "resonate:parent": "client-run",
+          "resonate:prefix": "client-run",
+          "resonate:scope": "global",
+          "resonate:target": "poll://any@debug-snapshot-parity/client-api-worker",
+        },
+        "timeoutAt": "<timestamp>",
+        "value": {
+          "data": "eyJzdGVwIjoiY2xpZW50RWNobyIsImlucHV0IjoicnVuIn0=",
+          "headers": {},
+        },
+      },
+    ],
+    "taskTimeouts": [],
+    "tasks": [
+      {
+        "id": "client-begin-rpc",
+        "resumes": 0,
+        "state": "fulfilled",
+        "version": 1,
+      },
+      {
+        "id": "client-begin-run",
+        "resumes": 0,
+        "state": "fulfilled",
+        "version": 1,
+      },
+      {
+        "id": "client-cancel",
+        "resumes": 0,
+        "state": "fulfilled",
+        "version": 1,
+      },
+      {
+        "id": "client-error",
+        "resumes": 0,
+        "state": "fulfilled",
+        "version": 1,
+      },
+      {
+        "id": "client-reject",
+        "resumes": 0,
+        "state": "fulfilled",
+        "version": 2,
+      },
+      {
+        "id": "client-resolve",
+        "resumes": 0,
+        "state": "fulfilled",
+        "version": 2,
+      },
+      {
+        "id": "client-retry",
+        "resumes": 0,
+        "state": "fulfilled",
+        "version": 1,
+      },
+      {
+        "id": "client-rpc",
+        "resumes": 0,
+        "state": "fulfilled",
+        "version": 1,
+      },
+      {
+        "id": "client-run",
+        "resumes": 0,
+        "state": "fulfilled",
+        "version": 1,
+      },
+    ],
+  },
+}
+`;
+
 exports[`debug snapshot parity > matches the native TypeScript SDK fanout graph against a debug server > fanout 1`] = `
 {
   "callbacks": [],
@@ -8,152 +406,108 @@ exports[`debug snapshot parity > matches the native TypeScript SDK fanout graph 
   "promiseTimeouts": [],
   "promises": [
     {
-      "id": "<root>",
+      "createdAt": "<timestamp>",
+      "id": "fanout",
       "param": {
-        "data": {
-          "args": [
-            {
-              "email": "ada@example.com",
-              "orderId": "order-1",
-              "phone": "+15550100",
-            },
-          ],
-          "func": "notifyAll",
-          "version": 1,
-        },
+        "data": "eyJhcmdzIjpbeyJlbWFpbCI6ImFkYUBleGFtcGxlLmNvbSIsIm9yZGVySWQiOiJvcmRlci0xIiwicGhvbmUiOiIrMTU1NTAxMDAifV0sImZ1bmMiOiJub3RpZnlBbGwiLCJ2ZXJzaW9uIjoxfQ==",
         "headers": {},
       },
+      "settledAt": "<timestamp>",
       "state": "resolved",
       "tags": {
         "resonate:target": "poll://any@debug-snapshot-parity",
       },
+      "timeoutAt": "<timestamp>",
       "value": {
-        "data": [
-          {
-            "channel": "email",
-            "destination": "ada@example.com",
-            "ok": true,
-          },
-          {
-            "channel": "sms",
-            "destination": "+15550100",
-            "ok": true,
-          },
-          {
-            "channel": "slack",
-            "destination": "order-1",
-            "ok": true,
-          },
-          {
-            "channel": "push",
-            "destination": "order-1",
-            "ok": true,
-          },
-        ],
+        "data": "W3siY2hhbm5lbCI6ImVtYWlsIiwiZGVzdGluYXRpb24iOiJhZGFAZXhhbXBsZS5jb20iLCJvayI6dHJ1ZX0seyJjaGFubmVsIjoic21zIiwiZGVzdGluYXRpb24iOiIrMTU1NTAxMDAiLCJvayI6dHJ1ZX0seyJjaGFubmVsIjoic2xhY2siLCJkZXN0aW5hdGlvbiI6Im9yZGVyLTEiLCJvayI6dHJ1ZX0seyJjaGFubmVsIjoicHVzaCIsImRlc3RpbmF0aW9uIjoib3JkZXItMSIsIm9rIjp0cnVlfV0=",
         "headers": {},
       },
     },
     {
-      "id": "<root>.0",
+      "createdAt": "<timestamp>",
+      "id": "fanout.0",
       "param": {
-        "data": {
-          "func": "sendEmail",
-          "version": 1,
-        },
+        "data": "eyJmdW5jIjoic2VuZEVtYWlsIiwidmVyc2lvbiI6MX0=",
         "headers": {},
       },
+      "settledAt": "<timestamp>",
       "state": "resolved",
       "tags": {
-        "resonate:branch": "<root>",
-        "resonate:origin": "<root>",
-        "resonate:parent": "<root>",
-        "resonate:prefix": "<root>",
+        "resonate:branch": "fanout",
+        "resonate:origin": "fanout",
+        "resonate:parent": "fanout",
+        "resonate:prefix": "fanout",
         "resonate:scope": "local",
       },
+      "timeoutAt": "<timestamp>",
       "value": {
-        "data": {
-          "channel": "email",
-          "destination": "ada@example.com",
-          "ok": true,
-        },
+        "data": "eyJjaGFubmVsIjoiZW1haWwiLCJkZXN0aW5hdGlvbiI6ImFkYUBleGFtcGxlLmNvbSIsIm9rIjp0cnVlfQ==",
         "headers": {},
       },
     },
     {
-      "id": "<root>.1",
+      "createdAt": "<timestamp>",
+      "id": "fanout.1",
       "param": {
-        "data": {
-          "func": "sendSms",
-          "version": 1,
-        },
+        "data": "eyJmdW5jIjoic2VuZFNtcyIsInZlcnNpb24iOjF9",
         "headers": {},
       },
+      "settledAt": "<timestamp>",
       "state": "resolved",
       "tags": {
-        "resonate:branch": "<root>",
-        "resonate:origin": "<root>",
-        "resonate:parent": "<root>",
-        "resonate:prefix": "<root>",
+        "resonate:branch": "fanout",
+        "resonate:origin": "fanout",
+        "resonate:parent": "fanout",
+        "resonate:prefix": "fanout",
         "resonate:scope": "local",
       },
+      "timeoutAt": "<timestamp>",
       "value": {
-        "data": {
-          "channel": "sms",
-          "destination": "+15550100",
-          "ok": true,
-        },
+        "data": "eyJjaGFubmVsIjoic21zIiwiZGVzdGluYXRpb24iOiIrMTU1NTAxMDAiLCJvayI6dHJ1ZX0=",
         "headers": {},
       },
     },
     {
-      "id": "<root>.2",
+      "createdAt": "<timestamp>",
+      "id": "fanout.2",
       "param": {
-        "data": {
-          "func": "sendSlack",
-          "version": 1,
-        },
+        "data": "eyJmdW5jIjoic2VuZFNsYWNrIiwidmVyc2lvbiI6MX0=",
         "headers": {},
       },
+      "settledAt": "<timestamp>",
       "state": "resolved",
       "tags": {
-        "resonate:branch": "<root>",
-        "resonate:origin": "<root>",
-        "resonate:parent": "<root>",
-        "resonate:prefix": "<root>",
+        "resonate:branch": "fanout",
+        "resonate:origin": "fanout",
+        "resonate:parent": "fanout",
+        "resonate:prefix": "fanout",
         "resonate:scope": "local",
       },
+      "timeoutAt": "<timestamp>",
       "value": {
-        "data": {
-          "channel": "slack",
-          "destination": "order-1",
-          "ok": true,
-        },
+        "data": "eyJjaGFubmVsIjoic2xhY2siLCJkZXN0aW5hdGlvbiI6Im9yZGVyLTEiLCJvayI6dHJ1ZX0=",
         "headers": {},
       },
     },
     {
-      "id": "<root>.3",
+      "createdAt": "<timestamp>",
+      "id": "fanout.3",
       "param": {
-        "data": {
-          "func": "sendPush",
-          "version": 1,
-        },
+        "data": "eyJmdW5jIjoic2VuZFB1c2giLCJ2ZXJzaW9uIjoxfQ==",
         "headers": {},
       },
+      "settledAt": "<timestamp>",
       "state": "resolved",
       "tags": {
-        "resonate:branch": "<root>",
-        "resonate:origin": "<root>",
-        "resonate:parent": "<root>",
-        "resonate:prefix": "<root>",
+        "resonate:branch": "fanout",
+        "resonate:origin": "fanout",
+        "resonate:parent": "fanout",
+        "resonate:prefix": "fanout",
         "resonate:scope": "local",
       },
+      "timeoutAt": "<timestamp>",
       "value": {
-        "data": {
-          "channel": "push",
-          "destination": "order-1",
-          "ok": true,
-        },
+        "data": "eyJjaGFubmVsIjoicHVzaCIsImRlc3RpbmF0aW9uIjoib3JkZXItMSIsIm9rIjp0cnVlfQ==",
         "headers": {},
       },
     },
@@ -161,7 +515,7 @@ exports[`debug snapshot parity > matches the native TypeScript SDK fanout graph 
   "taskTimeouts": [],
   "tasks": [
     {
-      "id": "<root>",
+      "id": "fanout",
       "resumes": 0,
       "state": "fulfilled",
       "version": 1,
@@ -178,198 +532,173 @@ exports[`debug snapshot parity > matches the native TypeScript SDK fanout graph 
   "promiseTimeouts": [],
   "promises": [
     {
-      "id": "<root>",
+      "createdAt": "<timestamp>",
+      "id": "kitchen-sink",
       "param": {
-        "data": {
-          "args": [
-            "input",
-          ],
-          "func": "kitchenSink",
-          "version": 1,
-        },
+        "data": "eyJhcmdzIjpbImlucHV0Il0sImZ1bmMiOiJraXRjaGVuU2luayIsInZlcnNpb24iOjF9",
         "headers": {},
       },
+      "settledAt": "<timestamp>",
       "state": "resolved",
       "tags": {
         "resonate:target": "poll://any@debug-snapshot-parity",
       },
+      "timeoutAt": "<timestamp>",
       "value": {
-        "data": {
-          "begunLocal": {
-            "input": "input",
-            "step": "localAsync",
-          },
-          "begunRpc": {
-            "input": "beginRpc",
-            "step": "remoteChild",
-          },
-          "detached": {
-            "input": "detached",
-            "step": "detachedChild",
-          },
-          "local": {
-            "input": "input",
-            "step": "localStep",
-          },
-          "rpc": {
-            "input": "rpc",
-            "step": "remoteChild",
-          },
-        },
+        "data": "eyJsb2NhbCI6eyJzdGVwIjoibG9jYWxTdGVwIiwiaW5wdXQiOiJpbnB1dCJ9LCJiZWd1bkxvY2FsIjp7InN0ZXAiOiJsb2NhbEFzeW5jIiwiaW5wdXQiOiJpbnB1dCJ9LCJycGMiOnsic3RlcCI6InJlbW90ZUNoaWxkIiwiaW5wdXQiOiJycGMifSwiYmVndW5ScGMiOnsic3RlcCI6InJlbW90ZUNoaWxkIiwiaW5wdXQiOiJiZWdpblJwYyJ9LCJkZXRhY2hlZCI6eyJzdGVwIjoiZGV0YWNoZWRDaGlsZCIsImlucHV0IjoiZGV0YWNoZWQifX0=",
         "headers": {},
       },
     },
     {
-      "id": "<root>.0",
+      "createdAt": "<timestamp>",
+      "id": "kitchen-sink.0",
       "param": {
-        "data": {
-          "func": "localStep",
-          "version": 1,
-        },
+        "data": "eyJmdW5jIjoibG9jYWxTdGVwIiwidmVyc2lvbiI6MX0=",
         "headers": {},
       },
+      "settledAt": "<timestamp>",
       "state": "resolved",
       "tags": {
-        "resonate:branch": "<root>",
-        "resonate:origin": "<root>",
-        "resonate:parent": "<root>",
-        "resonate:prefix": "<root>",
+        "resonate:branch": "kitchen-sink",
+        "resonate:origin": "kitchen-sink",
+        "resonate:parent": "kitchen-sink",
+        "resonate:prefix": "kitchen-sink",
         "resonate:scope": "local",
       },
+      "timeoutAt": "<timestamp>",
       "value": {
-        "data": {
-          "input": "input",
-          "step": "localStep",
-        },
+        "data": "eyJzdGVwIjoibG9jYWxTdGVwIiwiaW5wdXQiOiJpbnB1dCJ9",
         "headers": {},
       },
     },
     {
-      "id": "<root>.1",
+      "createdAt": "<timestamp>",
+      "id": "kitchen-sink.1",
       "param": {
-        "data": {
-          "func": "localAsync",
-          "version": 1,
-        },
+        "data": "eyJmdW5jIjoibG9jYWxBc3luYyIsInZlcnNpb24iOjF9",
         "headers": {},
       },
+      "settledAt": "<timestamp>",
       "state": "resolved",
       "tags": {
-        "resonate:branch": "<root>",
-        "resonate:origin": "<root>",
-        "resonate:parent": "<root>",
-        "resonate:prefix": "<root>",
+        "resonate:branch": "kitchen-sink",
+        "resonate:origin": "kitchen-sink",
+        "resonate:parent": "kitchen-sink",
+        "resonate:prefix": "kitchen-sink",
         "resonate:scope": "local",
       },
+      "timeoutAt": "<timestamp>",
       "value": {
-        "data": {
-          "input": "input",
-          "step": "localAsync",
-        },
+        "data": "eyJzdGVwIjoibG9jYWxBc3luYyIsImlucHV0IjoiaW5wdXQifQ==",
         "headers": {},
       },
     },
     {
-      "id": "<root>.2",
+      "createdAt": "<timestamp>",
+      "id": "kitchen-sink.2",
       "param": {
-        "data": {
-          "args": [
-            "rpc",
-          ],
-          "func": "remoteChild",
-          "version": 1,
-        },
+        "data": "eyJmdW5jIjoicmVtb3RlQ2hpbGQiLCJhcmdzIjpbInJwYyJdLCJ2ZXJzaW9uIjoxfQ==",
         "headers": {},
       },
+      "settledAt": "<timestamp>",
       "state": "resolved",
       "tags": {
-        "resonate:branch": "<root>.2",
-        "resonate:origin": "<root>",
-        "resonate:parent": "<root>",
-        "resonate:prefix": "<root>",
+        "resonate:branch": "kitchen-sink.2",
+        "resonate:origin": "kitchen-sink",
+        "resonate:parent": "kitchen-sink",
+        "resonate:prefix": "kitchen-sink",
         "resonate:scope": "global",
         "resonate:target": "poll://any@debug-snapshot-parity",
       },
+      "timeoutAt": "<timestamp>",
       "value": {
-        "data": {
-          "input": "rpc",
-          "step": "remoteChild",
-        },
+        "data": "eyJzdGVwIjoicmVtb3RlQ2hpbGQiLCJpbnB1dCI6InJwYyJ9",
         "headers": {},
       },
     },
     {
-      "id": "<root>.3",
+      "createdAt": "<timestamp>",
+      "id": "kitchen-sink.3",
       "param": {
-        "data": {
-          "args": [
-            "beginRpc",
-          ],
-          "func": "remoteChild",
-          "version": 1,
-        },
+        "data": "eyJmdW5jIjoicmVtb3RlQ2hpbGQiLCJhcmdzIjpbImJlZ2luUnBjIl0sInZlcnNpb24iOjF9",
         "headers": {},
       },
+      "settledAt": "<timestamp>",
       "state": "resolved",
       "tags": {
-        "resonate:branch": "<root>.3",
-        "resonate:origin": "<root>",
-        "resonate:parent": "<root>",
-        "resonate:prefix": "<root>",
+        "resonate:branch": "kitchen-sink.3",
+        "resonate:origin": "kitchen-sink",
+        "resonate:parent": "kitchen-sink",
+        "resonate:prefix": "kitchen-sink",
         "resonate:scope": "global",
         "resonate:target": "poll://any@debug-snapshot-parity",
       },
+      "timeoutAt": "<timestamp>",
       "value": {
-        "data": {
-          "input": "beginRpc",
-          "step": "remoteChild",
-        },
+        "data": "eyJzdGVwIjoicmVtb3RlQ2hpbGQiLCJpbnB1dCI6ImJlZ2luUnBjIn0=",
         "headers": {},
       },
     },
     {
-      "id": "<root>.5",
+      "createdAt": "<timestamp>",
+      "id": "kitchen-sink.5",
       "param": {
-        "data": "",
+        "data": "IiI=",
         "headers": {},
       },
+      "settledAt": "<timestamp>",
       "state": "resolved",
       "tags": {
-        "resonate:branch": "<root>.5",
-        "resonate:origin": "<root>",
-        "resonate:parent": "<root>",
-        "resonate:prefix": "<root>",
+        "resonate:branch": "kitchen-sink.5",
+        "resonate:origin": "kitchen-sink",
+        "resonate:parent": "kitchen-sink",
+        "resonate:prefix": "kitchen-sink",
         "resonate:scope": "global",
         "resonate:timer": "true",
       },
+      "timeoutAt": "<timestamp>",
       "value": {},
     },
     {
-      "id": "<root>.d0bb49eb4bf4ea5",
+      "createdAt": "<timestamp>",
+      "id": "kitchen-sink.6",
       "param": {
-        "data": {
-          "args": [
-            "detached",
-          ],
-          "func": "detachedChild",
-          "version": 1,
-        },
+        "data": "IiI=",
         "headers": {},
       },
+      "settledAt": "<timestamp>",
       "state": "resolved",
       "tags": {
-        "resonate:branch": "<root>.d0bb49eb4bf4ea5",
-        "resonate:origin": "<root>.d0bb49eb4bf4ea5",
-        "resonate:parent": "<root>",
-        "resonate:prefix": "<root>",
+        "resonate:branch": "kitchen-sink.6",
+        "resonate:origin": "kitchen-sink",
+        "resonate:parent": "kitchen-sink",
+        "resonate:prefix": "kitchen-sink",
+        "resonate:scope": "global",
+        "resonate:timer": "true",
+      },
+      "timeoutAt": "<timestamp>",
+      "value": {},
+    },
+    {
+      "createdAt": "<timestamp>",
+      "id": "kitchen-sink.d0bb49eb4bf4ea5",
+      "param": {
+        "data": "eyJmdW5jIjoiZGV0YWNoZWRDaGlsZCIsImFyZ3MiOlsiZGV0YWNoZWQiXSwidmVyc2lvbiI6MX0=",
+        "headers": {},
+      },
+      "settledAt": "<timestamp>",
+      "state": "resolved",
+      "tags": {
+        "resonate:branch": "kitchen-sink.d0bb49eb4bf4ea5",
+        "resonate:origin": "kitchen-sink.d0bb49eb4bf4ea5",
+        "resonate:parent": "kitchen-sink",
+        "resonate:prefix": "kitchen-sink",
         "resonate:scope": "global",
         "resonate:target": "poll://any@debug-snapshot-parity",
       },
+      "timeoutAt": "<timestamp>",
       "value": {
-        "data": {
-          "input": "detached",
-          "step": "detachedChild",
-        },
+        "data": "eyJzdGVwIjoiZGV0YWNoZWRDaGlsZCIsImlucHV0IjoiZGV0YWNoZWQifQ==",
         "headers": {},
       },
     },
@@ -377,25 +706,25 @@ exports[`debug snapshot parity > matches the native TypeScript SDK fanout graph 
   "taskTimeouts": [],
   "tasks": [
     {
-      "id": "<root>",
+      "id": "kitchen-sink",
       "resumes": 0,
       "state": "fulfilled",
       "version": 3,
     },
     {
-      "id": "<root>.2",
+      "id": "kitchen-sink.2",
       "resumes": 0,
       "state": "fulfilled",
       "version": 1,
     },
     {
-      "id": "<root>.3",
+      "id": "kitchen-sink.3",
       "resumes": 0,
       "state": "fulfilled",
       "version": 1,
     },
     {
-      "id": "<root>.d0bb49eb4bf4ea5",
+      "id": "kitchen-sink.d0bb49eb4bf4ea5",
       "resumes": 0,
       "state": "fulfilled",
       "version": 1,

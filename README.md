@@ -76,7 +76,7 @@ import { Effect, Layer } from "effect";
 import { Resonate, Worker } from "effect-resonate";
 
 const program = Effect.gen(function* () {
-  const client = yield* Resonate.ResonateClient;
+  const client = yield* Resonate.Client;
   const handle = yield* client.beginRpc({
     targetFunction: greet,
     executionId: "greet-ada",

@@ -34,7 +34,7 @@ describe("ResonateTest", () => {
     );
 
     return Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const handle = yield* client.beginRpc({
         targetFunction: Countdown,
         executionId: Protocol.ExecutionId.make("harness-countdown-1"),
@@ -75,7 +75,7 @@ describe("ResonateTest", () => {
       );
 
       const program = Effect.gen(function* () {
-        const client = yield* Resonate.ResonateClient;
+        const client = yield* Resonate.Client;
         const promises = yield* DurablePromises;
         const handle = yield* client.beginRpc({
           targetFunction: Replay,

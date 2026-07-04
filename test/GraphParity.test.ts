@@ -38,7 +38,7 @@ const graphIds = (prefix: string, ids: ReadonlyArray<string>) =>
 describe("graph parity", () => {
   it.effect("walks the local promise graph shape used by the native twin harness", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const codec = yield* currentCodec;
       const handle = yield* client.beginRpc({
         targetFunction: GraphRoot,
@@ -88,7 +88,7 @@ describe("graph parity", () => {
 
   it.effect("keeps the graph byte-stable after worker restart replay", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const promises = yield* DurablePromises;
       const handle = yield* client.beginRpc({
         targetFunction: GraphRoot,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Option, Predicate, Schema, SchemaParser } from "effect";
+import { Effect, Predicate, Schema, SchemaParser } from "effect";
 import { decodeResponse, encodeRequest } from "../src/network/network.ts";
 import * as Protocol from "../src/Protocol.ts";
 
@@ -7,12 +7,10 @@ const serverPort = 8013;
 const serverUrl = `http://127.0.0.1:${serverPort}`;
 const group = "debug-snapshot-parity";
 
-type DebugState = (typeof Protocol.DebugSnapResponse.members)[0]["Type"]["data"];
-
 const isPromiseGetSuccess = SchemaParser.is(Protocol.PromiseGetSuccessResponse);
 const isDebugSnapSuccess = SchemaParser.is(Protocol.DebugSnapSuccessResponse);
 const isDebugResetSuccess = SchemaParser.is(Protocol.DebugResetResponse.members[0]);
-const JsonFromBase64 = Schema.StringFromBase64.pipe(Schema.decodeTo(Schema.fromJsonString(Schema.Unknown)));
+const timestampKeys = new Set(["createdAt", "settledAt", "timeoutAt", "timeout", "nextRunAt", "lastRunAt"]);
 
 const sleep = (millis: number) => new Promise((resolve) => setTimeout(resolve, millis));
 
@@ -27,8 +25,8 @@ const spawn = (command: ReadonlyArray<string>, env: Record<string, string> = {})
     stderr: "pipe",
   });
 
-const run = async (command: ReadonlyArray<string>) => {
-  const process = Bun.spawn([...command], { stdout: "pipe", stderr: "pipe" });
+const run = async (command: ReadonlyArray<string>, env: Record<string, string> = {}) => {
+  const process = Bun.spawn([...command], { env: { ...Bun.env, ...env }, stdout: "pipe", stderr: "pipe" });
   const [exitCode, stdout, stderr] = await Promise.all([
     process.exited,
     new Response(process.stdout).text(),
@@ -75,14 +73,26 @@ const waitForSettled = async (id: Protocol.PromiseId) => {
   throw new Error(`promise ${id} did not settle`);
 };
 
-const debugSnap = async (): Promise<DebugState> => {
+const stripTimestamps = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(stripTimestamps);
+  }
+  if (Predicate.isObject(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, timestampKeys.has(key) ? "<timestamp>" : stripTimestamps(item)]),
+    );
+  }
+  return value;
+};
+
+const debugSnap = async (): Promise<unknown> => {
   const response = await request(
     Protocol.DebugSnapRequest.make({ kind: "debug.snap", head: requestHead(`snap-${Date.now()}`), data: {} }),
   );
   if (!isDebugSnapSuccess(response)) {
     throw new Error(`debug.snap failed: ${JSON.stringify(response.data)}`);
   }
-  return response.data;
+  return stripTimestamps(Schema.encodeSync(Protocol.DebugSnapSuccessResponse)(response).data);
 };
 
 const debugReset = async () => {
@@ -147,105 +157,6 @@ const invoke = (options: {
     options.id,
   ]);
 
-const replaceRoot = (value: string, root: Protocol.PromiseId): string => value.replaceAll(root, "<root>");
-
-const normalizeJson = (value: unknown, root: Protocol.PromiseId): unknown => {
-  if (Predicate.isString(value)) {
-    return replaceRoot(value, root);
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizeJson(item, root));
-  }
-  if (Predicate.isObject(value)) {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normalizeJson(item, root)]));
-  }
-  return value;
-};
-
-const optionalValue = <A>(value: A | Option.Option<A> | undefined): A | undefined =>
-  Option.isOption(value) ? Option.getOrUndefined(value) : value;
-
-const normalizeValue = (value: Protocol.Value, root: Protocol.PromiseId) => {
-  const data = optionalValue(value.data);
-  const headers = optionalValue(value.headers);
-  return {
-    ...(Predicate.isNotUndefined(data)
-      ? { data: normalizeJson(Schema.decodeUnknownSync(JsonFromBase64)(data), root) }
-      : {}),
-    ...(Predicate.isNotUndefined(headers) ? { headers } : {}),
-  };
-};
-
-const sortBy = <A>(items: ReadonlyArray<A>, key: (value: A) => string): ReadonlyArray<A> =>
-  [...items].sort((left, right) => key(left).localeCompare(key(right)));
-
-const normalizePromise = (promise: Protocol.PromiseRecord, root: Protocol.PromiseId) => {
-  const tags = Schema.encodeSync(Protocol.TagsFromWire)(promise.tags);
-  return {
-    id: replaceRoot(promise.id, root),
-    param: normalizeValue(promise.param, root),
-    state: promise.state,
-    tags: Object.fromEntries(
-      sortBy(
-        Object.entries(tags).map(([key, value]) => [key, replaceRoot(value, root)] as const),
-        ([key]) => key,
-      ),
-    ),
-    value: normalizeValue(promise.value, root),
-  };
-};
-
-const normalizeTask = (task: Protocol.TaskRecord, root: Protocol.PromiseId) => ({
-  id: replaceRoot(task.id, root),
-  resumes: task.resumes,
-  state: task.state,
-  version: task.version,
-});
-
-const normalizeSnapshot = (state: DebugState, root: Protocol.PromiseId) => ({
-  callbacks: sortBy(
-    state.callbacks.map((callback) => ({
-      awaiter: replaceRoot(callback.awaiter, root),
-      awaited: replaceRoot(callback.awaited, root),
-    })),
-    (callback) => `${callback.awaiter}:${callback.awaited}`,
-  ),
-  listeners: sortBy(
-    (state.listeners ?? []).map((listener) => ({
-      id: replaceRoot(listener.id, root),
-      address: replaceRoot(listener.address, root),
-    })),
-    (listener) => `${listener.id}:${listener.address}`,
-  ),
-  messages: sortBy(
-    state.messages.map((message) => ({
-      address: replaceRoot(message.address, root),
-      kind: message.message.kind,
-    })),
-    (message) => `${message.address}:${message.kind}`,
-  ),
-  promises: sortBy(
-    state.promises.map((promise) => normalizePromise(promise, root)),
-    (promise) => promise.id,
-  ),
-  promiseTimeouts: sortBy(
-    state.promiseTimeouts.map((timeout) => ({ id: replaceRoot(timeout.id, root), timeout: "<timestamp>" })),
-    (timeout) => timeout.id,
-  ),
-  tasks: sortBy(
-    state.tasks.map((task) => normalizeTask(task, root)),
-    (task) => task.id,
-  ),
-  taskTimeouts: sortBy(
-    state.taskTimeouts.map((timeout) => ({
-      id: replaceRoot(timeout.id, root),
-      type: timeout.type,
-      timeout: "<timestamp>",
-    })),
-    (timeout) => `${timeout.id}:${timeout.type}`,
-  ),
-});
-
 const runWorkerCase = async (options: {
   readonly name: string;
   readonly command: ReadonlyArray<string>;
@@ -266,7 +177,7 @@ const runWorkerCase = async (options: {
     await invoke({ id: options.id, func: options.func, args: options.args });
     const promise = await waitForSettled(options.id);
     expect(promise.state).toBe("resolved");
-    return normalizeSnapshot(await debugSnap(), options.id);
+    return await debugSnap();
   } catch (cause) {
     kill(worker);
     throw new Error(`${options.name} worker failed\nstdout:\n${await stdout}\nstderr:\n${await stderr}`, { cause });
@@ -298,6 +209,76 @@ const runParityCase = async (entry: ParityCase) => {
   expect(native).toMatchSnapshot(entry.name);
 };
 
+const parseJsonOutput = (stdout: string): unknown => {
+  const lines = stdout.trim().split("\n");
+  const line = lines.at(-1);
+  if (Predicate.isUndefined(line)) {
+    throw new Error("driver produced no JSON output");
+  }
+  return JSON.parse(line);
+};
+
+const runClientApiSide = async (options: {
+  readonly name: string;
+  readonly workerCommand?: ReadonlyArray<string>;
+  readonly driverCommand: ReadonlyArray<string>;
+  readonly workerPid?: string;
+  readonly driverPid?: string;
+}) => {
+  const workerPid = options.workerPid ?? "client-api-worker";
+  const driverPid = options.driverPid ?? workerPid;
+  const worker = Predicate.isUndefined(options.workerCommand)
+    ? undefined
+    : spawn(options.workerCommand, {
+        RESONATE_URL: serverUrl,
+        RESONATE_GROUP: group,
+        RESONATE_PID: workerPid,
+      });
+  const stdout = Predicate.isUndefined(worker) ? Promise.resolve("") : new Response(worker.stdout).text();
+  const stderr = Predicate.isUndefined(worker) ? Promise.resolve("") : new Response(worker.stderr).text();
+  try {
+    await sleep(1_000);
+    const observed = parseJsonOutput(
+      await run(options.driverCommand, {
+        RESONATE_URL: serverUrl,
+        RESONATE_GROUP: group,
+        RESONATE_PID: driverPid,
+      }),
+    );
+    return {
+      observed,
+      snapshot: await debugSnap(),
+    };
+  } catch (cause) {
+    if (Predicate.isNotUndefined(worker)) {
+      kill(worker);
+    }
+    throw new Error(`${options.name} client API side failed\nstdout:\n${await stdout}\nstderr:\n${await stderr}`, {
+      cause,
+    });
+  } finally {
+    if (Predicate.isNotUndefined(worker)) {
+      kill(worker);
+    }
+  }
+};
+
+const runClientApiParity = async () => {
+  const native = await runClientApiSide({
+    name: "native",
+    driverCommand: ["bun", "test/interop/native-client-api-driver.js"],
+  });
+  await debugReset();
+  const effect = await runClientApiSide({
+    name: "effect",
+    driverCommand: ["bun", "test/interop/effect-client-api-driver.ts"],
+  });
+
+  expect(effect.observed).toEqual(native.observed);
+  expect(effect.snapshot).toEqual(native.snapshot);
+  expect(native).toMatchSnapshot("client-apis");
+};
+
 describe("debug snapshot parity", () => {
   it("matches the native TypeScript SDK fanout graph against a debug server", async () => {
     if (Bun.which("resonate") === null) {
@@ -321,6 +302,7 @@ describe("debug snapshot parity", () => {
         await runParityCase(entry);
         await debugReset();
       }
+      await runClientApiParity();
     } finally {
       kill(server);
     }

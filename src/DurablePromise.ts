@@ -1,7 +1,7 @@
 /**
  * Low-level client service for Resonate durable promise protocol endpoints.
  *
- * Most applications should use {@link Resonate.ResonateClient}; this module is
+ * Most applications should use {@link Resonate.Client}; this module is
  * useful for implementing clients, workers, and protocol-level integrations.
  *
  * @since 0.0.0

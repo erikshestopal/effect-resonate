@@ -16,6 +16,7 @@ import {
   Option,
   Predicate,
   Schema,
+  SchemaParser,
 } from "effect";
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import { DurablePromises } from "./DurablePromise.ts";
@@ -26,6 +27,7 @@ import * as Protocol from "./Protocol.ts";
 import type { PromiseDeclaration, PromiseFailure, PromiseSuccess } from "./PromiseDefinition.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";
 import { Tasks } from "./Task.ts";
+import { WorkerRuntime } from "./Worker.ts";
 
 export interface InvocationOptions {
   readonly target?: Protocol.WorkerGroup;
@@ -141,7 +143,8 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
             version: options.version,
             ...(Predicate.isNotUndefined(options.retry) ? { retry: options.retry } : {}),
           });
-          const encoded = yield* codec.encode(invocation);
+          const encodedInvocation = yield* Schema.encodeUnknownEffect(InvocationParam)(invocation);
+          const encoded = yield* codec.encode(encodedInvocation);
           return encoded;
         });
 
@@ -219,9 +222,10 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
                   : decodeSettled(promise).pipe(Effect.exit, Effect.map(Option.some)),
               ),
             ),
-          cancel: promises
-            .settle(Protocol.PromiseSettleData.make({ id, state: canceledState, value: Protocol.emptyValue }))
-            .pipe(Effect.asVoid),
+          cancel: Effect.gen(function* () {
+            const value = yield* codec.encode(undefined);
+            yield* promises.settle(Protocol.PromiseSettleData.make({ id, state: canceledState, value }));
+          }),
         });
 
         const timeoutAt = Effect.fn("ResonateClient.timeoutAt")(function* (timeout: Duration.Duration) {
@@ -265,7 +269,7 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
             args: options.args,
             callOptions: options.options,
           });
-          yield* tasks.create(
+          const created = yield* tasks.create(
             Protocol.TaskCreateData.make({
               pid,
               ttl,
@@ -287,6 +291,22 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
               }),
             }),
           );
+          if (Predicate.isNotUndefined(created.task) && SchemaParser.is(Protocol.TaskAcquired)(created.task)) {
+            const workerRuntime = yield* Effect.serviceOption(WorkerRuntime);
+            if (Option.isNone(workerRuntime)) {
+              const current = handle(id);
+              return {
+                ...current,
+                await: Effect.die("Client.run/beginRun requires a co-located Worker sharing this network and pid"),
+              };
+            }
+            yield* workerRuntime.value
+              .runAcquired({ task: created.task, promise: created.promise, preload: created.preload })
+              .pipe(
+                Effect.catchCause((cause) => Effect.logWarning("Client beginRun local execution failed", cause)),
+                Effect.forkDetach,
+              );
+          }
           return handle(id);
         });
 
@@ -343,9 +363,8 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
             return handle(Protocol.PrefixedId.make({ id: options.id, prefix: idPrefix }));
           }),
           cancel: Effect.fn("ResonateClient.cancel")(function* (id) {
-            yield* promises.settle(
-              Protocol.PromiseSettleData.make({ id, state: canceledState, value: Protocol.emptyValue }),
-            );
+            const value = yield* codec.encode(undefined);
+            yield* promises.settle(Protocol.PromiseSettleData.make({ id, state: canceledState, value }));
           }),
         });
       }),

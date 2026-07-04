@@ -23,6 +23,26 @@ function* detachedChild(_ctx, input) {
   return { step: "detachedChild", input };
 }
 
+function* clientEcho(_ctx, input) {
+  return { step: "clientEcho", input };
+}
+
+function* awaitApproval(ctx, input) {
+  const approval = yield* ctx.promise();
+  return { input, approval: yield* approval };
+}
+
+function* retryOnce(ctx, input) {
+  if (ctx.info.attempt === 0) {
+    throw "retry-once";
+  }
+  return { step: "retryOnce", input, attempt: ctx.info.attempt };
+}
+
+function* alwaysReject(_ctx, input) {
+  throw { step: "alwaysReject", input };
+}
+
 function* kitchenSink(ctx, input) {
   const local = yield* ctx.run(localStep, input);
   const pendingLocal = yield* ctx.beginRun(localAsync, input);
@@ -30,6 +50,7 @@ function* kitchenSink(ctx, input) {
   const pendingRpc = yield* ctx.beginRpc(remoteChild, "beginRpc", ctx.options({ target: group }));
   const detached = yield* ctx.detached(detachedChild, "detached", ctx.options({ target: group }));
   yield* ctx.sleep(1);
+  yield* ctx.sleep({ until: new Date(Date.now() + 1) });
   return {
     local,
     begunLocal: yield* pendingLocal,
@@ -44,6 +65,10 @@ resonate.register(localStep);
 resonate.register(localAsync);
 resonate.register(remoteChild);
 resonate.register(detachedChild);
+resonate.register(clientEcho);
+resonate.register(awaitApproval);
+resonate.register(retryOnce);
+resonate.register(alwaysReject);
 
 console.log("native-kitchen-sink-worker-ready");
 setInterval(() => {}, 1_000);

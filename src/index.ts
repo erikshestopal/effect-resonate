@@ -103,7 +103,7 @@ export * as Resonate from "./Resonate.ts";
  * @category modules
  * @since 0.0.0
  */
-export * as ResonateClient from "./ResonateClient.ts";
+export * as Client from "./ResonateClient.ts";
 
 /**
  * High-level durable schedule authoring API.

@@ -43,7 +43,7 @@ const baseLayer = Layer.mergeAll(
 );
 const codecLayer = ResonateCodec.layerJson;
 const protocolLayer = Layer.mergeAll(DurablePromises.layer, Tasks.layer, Schedules.layer);
-const clientLayer = Resonate.ResonateClient.layer({
+const clientLayer = Resonate.Client.layer({
   group: Protocol.WorkerGroup.make("workers"),
   pid: Protocol.ProcessId.make("client-1"),
   ttl: Duration.seconds(30),
@@ -157,7 +157,7 @@ const externalTags = (root: Protocol.PromiseId): Protocol.Tags =>
 describe("Worker", () => {
   it.effect("acquires execute messages and fulfills client RPCs", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const promises = yield* DurablePromises;
       const codec = yield* currentCodec;
       const handle = yield* client.beginRpc({
@@ -175,7 +175,7 @@ describe("Worker", () => {
 
   it.effect("suspends and resumes a targeted context RPC through the worker loop", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const promises = yield* DurablePromises;
       const codec = yield* currentCodec;
       const handle = yield* client.beginRpc({
@@ -198,7 +198,7 @@ describe("Worker", () => {
 
   it.effect("heartbeats the actual held task/version so leases stay acquired", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const handle = yield* client.beginRpc({
         targetFunction: Blocking,
         executionId: Protocol.ExecutionId.make("worker-heartbeat-1"),
@@ -257,7 +257,7 @@ describe("Worker", () => {
 
   it.effect("suspends on durable sleep and resumes when the timer resolves", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const promises = yield* DurablePromises;
       const codec = yield* currentCodec;
       const handle = yield* client.beginRpc({
@@ -300,7 +300,7 @@ describe("Worker", () => {
 
   it.effect("clamps durable sleep to the parent timeout", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const promises = yield* DurablePromises;
       const handle = yield* client.beginRpc({
         targetFunction: Sleep,

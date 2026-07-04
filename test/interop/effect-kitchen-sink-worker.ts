@@ -1,7 +1,7 @@
 import { BunRuntime } from "@effect/platform-bun";
 import * as BunCrypto from "@effect/platform-bun/BunCrypto";
 import * as BunHttpClient from "@effect/platform-bun/BunHttpClient";
-import { Config, Duration, Effect, Layer, Schema } from "effect";
+import { Clock, Config, DateTime, Duration, Effect, Layer, Schema } from "effect";
 import * as Protocol from "../../src/Protocol.ts";
 import * as Resonate from "../../src/Resonate.ts";
 import { ResonateContext } from "../../src/ResonateContext.ts";
@@ -10,8 +10,14 @@ import * as Worker from "../../src/Worker.ts";
 const KitchenSink = Resonate.function({ name: "kitchenSink", payload: Schema.String });
 const RemoteChild = Resonate.function({ name: "remoteChild", payload: Schema.String });
 const DetachedChild = Resonate.function({ name: "detachedChild", payload: Schema.String });
+const ClientEcho = Resonate.function({ name: "clientEcho", payload: Schema.String });
+const AwaitApproval = Resonate.function({ name: "awaitApproval", payload: Schema.String });
+const RetryOnce = Resonate.function({ name: "retryOnce", payload: Schema.String });
+const AlwaysReject = Resonate.function({ name: "alwaysReject", payload: Schema.String });
 
-const App = Resonate.group(KitchenSink, RemoteChild, DetachedChild);
+const Approval = Resonate.promise({ name: "approval", success: Schema.String, error: Schema.String });
+
+const App = Resonate.group(KitchenSink, RemoteChild, DetachedChild, ClientEcho, AwaitApproval, RetryOnce, AlwaysReject);
 
 const handlers = App.toLayer(
   App.of({
@@ -36,6 +42,7 @@ const handlers = App.toLayer(
           args: ["detached"],
         });
         yield* ctx.sleep(Duration.millis(1));
+        yield* ctx.sleepUntil(DateTime.makeUnsafe((yield* Clock.currentTimeMillis) + 1));
         return {
           local,
           begunLocal: yield* pendingLocal.await,
@@ -46,6 +53,25 @@ const handlers = App.toLayer(
       }),
     remoteChild: (input) => Effect.succeed({ step: "remoteChild", input }),
     detachedChild: (input) => Effect.succeed({ step: "detachedChild", input }),
+    clientEcho: (input) => Effect.succeed({ step: "clientEcho", input }),
+    awaitApproval: (input) =>
+      Effect.gen(function* (): Effect.fn.Return<unknown, unknown, ResonateContext> {
+        const ctx = yield* ResonateContext;
+        const approval = yield* ctx.promise({
+          declaration: Approval,
+          options: { id: Protocol.PromiseId.make(`${ctx.info.id}.0`) },
+        });
+        return { input, approval: yield* approval.await };
+      }),
+    retryOnce: (input) =>
+      Effect.gen(function* (): Effect.fn.Return<unknown, string, ResonateContext> {
+        const ctx = yield* ResonateContext;
+        if (ctx.info.attempt === 0) {
+          return yield* Effect.fail("retry-once");
+        }
+        return { step: "retryOnce", input, attempt: ctx.info.attempt };
+      }),
+    alwaysReject: (input) => Effect.fail({ step: "alwaysReject", input }),
   }),
 );
 

@@ -116,10 +116,14 @@ export const layer = (options: NetworkHttpOptions): Layer.Layer<ResonateNetwork,
         Duration.seconds(1),
       ).pipe(Schedule.modifyDelay((_, delay) => Effect.succeed(Duration.min(delay, Duration.seconds(30)))));
       const retryReconnect = reconnect.pipe(Schedule.while(({ input }) => input.reason !== "Unauthorized"));
+      const messagesPubSub = yield* connectMessages.pipe(
+        Stream.retry(retryReconnect),
+        Stream.toPubSubTake({ capacity: "unbounded", replay: 1 }),
+      );
 
       return ResonateNetwork.of({
         send,
-        messages: connectMessages.pipe(Stream.retry(retryReconnect)),
+        messages: Stream.fromPubSubTake(messagesPubSub),
         match: (target) => Protocol.TargetAddress.pollAny({ group: target }),
         unicast: Protocol.TargetAddress.pollUni({ group, id: pid }),
         anycast: (target) => Protocol.TargetAddress.pollAny({ group: target, id: configuredPid }),

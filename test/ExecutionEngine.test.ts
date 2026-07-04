@@ -63,7 +63,7 @@ const codecLayer = ResonateCodec.layerJson.pipe(Layer.provide(baseLayer));
 const protocolLayer = Layer.mergeAll(DurablePromises.layer, Tasks.layer).pipe(
   Layer.provide(Layer.mergeAll(baseLayer, codecLayer)),
 );
-const clientLayer = Resonate.ResonateClient.layer({
+const clientLayer = Resonate.Client.layer({
   group: Protocol.WorkerGroup.make("workers"),
   pid: Protocol.ProcessId.make("engine-1"),
   ttl: Duration.seconds(30),
@@ -93,7 +93,7 @@ const acquiredRoot = Effect.fn("ExecutionEngineTest.acquiredRoot")(function* (id
 describe("ExecutionEngine", () => {
   it.effect("executes local ctx.run steps with deterministic ids and root fulfillment", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const codec = yield* currentCodec;
       const handlers = workflowGroup.toLayer(
@@ -140,7 +140,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("replays a completed local step from the promise cache without re-executing it", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const promises = yield* DurablePromises;
       const codec = yield* currentCodec;
@@ -191,7 +191,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("creates targeted remote child invocations and suspends while awaiting them", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const codec = yield* currentCodec;
       const handlers = remoteGroup.toLayer(
@@ -239,7 +239,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("suspends parent return until attached unawaited remote children settle", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const promises = yield* DurablePromises;
       const codec = yield* currentCodec;
@@ -285,7 +285,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("fans out multiple attached remote awaits into one suspend", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const handlers = remoteGroup.toLayer(
         remoteGroup.of({
@@ -318,7 +318,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("breaks attached lineage when an explicit remote id is supplied", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const handlers = remoteGroup.toLayer(
         remoteGroup.of({
@@ -358,7 +358,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("detaches remote children as fresh roots without blocking parent completion", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const codec = yield* currentCodec;
       const handlers = remoteGroup.toLayer(
@@ -402,7 +402,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("creates named external promises and resumes after typed resolution", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const codec = yield* currentCodec;
       const handlers = externalGroup.toLayer(
@@ -460,7 +460,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("decodes typed external promise rejection into the awaiting function", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const handlers = externalGroup.toLayer(
         externalGroup.of({
@@ -508,7 +508,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("surfaces external promise timeout as a typed await error", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const promises = yield* DurablePromises;
       const codec = yield* currentCodec;
@@ -566,7 +566,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("keeps named external promise ids stable when earlier steps are inserted", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const handlers = externalGroup.toLayer(
         externalGroup.of({
@@ -597,7 +597,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("records ctx.now once and replays the same instant after clock movement", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const promises = yield* DurablePromises;
       const codec = yield* currentCodec;
@@ -651,7 +651,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("records ctx.random as a local durable step and consumes the sequence slot", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const codec = yield* currentCodec;
       const handlers = workflowGroup.toLayer(
@@ -693,7 +693,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("defects on duplicate named external promises without explicit ids", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const handlers = externalGroup.toLayer(
         externalGroup.of({
@@ -727,7 +727,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("defects when an externally settled value does not match the declaration schema", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const promises = yield* DurablePromises;
       const codec = yield* currentCodec;
@@ -768,7 +768,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("retries local steps with attempt visible in context", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       const codec = yield* currentCodec;
       let calls = 0;
@@ -811,7 +811,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("does not retry non-retryable tagged errors", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       let calls = 0;
       const handlers = retryGroup.toLayer(
@@ -850,7 +850,7 @@ describe("ExecutionEngine", () => {
 
   it.effect("stops retrying when the next retry would exceed the root timeout", () =>
     Effect.gen(function* () {
-      const client = yield* Resonate.ResonateClient;
+      const client = yield* Resonate.Client;
       const engine = yield* ExecutionEngine;
       let calls = 0;
       const handlers = retryGroup.toLayer(

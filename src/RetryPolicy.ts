@@ -110,7 +110,7 @@ export const linear = (options?: { readonly delay?: Duration.Input; readonly max
 export const never = (): Never => Never.make({});
 
 const ConstantWire = Schema.Struct({
-  type: Schema.Literal("constant"),
+  type: Schema.tag("constant"),
   data: Schema.Struct(ConstantFields),
 });
 
@@ -126,7 +126,7 @@ const ConstantFromWire = ConstantWire.pipe(
 );
 
 const ExponentialWire = Schema.Struct({
-  type: Schema.Literal("exponential"),
+  type: Schema.tag("exponential"),
   data: Schema.Struct(ExponentialFields),
 });
 
@@ -150,7 +150,7 @@ const ExponentialFromWire = ExponentialWire.pipe(
 );
 
 const LinearWire = Schema.Struct({
-  type: Schema.Literal("linear"),
+  type: Schema.tag("linear"),
   data: Schema.Struct(LinearFields),
 });
 
@@ -166,7 +166,7 @@ const LinearFromWire = LinearWire.pipe(
 );
 
 const NeverWire = Schema.Struct({
-  type: Schema.Literal("never"),
+  type: Schema.tag("never"),
   data: Schema.Struct({}),
 });
 

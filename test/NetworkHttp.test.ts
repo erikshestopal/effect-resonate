@@ -154,17 +154,18 @@ describe("NetworkHttp.messages", () => {
         ),
         { disableLogger: true, disableListenLog: true },
       ).pipe(Layer.build);
-      const network = yield* ResonateNetwork.pipe(
-        Effect.provide(networkLayer(yield* serverUrl, { group: "workers", pid: "pid-1" })),
-      );
+      const url = yield* serverUrl;
+      yield* Effect.gen(function* () {
+        const network = yield* ResonateNetwork;
 
-      expect(network.unicast.address).toBe("poll://uni@workers/pid-1");
-      expect(network.anycast(Protocol.WorkerGroup.make("workers")).address).toBe("poll://any@workers/pid-1");
-      expect(network.match(Protocol.WorkerGroup.make("gpu")).address).toBe("poll://any@gpu");
-      expect(Option.isNone(network.match(Protocol.WorkerGroup.make("gpu")).id)).toBe(true);
-      const [message] = yield* Stream.runCollect(Stream.take(network.messages, 1));
-      expect(message).toEqual(execute);
-      expect(yield* Ref.get(seen)).toEqual(["/poll/workers/pid-1"]);
+        expect(network.unicast.address).toBe("poll://uni@workers/pid-1");
+        expect(network.anycast(Protocol.WorkerGroup.make("workers")).address).toBe("poll://any@workers/pid-1");
+        expect(network.match(Protocol.WorkerGroup.make("gpu")).address).toBe("poll://any@gpu");
+        expect(Option.isNone(network.match(Protocol.WorkerGroup.make("gpu")).id)).toBe(true);
+        const [message] = yield* Stream.runCollect(Stream.take(network.messages, 1));
+        expect(message).toEqual(execute);
+        expect(yield* Ref.get(seen)).toEqual(["/poll/workers/pid-1"]);
+      }).pipe(Effect.provide(networkLayer(url, { group: "workers", pid: "pid-1" })));
     }).pipe(Effect.provide(serverLayer)),
   );
 
@@ -174,9 +175,12 @@ describe("NetworkHttp.messages", () => {
         HttpRouter.add("GET", "/poll/default/local", HttpServerResponse.text("denied", { status: 401 })),
         { disableLogger: true, disableListenLog: true },
       ).pipe(Layer.build);
-      const network = yield* ResonateNetwork.pipe(Effect.provide(networkLayer(yield* serverUrl)));
-      const exit = yield* Stream.runCollect(Stream.take(network.messages, 1)).pipe(Effect.exit);
-      expect(Exit.isFailure(exit)).toBe(true);
+      const url = yield* serverUrl;
+      yield* Effect.gen(function* () {
+        const network = yield* ResonateNetwork;
+        const exit = yield* Stream.runCollect(Stream.take(network.messages, 1)).pipe(Effect.exit);
+        expect(Exit.isFailure(exit)).toBe(true);
+      }).pipe(Effect.provide(networkLayer(url)));
     }).pipe(Effect.provide(serverLayer)),
   );
 
@@ -202,17 +206,20 @@ describe("NetworkHttp.messages", () => {
         ),
         { disableLogger: true, disableListenLog: true },
       ).pipe(Layer.build);
-      const network = yield* ResonateNetwork.pipe(Effect.provide(networkLayer(yield* serverUrl)));
-      const fiber = yield* Stream.runCollect(Stream.take(network.messages, 1)).pipe(Effect.forkScoped);
-      yield* Effect.yieldNow;
+      const url = yield* serverUrl;
+      yield* Effect.gen(function* () {
+        const network = yield* ResonateNetwork;
+        const fiber = yield* Stream.runCollect(Stream.take(network.messages, 1)).pipe(Effect.forkScoped);
+        yield* Effect.yieldNow;
 
-      yield* TestClock.adjust(Duration.millis(999));
-      expect(yield* Ref.get(attempts)).toBe(1);
-      yield* TestClock.adjust(Duration.millis(1001));
-      yield* Effect.yieldNow;
-      const [message] = yield* Fiber.join(fiber);
-      expect(message).toEqual(execute);
-      expect(yield* Ref.get(attempts)).toBe(2);
+        yield* TestClock.adjust(Duration.millis(999));
+        expect(yield* Ref.get(attempts)).toBe(1);
+        yield* TestClock.adjust(Duration.millis(1001));
+        yield* Effect.yieldNow;
+        const [message] = yield* Fiber.join(fiber);
+        expect(message).toEqual(execute);
+        expect(yield* Ref.get(attempts)).toBe(2);
+      }).pipe(Effect.provide(networkLayer(url)));
     }).pipe(Effect.provide(serverLayer)),
   );
 });

@@ -69,7 +69,7 @@ Four layers, each usable without the ones above it:
 │ 4. Function API      Resonate.function / ResonateContext   │  ← what users touch
 ├────────────────────────────────────────────────────────────┤
 │ 3. Runtime           ResonateWorker (task loop, heartbeat, │
-│                      replay driver), ResonateClient        │
+│                      replay driver), Client        │
 ├────────────────────────────────────────────────────────────┤
 │ 2. Protocol client   DurablePromises, Tasks, Schedules     │  ← typed ops, Schema-validated
 ├────────────────────────────────────────────────────────────┤
@@ -221,7 +221,7 @@ export class DurablePromises extends Context.Service<DurablePromises, {
 
 ### 3.3 Layer 3 — Runtime
 
-- `ResonateClient` — start/attach/observe executions from ordinary (non-durable) code; the Effect analog of the `Resonate` class's `run/rpc/beginRun/beginRpc/get/schedule` methods.
+- `Client` — start/attach/observe executions from ordinary (non-durable) code; the Effect analog of the `Resonate` class's `run/rpc/beginRun/beginRpc/get/schedule` methods.
 - `ResonateWorker` — a `Layer` that owns the worker loop: consume `execute` messages → `task.acquire` → drive replay → `task.suspend`/`task.fulfill`; plus a single per-process heartbeat fiber refreshing **the actual list of held `(id, version)` pairs** at TTL/2 (the official TS SDK sends an empty list — a known gap we deliberately do not reproduce).
 
 ### 3.4 Layer 4 — Function API
@@ -357,13 +357,13 @@ This is the load-bearing determinism contract, and it interacts with Effect conc
 
 ### 4.4 Starting executions from the outside
 
-The `ResonateClient` service is the Effect analog of the native `Resonate` instance methods:
+The `Client` service is the Effect analog of the native `Resonate` instance methods:
 
 ```ts
-import { ExecutionId, ResonateClient } from "effect-resonate";
+import { ExecutionId, Resonate } from "effect-resonate";
 
 const program = Effect.gen(function* () {
-  const client = yield* ResonateClient;
+  const client = yield* Resonate.Client;
 
   // Ids are branded — ExecutionId.make validates once, the type carries the proof.
   // Ids from external input decode instead: Schema.decodeUnknown(ExecutionId)(req.params.id)
@@ -425,7 +425,7 @@ const onboardingHandler = Effect.fn("Onboarding")(function* (user) {
 // from the execution id alone: Approval.id(executionId) → PromiseId "onboarding.42.approval".
 const approve = (promiseId: PromiseId) =>
   Effect.gen(function* () {
-    const client = yield* ResonateClient;
+    const client = yield* Resonate.Client;
     yield* client.resolve(Approval, promiseId, { approvedBy: "erik" }); // payload type-checked
     // client.reject(Approval, promiseId, new ApprovalDenied({ ... }))
   });
@@ -588,7 +588,7 @@ import { ResonateTest } from "../test/support/testing.ts";
 
 it.effect("countdown completes after sleeps", () =>
   Effect.gen(function* () {
-    const client = yield* ResonateClient;
+    const client = yield* Resonate.Client;
     const handle = yield* client.beginRpc(Countdown, "t1", [3, 60]);
 
     yield* TestClock.adjust(Duration.minutes(3)); // drives the local server's timers

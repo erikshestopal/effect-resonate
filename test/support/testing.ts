@@ -159,7 +159,7 @@ export class ResonateTest extends Context.Service<ResonateTest, ResonateTestServ
       Layer.provideMerge(base),
     );
     const services = Layer.mergeAll(
-      Resonate.ResonateClient.layer({
+      Resonate.Client.layer({
         group: workerGroup,
         pid: options.testOptions?.clientPid ?? Protocol.ProcessId.make("client-1"),
         ttl,

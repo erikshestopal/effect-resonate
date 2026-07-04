@@ -90,7 +90,7 @@ const runProgramCorpus = Effect.fn("DstSimulator.runProgramCorpus")(function* (s
   );
 
   const program = Effect.gen(function* () {
-    const client = yield* Resonate.ResonateClient;
+    const client = yield* Resonate.Client;
     const counter = yield* client.beginRpc({
       targetFunction: DstCounter,
       executionId: Protocol.ExecutionId.make(`dst-${seed}-counter`),

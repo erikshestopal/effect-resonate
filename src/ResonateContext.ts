@@ -9,6 +9,7 @@
  */
 import {
   Array as Arr,
+  Cause,
   Clock,
   Context,
   DateTime,
@@ -260,6 +261,8 @@ class CompletedExecution extends Schema.Class<CompletedExecution>("ExecutionEngi
   value: Schema.Unknown,
 }) {}
 
+const isCompletedExecution = SchemaParser.is(CompletedExecution);
+
 export type EngineOutcome = EngineDone | EngineSuspended;
 
 export interface ExecuteOptions {
@@ -436,7 +439,14 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
         const fulfillRoot = Effect.fn("ExecutionEngine.fulfillRoot")(function* (options: FulfillRootOptions) {
           const { exit } = options;
           const settled = Exit.isSuccess(exit) ? resolvedState : rejectedState;
-          const value = yield* codec.encode(Exit.isSuccess(exit) ? exit.value : exit.cause);
+          const value = yield* codec.encode(
+            Exit.isSuccess(exit)
+              ? exit.value
+              : Result.match(Cause.findError(exit.cause), {
+                  onSuccess: (error) => error,
+                  onFailure: Cause.squash,
+                }),
+          );
           const promise = yield* tasks.fulfill({
             data: Protocol.TaskFulfillData.make({
               id: state.root,
@@ -462,14 +472,14 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           options: EncodeInvocationOptions,
         ): Effect.fn.Return<Protocol.Value, unknown> {
           const { name, args, version, retry } = options;
-          const encoded = yield* codec.encode(
-            InvocationParam.make({
-              func: name,
-              args,
-              version,
-              ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
-            }),
-          );
+          const invocation = InvocationParam.make({
+            func: name,
+            args,
+            version,
+            ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
+          });
+          const encodedInvocation = yield* Schema.encodeUnknownEffect(InvocationParam)(invocation);
+          const encoded = yield* codec.encode(encodedInvocation);
           return encoded;
         });
 
@@ -525,7 +535,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             return cached.value;
           }
           const param = Predicate.isUndefined(name)
-            ? Protocol.emptyValue
+            ? yield* codec.encode(undefined)
             : yield* codec.encode(
                 LocalInvocationParam.make({
                   func: name,
@@ -615,7 +625,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
                   parent: state.timeoutAt,
                   duration: options?.timeout ?? Duration.hours(24),
                 }),
-                param: Protocol.emptyValue,
+                param: yield* codec.encode(undefined),
                 tags: Protocol.Tags.make({
                   reserved: {
                     ...(options?.tags ?? Protocol.emptyTags).reserved,
@@ -796,17 +806,21 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
             attempt: number,
           ): Effect.fn.Return<Exit.Exit<unknown, unknown>> {
             state.attempt = attempt;
-            const result = yield* effect.pipe(Effect.result);
-            if (Result.isSuccess(result)) {
-              return Exit.succeed(result.success);
+            const exit = yield* effect.pipe(Effect.exit);
+            if (Exit.isSuccess(exit)) {
+              return exit;
             }
-            if (Arr.some(nonRetryableErrors, (schema) => SchemaParser.is(schema)(result.failure))) {
-              return Exit.fail(result.failure);
+            const result = Cause.findError(exit.cause);
+            if (Result.isFailure(result)) {
+              return exit;
+            }
+            if (Arr.some(nonRetryableErrors, (schema) => SchemaParser.is(schema)(result.success))) {
+              return exit;
             }
             const retryIn = RetryPolicy.next(policy, attempt);
             const now = yield* Clock.currentTimeMillis;
             if (Predicate.isNull(retryIn) || now + retryIn >= DateTime.toEpochMillis(state.timeoutAt)) {
-              return Exit.fail(result.failure);
+              return exit;
             }
             if (retryIn > 0) {
               yield* Effect.sleep(Duration.millis(retryIn));
@@ -865,7 +879,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
               }
               const fiber = yield* runWithRetry({
                 effect,
-                policy: options?.retryPolicy ?? RetryPolicy.exponential(),
+                policy: options?.retryPolicy ?? RetryPolicy.never(),
                 nonRetryableErrors: options?.nonRetryableErrors ?? [],
               }).pipe(
                 Effect.flatMap((exit) => settle({ id: promise.id, exit })),
@@ -971,6 +985,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
 
         return {
           layer,
+          runWithRetry,
           drainChildren,
           fulfillRoot,
           attachedAwaited: () => Array.from(HashMap.keys(state.attachedRemote)),
@@ -1004,20 +1019,26 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           if (!Effect.isEffect(result)) {
             return yield* Effect.die(`Function '${invocation.func}' did not return an Effect`);
           }
-          const exit = yield* result.pipe(
-            Effect.provide(session.layer),
-            Effect.map((value) => new CompletedExecution({ value })),
-            Effect.catch((error) => (isSuspendedExecution(error) ? Effect.succeed(error) : Effect.fail(error))),
-            Effect.exit,
-          );
+          const exit = yield* session.runWithRetry({
+            effect: result.pipe(
+              Effect.provide(session.layer),
+              Effect.map((value) => new CompletedExecution({ value })),
+              Effect.catch((error) => (isSuspendedExecution(error) ? Effect.succeed(error) : Effect.fail(error))),
+            ),
+            policy: invocation.retry ?? RetryPolicy.never(),
+            nonRetryableErrors: [SuspendedExecution],
+          });
           yield* session.drainChildren();
           const attachedAwaited = session.attachedAwaited();
           if (Exit.isSuccess(exit)) {
-            if (Predicate.isTagged(exit.value, "SuspendedExecution")) {
+            if (isSuspendedExecution(exit.value)) {
               return new EngineSuspended({ awaited: Arr.dedupe([...attachedAwaited, ...exit.value.awaited]) });
             }
             if (attachedAwaited.length > 0) {
               return new EngineSuspended({ awaited: Arr.dedupe(attachedAwaited) });
+            }
+            if (!isCompletedExecution(exit.value)) {
+              return yield* Effect.die("Execution completed with an invalid outcome");
             }
             const promise = yield* session.fulfillRoot({ exit: Exit.succeed(exit.value.value) });
             return new EngineDone({ promise });

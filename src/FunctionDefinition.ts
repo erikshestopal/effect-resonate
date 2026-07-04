@@ -18,8 +18,8 @@ import * as RetryPolicy from "./RetryPolicy.ts";
 export const InvocationParam = Schema.Struct({
   func: Schema.String,
   args: Schema.Array(Schema.Unknown),
-  version: Protocol.FunctionVersionFromWire,
   retry: Schema.optionalKey(RetryPolicy.RetryPolicyFromWire),
+  version: Protocol.FunctionVersionFromWire,
 });
 
 /**
