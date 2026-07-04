@@ -1,0 +1,11 @@
+id: prefer-array-ensure
+language: TypeScript
+severity: error
+message: "Use Arr.ensure(value) instead of manually checking Arr.isArray(value) ? value : [value]."
+files:
+  - src/**/*.ts
+  - examples/**/*.ts
+rule:
+  any:
+    - pattern: "Arr.isArray($VALUE) ? $VALUE : [$VALUE]"
+    - pattern: "Array.isArray($VALUE) ? $VALUE : [$VALUE]"

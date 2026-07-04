@@ -32,7 +32,8 @@ import {
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import { DurablePromiseCanceled, DurablePromiseTimedOut, EncodingError } from "./Errors.ts";
 import * as Protocol from "./Protocol.ts";
-import type { AnyFunction, PayloadArgs, PromiseDeclaration, PromiseSuccess, Registry } from "./Resonate.ts";
+import type { Registry } from "./Registry.ts";
+import type { AnyFunction, PayloadArgs, PromiseDeclaration, PromiseSuccess } from "./Resonate.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";
 import { Tasks } from "./Task.ts";
 
@@ -491,7 +492,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           );
           return yield* encodeInvocation({
             name: target.name,
-            args: Arr.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
+            args: Arr.ensure(encodedArgs),
             version: options?.version ?? target.version,
             retry: options?.retryPolicy,
           });
@@ -988,7 +989,7 @@ export class ExecutionEngine extends Context.Service<ExecutionEngine, ExecutionE
           const decoded = yield* Schema.decodeUnknownEffect(item.definition.payload)(invocation.args).pipe(
             Effect.catchCause(() => Schema.decodeUnknownEffect(item.definition.payload)(invocation.args[0])),
           );
-          const args = Arr.isArray(decoded) ? decoded : [decoded];
+          const args = Arr.ensure(decoded);
           const result: Effect.Effect<unknown, unknown> = Reflect.apply(item.handler, undefined, args);
           if (!Effect.isEffect(result)) {
             return yield* Effect.die(`Function '${invocation.func}' did not return an Effect`);

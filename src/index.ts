@@ -66,6 +66,14 @@ export * as NetworkLocal from "./network/local.ts";
 export * as Protocol from "./Protocol.ts";
 
 /**
+ * Durable function handler registry model.
+ *
+ * @category modules
+ * @since 0.0.0
+ */
+export * as Registry from "./Registry.ts";
+
+/**
  * High-level function, schedule, promise, and client APIs.
  *
  * @category modules

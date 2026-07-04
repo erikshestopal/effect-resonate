@@ -37,7 +37,6 @@ import {
   Duration,
   Effect,
   Exit,
-  HashSet,
   Layer,
   Match,
   Number as Num,
@@ -53,6 +52,7 @@ import { DurablePromiseCanceled, DurablePromiseTimedOut, type EncodingError } fr
 import * as NetworkHttp from "./network/http.ts";
 import { ResonateNetwork } from "./network/network.ts";
 import * as Protocol from "./Protocol.ts";
+import { Registry, type RegistryItem } from "./Registry.ts";
 import { currentCodec, withSchemaHeader } from "./Codec.ts";
 import * as RetryPolicy from "./RetryPolicy.ts";
 import type { ResonateContext } from "./ResonateContext.ts";
@@ -106,54 +106,10 @@ export type HandlersFrom<F extends AnyFunction> = {
   readonly [Current in F as Current["name"]]: HandlerFunction<Current>;
 };
 
-export interface RegistryItem<F extends AnyFunction = AnyFunction> {
-  readonly definition: F;
-  readonly handler: HandlerFunction<F>;
-}
-
-const RegistryTypeId = "effect-resonate/Registry";
 const FunctionGroupTypeId = "effect-resonate/FunctionGroup";
-const RegistryItemByVersion = Order.mapInput(Order.Number, (item: RegistryItem) => item.definition.version);
 
-export interface Registry {
-  readonly [RegistryTypeId]: typeof RegistryTypeId;
-  readonly items: ReadonlyArray<RegistryItem>;
-  readonly pipe: typeof Pipeable.Prototype.pipe;
-  readonly get: (options: {
-    readonly name: string;
-    readonly version?: Protocol.FunctionVersionOrLatest;
-  }) => Option.Option<RegistryItem>;
-}
-
-export const makeRegistry = (items: ReadonlyArray<RegistryItem>): Effect.Effect<Registry> => {
-  let seen = HashSet.empty<string>();
-  for (const item of items) {
-    const key = `${item.definition.name}:${item.definition.version}`;
-    if (HashSet.has(seen, key)) {
-      return Effect.die(
-        `Function '${item.definition.name}' (version ${item.definition.version}) is already registered`,
-      );
-    }
-    seen = HashSet.add(seen, key);
-  }
-
-  return Effect.succeed({
-    ...Pipeable.Prototype,
-    [RegistryTypeId]: RegistryTypeId,
-    items,
-    get(options) {
-      const version = options.version ?? "latest";
-      const named = Arr.filter(items, (item) => item.definition.name === options.name);
-      return Arr.match(named, {
-        onEmpty: Option.none,
-        onNonEmpty: (named) =>
-          version !== "latest"
-            ? Arr.findFirst(named, (item) => item.definition.version === version)
-            : Option.some(Arr.max(named, RegistryItemByVersion)),
-      });
-    },
-  });
-};
+export { Registry };
+export type { RegistryItem };
 
 export interface FunctionGroup<Fns extends ReadonlyArray<AnyFunction>> {
   readonly [FunctionGroupTypeId]: typeof FunctionGroupTypeId;
@@ -186,7 +142,7 @@ const functionGroupToContext = <
     items.push({ definition, handler });
     context = Context.add(context, Handler(definition), handler);
   }
-  return Effect.as(makeRegistry(items), context);
+  return Effect.as(Registry.make(items), context);
 };
 
 /**
@@ -258,7 +214,7 @@ export const group = <const Fns extends ReadonlyArray<AnyFunction>>(...fns: Fns)
       const handler = yield* Handler(definition);
       items.push({ definition, handler });
     }
-    return yield* makeRegistry(items);
+    return yield* Registry.make(items);
   }),
 });
 
@@ -351,7 +307,7 @@ export const schedule = <F extends AnyFunction>(options: ScheduleOptions<F>): Sc
     const encoded = yield* codec.encode(
       InvocationParam.make({
         func: options.function.name,
-        args: Arr.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
+        args: Arr.ensure(encodedArgs),
         version,
         ...(Predicate.isNotUndefined(retry) ? { retry } : {}),
       }),
@@ -599,7 +555,7 @@ export class ResonateClient extends Context.Service<ResonateClient, ResonateClie
           );
           return yield* encodeInvocation({
             name: target.name,
-            args: Arr.isArray(encodedArgs) ? encodedArgs : [encodedArgs],
+            args: Arr.ensure(encodedArgs),
             version: options.callOptions?.version ?? target.version,
             retry: options.callOptions?.retryPolicy,
           });
